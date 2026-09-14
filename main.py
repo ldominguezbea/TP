@@ -12,7 +12,7 @@ pygame.display.set_caption("Plataformero")
 clock = pygame.time.Clock()
 
 
-fondo = pygame.image.load("fondo_mvp.png")
+fondo = pygame.image.load("assets/fondos/fondo_mvp.png")
 fondo = pygame.transform.scale(fondo, (WIDTH, HEIGHT))
 
 
