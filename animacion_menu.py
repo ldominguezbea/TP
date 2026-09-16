@@ -3,46 +3,44 @@ import random
 import math
 import sys
 import os
-from animacion_menu import configuracion
 
 
+    
+pygame.init()
+def configuracion():
+    SCREEN_WIDTH = 1360
+    SCREEN_HEIGHT = 720
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+print("\n" + "=" * 50)
+print("ARCHIVOS DETECTADOS EN TU CARPETA:")
+print(os.listdir(BASE_DIR))
+print("=" * 50 + "\n")
 
 
+SCREEN_WIDTH = 1360
+SCREEN_HEIGHT = 720
+screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+pygame.display.set_caption("REQUIEM: El juicio final")
+clock = pygame.time.Clock()
 
+# Canvas Pixel Art interno
+GAME_WIDTH = 320
+GAME_HEIGHT = 180
+canvas = pygame.Surface((GAME_WIDTH, GAME_HEIGHT))
 
-def main():
-    pygame.init()
-    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+# 2. Carga segura de la imagen (evita que el programa crashee)
+ruta_imagen = os.path.join(BASE_DIR, "fondo_escuela.png")
 
-    print("\n" + "=" * 50)
-    print("ARCHIVOS DETECTADOS EN TU CARPETA:")
-    print(os.listdir(BASE_DIR))
-    print("=" * 50 + "\n")
-
-def animacion_menu():
-    screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
-    pygame.display.set_caption("REQUIEM: El juicio final")
-    clock = pygame.time.Clock()
-    GAME_WIDTH = 320
-    GAME_HEIGHT = 180
-    canvas = pygame.Surface((GAME_WIDTH, GAME_HEIGHT))
-    config = {
-        "canvas": canvas,
-        "screen": screen
-    }
-main()
-
-def prologo():
-    ruta_imagen = os.path.join(BASE_DIR, "fondo_escuela.png")
-
-    try:
-        school_bg = pygame.image.load(ruta_imagen).convert_alpha()
-        school_bg = pygame.transform.scale(school_bg, (GAME_WIDTH, GAME_HEIGHT))
-        print("-> La imagen 'fondo_escuela.png' se cargó con éxito.")
-    except FileNotFoundError:
-        print("-> ADVERTENCIA: No se encontró 'fondo_escuela.png'. Se usará un fondo gris provisorio.")
-        school_bg = pygame.Surface((GAME_WIDTH, GAME_HEIGHT))
-        school_bg.fill((50, 50, 60))
+try:
+    school_bg = pygame.image.load(ruta_imagen).convert_alpha()
+    school_bg = pygame.transform.scale(school_bg, (GAME_WIDTH, GAME_HEIGHT))
+    print("-> La imagen 'fondo_escuela.png' se cargó con éxito.")
+except FileNotFoundError:
+    print("-> ADVERTENCIA: No se encontró 'fondo_escuela.png'. Se usará un fondo gris provisorio.")
+    school_bg = pygame.Surface((GAME_WIDTH, GAME_HEIGHT))
+    school_bg.fill((50, 50, 60))
 
 # Fuentes
 font_title = pygame.font.SysFont("Impact", 28)
