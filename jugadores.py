@@ -10,6 +10,8 @@ pygame.display.set_caption("Plataformero")
 
 clock = pygame.time.Clock()
 
+fondo = pygame.image.load("assets/fondos/fondo_mvp.png")
+fondo = pygame.transform.scale(fondo, (WIDTH, HEIGHT))
 
 class Player:
 
@@ -428,7 +430,7 @@ while running:
 
                 enemy.has_hit = True
 
-    screen.fill((30, 30, 30))
+    screen.blit(fondo, (0, 0))
 
     pygame.draw.line(
         screen,
