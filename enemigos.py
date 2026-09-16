@@ -18,7 +18,7 @@ class Enemigo:
         self.attack_cooldown = 0
         self.attack_cooldown_time = 0.8
         self.has_hit = False
-
+    
     def update(self, player, dt):
         if self.rect.x < player.rect.x:
             self.rect.x += self.speed
@@ -76,6 +76,8 @@ class Enemigo:
         self.health -= damage
         print(f"{self.name} recibió {damage} de daño. Vida restante: {self.health}")
 
+enemy = Enemigo(550, 500)
+
 class OrcoRojo(Enemigo):
     def __init__(self, x, y):
         super().__init__("Orco Rojo", 2, x, y)
@@ -132,3 +134,4 @@ def crear_enemigo_aleatorio(x, y):
     clase_enemigo = random.choice(enemigos_normales)
     nuevo_enemigo = clase_enemigo(x, y) 
     return nuevo_enemigo
+
