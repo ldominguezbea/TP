@@ -134,7 +134,7 @@ class OrcoRojo(Enemigo):
                 "assets/enemigos/Orco_rojo/Run.png", 1, 6
             ),
             "golpear": cargar_spritesheet_jokai(
-                "assets/enemigos/Orco_rojo/Attack_1.png", 1, 4
+                "assets/enemigos/Orco_rojo/Attack_3.png", 1, 2
             ),
             "dano": cargar_spritesheet_jokai(
                 "assets/enemigos/Orco_rojo/Hurt.png", 1, 2
@@ -276,7 +276,7 @@ class Jokai(Enemigo):
                 "assets/enemigos/Jokai/Run.png", 1, 8
             ),
             "golpear": cargar_spritesheet_jokai(
-                "assets/enemigos/Jokai/Attack_2.png", 1, 6
+                "assets/enemigos/Jokai/Attack_1.png", 1, 3
             ),
             "dano": cargar_spritesheet_jokai(
                 "assets/enemigos/Jokai/Hurt.png", 1, 3
@@ -403,7 +403,7 @@ class Karasu_tengu(Enemigo):
                     "assets/enemigos/Karasu_tengu/Run.png", 1, 8
                 ),
                 "golpear": cargar_spritesheet_jokai(
-                    "assets/enemigos/Karasu_tengu/Attack_2.png", 1, 4
+                    "assets/enemigos/Karasu_tengu/Attack_3.png", 1, 3
                 ),
                 "dano": cargar_spritesheet_jokai(
                     "assets/enemigos/Karasu_tengu/Hurt.png", 1, 3
