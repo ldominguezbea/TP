@@ -127,7 +127,7 @@ class Enemigo:
 
 class OrcoRojo(Enemigo):
 
-    def __init__(self, x=550, y=500):
+    def __init__(self, x=550, y=600):
         super().__init__("Orco_Rojo", 2, x, y)
         self.animaciones = {
             "correr": cargar_spritesheet_jokai(
