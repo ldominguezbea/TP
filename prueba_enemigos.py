@@ -118,7 +118,7 @@ class Player:
 
 
 player = Player(200, 500)
-enemy = OrcoRojo(550, 500)
+enemy = Jokai(550, 500)
 
 player_damage = 20
 enemy_damage = 12
