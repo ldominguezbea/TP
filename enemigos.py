@@ -117,7 +117,9 @@ class Enemigo:
             )
 
     def take_damage(self, damage):
-        self.health -= damage
+        if self.health <= 0:
+            return
+        self.health = max(0, self.health - damage)
         print(
             f"{self.name} recibió {damage} de daño. Vida restante: {self.health}"
         )
@@ -126,7 +128,130 @@ class Enemigo:
 class OrcoRojo(Enemigo):
 
     def __init__(self, x=550, y=500):
-        super().__init__("Orco Rojo", 2, x, y)
+        super().__init__("Orco_Rojo", 2, x, y)
+        self.animaciones = {
+            "correr": cargar_spritesheet_jokai(
+                "assets/enemigos/Orco_rojo/Run.png", 1, 6
+            ),
+            "golpear": cargar_spritesheet_jokai(
+                "assets/enemigos/Orco_rojo/Attack_1.png", 1, 4
+            ),
+            "dano": cargar_spritesheet_jokai(
+                "assets/enemigos/Orco_rojo/Hurt.png", 1, 2
+            ),
+            "muerte": cargar_spritesheet_jokai(
+                "assets/enemigos/Orco_rojo/Dead.png", 1, 4
+            ),
+            "saltar": cargar_spritesheet_jokai(
+                "assets/enemigos/Orco_rojo/Jump.png", 1, 5
+            ),
+        }
+
+        alto_base = self.animaciones["correr"][0].get_height()
+        frames_saltar_normalizados = []
+        for f in self.animaciones["saltar"]:
+            escala = alto_base / f.get_height()
+            nuevo_ancho = int(f.get_width() * escala)
+            frames_saltar_normalizados.append(
+                pygame.transform.scale(f, (nuevo_ancho, alto_base))
+            )
+        self.animaciones["saltar"] = frames_saltar_normalizados
+
+        self.estado_actual = "correr"
+        self.frame_actual = 0.0
+        self.velocidad_animacion = 0.15
+        self.esta_rojo = False
+        self.image = self.animaciones[self.estado_actual][0]
+
+        self.desaparecer_timer = 3.0
+        self.muerto_definitivo = False
+
+    def cambiar_estado(self, nuevo_estado):
+        if self.estado_actual != nuevo_estado:
+            self.estado_actual = nuevo_estado
+            self.frame_actual = 0.0
+
+    def actualizar_animacion(self):
+        frames = self.animaciones[self.estado_actual]
+        self.frame_actual += self.velocidad_animacion
+
+        if self.estado_actual == "muerte":
+            if self.frame_actual >= len(frames):
+                self.frame_actual = len(frames) - 1
+        elif self.estado_actual in ("golpear", "dano"):
+            if self.frame_actual >= len(frames):
+                self.esta_rojo = False
+                self.cambiar_estado("correr")
+        elif self.estado_actual == "saltar":
+            if self.frame_actual >= len(frames):
+                self.frame_actual = len(frames) - 1
+        else:
+            if self.frame_actual >= len(frames):
+                self.frame_actual = 0.0
+
+        imagen_frame = frames[int(self.frame_actual)]
+
+        if self.direction == "left":
+            imagen_frame = pygame.transform.flip(imagen_frame, True, False)
+
+        if self.esta_rojo:
+            imagen_frame = imagen_frame.copy()
+            imagen_frame.fill(
+                (255, 50, 50), special_flags=pygame.BLEND_RGB_MULT
+            )
+
+        self.image = imagen_frame
+
+    def take_damage(self, damage):
+        if self.health <= 0:
+            return
+
+        super().take_damage(damage)
+        self.esta_rojo = True
+        self.attacking = False
+        self.hitbox = pygame.Rect(0, 0, 0, 0)
+
+        if self.health <= 0:
+            self.cambiar_estado("muerte")
+        else:
+            self.cambiar_estado("dano")
+
+    def update(self, player, dt, width=WIDTH):
+        if self.muerto_definitivo:
+            return
+
+        if self.estado_actual == "muerte":
+            self.aplicar_gravedad_y_suelo()
+            self.hurtbox = pygame.Rect(0, 0, 0, 0)
+
+            self.desaparecer_timer -= dt
+            if self.desaparecer_timer <= 0:
+                self.muerto_definitivo = True
+
+        elif self.estado_actual == "dano":
+            self.aplicar_gravedad_y_suelo()
+            self.hurtbox.topleft = self.rect.topleft
+        else:
+            super().update(player, dt, width)
+
+            if not self.on_ground:
+                self.cambiar_estado("saltar")
+            elif self.attacking:
+                self.cambiar_estado("golpear")
+            else:
+                self.cambiar_estado("correr")
+
+        self.actualizar_animacion()
+
+    def draw(self, screen):
+        if self.muerto_definitivo:
+            return
+
+        pos_x = self.rect.centerx - self.image.get_width() // 2
+        pos_y = self.rect.bottom - self.image.get_height()
+
+        screen.blit(self.image, (pos_x, pos_y))
+    
 
 
 class Carnicero(Enemigo):
@@ -180,7 +305,6 @@ class Jokai(Enemigo):
         self.esta_rojo = False
         self.image = self.animaciones[self.estado_actual][0]
 
-        # Variables para controlar la desaparición del cadáver
         self.desaparecer_timer = 3.0
         self.muerto_definitivo = False
 
@@ -221,10 +345,14 @@ class Jokai(Enemigo):
         self.image = imagen_frame
 
     def take_damage(self, damage):
+        if self.health <= 0:
+            return
+
         super().take_damage(damage)
         self.esta_rojo = True
         self.attacking = False
         self.hitbox = pygame.Rect(0, 0, 0, 0)
+
         if self.health <= 0:
             self.cambiar_estado("muerte")
         else:
@@ -238,7 +366,6 @@ class Jokai(Enemigo):
             self.aplicar_gravedad_y_suelo()
             self.hurtbox = pygame.Rect(0, 0, 0, 0)
 
-            # Descuenta el tiempo hasta desaparecer
             self.desaparecer_timer -= dt
             if self.desaparecer_timer <= 0:
                 self.muerto_definitivo = True
@@ -259,7 +386,6 @@ class Jokai(Enemigo):
         self.actualizar_animacion()
 
     def draw(self, screen):
-        # Si ya pasaron los 3 segundos, no dibuja nada
         if self.muerto_definitivo:
             return
 
@@ -268,22 +394,138 @@ class Jokai(Enemigo):
 
         screen.blit(self.image, (pos_x, pos_y))
 
-        if self.estado_actual != "muerte":
-            pygame.draw.rect(screen, (0, 255, 0), self.hurtbox, 2)
-            if self.attacking:
-                pygame.draw.rect(screen, (255, 150, 0), self.hitbox, 2)
-
+class Karasu_tengu(Enemigo):
+    def __init__(self, x=550, y=500):
+            super().__init__("Karasu_tengu", 2, x, y)
+    
+            self.animaciones = {
+                "correr": cargar_spritesheet_jokai(
+                    "assets/enemigos/Karasu_tengu/Run.png", 1, 8
+                ),
+                "golpear": cargar_spritesheet_jokai(
+                    "assets/enemigos/Karasu_tengu/Attack_2.png", 1, 4
+                ),
+                "dano": cargar_spritesheet_jokai(
+                    "assets/enemigos/Karasu_tengu/Hurt.png", 1, 3
+                ),
+                "muerte": cargar_spritesheet_jokai(
+                    "assets/enemigos/Karasu_tengu/Dead.png", 1, 6
+                ),
+                "saltar": cargar_spritesheet_jokai(
+                    "assets/enemigos/Karasu_tengu/Jump.png", 1, 15
+                ),
+            }
+    
+            alto_base = self.animaciones["correr"][0].get_height()
+            frames_saltar_normalizados = []
+            for f in self.animaciones["saltar"]:
+                escala = alto_base / f.get_height()
+                nuevo_ancho = int(f.get_width() * escala)
+                frames_saltar_normalizados.append(
+                    pygame.transform.scale(f, (nuevo_ancho, alto_base))
+                )
+            self.animaciones["saltar"] = frames_saltar_normalizados
+    
+            self.estado_actual = "correr"
+            self.frame_actual = 0.0
+            self.velocidad_animacion = 0.15
+            self.esta_rojo = False
+            self.image = self.animaciones[self.estado_actual][0]
+    
+            self.desaparecer_timer = 3.0
+            self.muerto_definitivo = False
+    
+    def cambiar_estado(self, nuevo_estado):
+            if self.estado_actual != nuevo_estado:
+                self.estado_actual = nuevo_estado
+                self.frame_actual = 0.0
+    
+    def actualizar_animacion(self):
+            frames = self.animaciones[self.estado_actual]
+            self.frame_actual += self.velocidad_animacion
+    
+            if self.estado_actual == "muerte":
+                if self.frame_actual >= len(frames):
+                    self.frame_actual = len(frames) - 1
+            elif self.estado_actual in ("golpear", "dano"):
+                if self.frame_actual >= len(frames):
+                    self.esta_rojo = False
+                    self.cambiar_estado("correr")
+            elif self.estado_actual == "saltar":
+                if self.frame_actual >= len(frames):
+                    self.frame_actual = len(frames) - 1
+            else:
+                if self.frame_actual >= len(frames):
+                    self.frame_actual = 0.0
+    
+            imagen_frame = frames[int(self.frame_actual)]
+    
+            if self.direction == "left":
+                imagen_frame = pygame.transform.flip(imagen_frame, True, False)
+    
+            if self.esta_rojo:
+                imagen_frame = imagen_frame.copy()
+                imagen_frame.fill(
+                    (255, 50, 50), special_flags=pygame.BLEND_RGB_MULT
+                )
+    
+            self.image = imagen_frame
+    
+    def take_damage(self, damage):
+            if self.health <= 0:
+                return
+    
+            super().take_damage(damage)
+            self.esta_rojo = True
+            self.attacking = False
+            self.hitbox = pygame.Rect(0, 0, 0, 0)
+    
+            if self.health <= 0:
+                self.cambiar_estado("muerte")
+            else:
+                self.cambiar_estado("dano")
+    
+    def update(self, player, dt, width=WIDTH):
+            if self.muerto_definitivo:
+                return
+    
+            if self.estado_actual == "muerte":
+                self.aplicar_gravedad_y_suelo()
+                self.hurtbox = pygame.Rect(0, 0, 0, 0)
+    
+                self.desaparecer_timer -= dt
+                if self.desaparecer_timer <= 0:
+                    self.muerto_definitivo = True
+    
+            elif self.estado_actual == "dano":
+                self.aplicar_gravedad_y_suelo()
+                self.hurtbox.topleft = self.rect.topleft
+            else:
+                super().update(player, dt, width)
+    
+                if not self.on_ground:
+                    self.cambiar_estado("saltar")
+                elif self.attacking:
+                    self.cambiar_estado("golpear")
+                else:
+                    self.cambiar_estado("correr")
+    
+            self.actualizar_animacion()
+    
+    def draw(self, screen):
+            if self.muerto_definitivo:
+                return
+    
+            pos_x = self.rect.centerx - self.image.get_width() // 2
+            pos_y = self.rect.bottom - self.image.get_height()
+    
+            screen.blit(self.image, (pos_x, pos_y))
 
 class HombreLoboRojo(Enemigo):
 
     def __init__(self, x=550, y=500):
         super().__init__("HombreLoboRojo", 2, x, y)
 
-
-class Mago(Enemigo):
-
-    def __init__(self, x=550, y=500):
-        super().__init__("Mago", 3, x, y)
 
 
 class Cthulhu(Enemigo):
