@@ -4,10 +4,10 @@ import math
 import sys
 import os
 
-# Inicializar Pygame
+
 pygame.init()
 
-# 1. Rutas e impresión de diagnóstico en la consola
+
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 print("\n" + "=" * 50)
@@ -15,14 +15,14 @@ print("ARCHIVOS DETECTADOS EN TU CARPETA:")
 print(os.listdir(BASE_DIR))
 print("=" * 50 + "\n")
 
-# Pantalla principal
+
 SCREEN_WIDTH = 1360
 SCREEN_HEIGHT = 720
 screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
 pygame.display.set_caption("REQUIEM: El juicio final")
 clock = pygame.time.Clock()
 
-# Canvas Pixel Art interno
+
 GAME_WIDTH = 320
 GAME_HEIGHT = 180
 canvas = pygame.Surface((GAME_WIDTH, GAME_HEIGHT))
