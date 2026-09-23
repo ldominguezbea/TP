@@ -1,100 +1,32 @@
 import pygame
-import random
 import math
-import sys
-import os
 
-pygame.init()
-
+# Constantes de pantalla e interfaz
 SCREEN_WIDTH = 1360
 SCREEN_HEIGHT = 720
+GAME_WIDTH = 320
+GAME_HEIGHT = 180
 
-
-def animacion_menu():
-    screen = pygame.display.set_mode(SCREEN_WIDTH, SCREEN_HEIGHT)
-    pygame.display.set_caption("REQUIEM: El juicio final")
-    clock = pygame.time.Clock()
-    GAME_WIDTH = 320
-    GAME_HEIGHT = 180
-    canvas = pygame.Surface((GAME_WIDTH, GAME_HEIGHT))
-    config = {
-        "canvas": canvas,
-        "screen": screen
-    }
-    font_title = pygame.font.SysFont("Impact", 28)
-    font_sub = pygame.font.SysFont("Arial", 8, bold=True)
-    font_menu = pygame.font.SysFont("Arial", 8, bold=True)
-    font_prologue = pygame.font.SysFont("Arial", 12, bold=True)
-
-    menu_options = ["NEW GAME", "CONTINUE", "CONTROLS", "TROPHIES", "EXIT"]
-    selected_option = 0
-
-    # Estado inicial
-    game_state = "MENU"
-
-    # Partículas de Humo
-    smoke_particles = []
-    for _ in range(30):
-        smoke_particles.append({
-            "x": random.randint(0, GAME_WIDTH),
-            "y": random.randint(0, GAME_HEIGHT),
-            "radius": random.randint(8, 20),
-            "alpha": random.randint(30, 80),
-            "speed_y": random.uniform(0.1, 0.25),
-            "speed_x": random.uniform(0.05, 0.2)
-        })
-
-    # Partículas de Chispas
-    sparks = []
-    for _ in range(40):
-        sparks.append({
-            "x": random.randint(0, GAME_WIDTH),
-            "y": random.randint(0, GAME_HEIGHT),
-            "speed_y": random.uniform(0.2, 0.6),
-            "speed_x": random.uniform(-0.15, 0.15),
-            "color": random.choice([(255, 100, 0), (255, 200, 0), (200, 30, 0)])
-        })
-
-    civilians = [
-        {"x": 60, "y": 166, "speed": 0.45, "dir": -1},
-        {"x": 120, "y": 166, "speed": 0.48, "dir": -1},
-        {"x": 180, "y": 166, "speed": 0.42, "dir": -1},
-        {"x": 260, "y": 166, "speed": 0.50, "dir": -1},
-        {"x": 80, "y": 156, "speed": 0.38, "dir": -1},
-        {"x": 190, "y": 156, "speed": 0.40, "dir": -1},
-        {"x": 290, "y": 156, "speed": 0.36, "dir": -1}
-    ]
-
-    demons = [
-        {"x": 230, "y": 146, "speed": 0.45, "dir": -1},
-        {"x": 320, "y": 146, "speed": 0.38, "dir": -1}
-    ]
-
-    flying_demons = [
-        {"x": 280, "y": 35, "speed": 0.6, "dir": -1, "wing_offset": 0},
-        {"x": 50, "y": 20, "speed": 0.45, "dir": 1, "wing_offset": 2.0},
-        {"x": 200, "y": 55, "speed": 0.5, "dir": -1, "wing_offset": 4.0}
-    ]
-    def draw_cool_indicator_demon(surface, x, y, time):
-        pulse = abs(math.sin(time * 6))
-        glow_surf = pygame.Surface((18, 18), pygame.SRCALPHA)
-        pygame.draw.circle(glow_surf, (255, 30, 0, int(60 + pulse * 80)), (9, 9), 8)
-        surface.blit(glow_surf, (x - 2, y - 2))
-        
-        pygame.draw.polygon(surface, (180, 10, 10), [
-            (x + 3, y + 3), (x + 11, y + 3), (x + 13, y + 7), (x + 7, y + 13), (x + 1, y + 7)
-        ])
-        pygame.draw.polygon(surface, (255, 50, 0), [(x + 2, y + 3), (x - 1, y - 3), (x + 4, y + 1)])
-        pygame.draw.polygon(surface, (255, 50, 0), [(x + 12, y + 3), (x + 15, y - 3), (x + 10, y + 1)])
-        surface.set_at((x - 1, y - 3), (255, 200, 0))
-        surface.set_at((x + 15, y - 3), (255, 200, 0))
-        
-        pygame.draw.line(surface, (255, 255, 100), (x + 3, y + 6), (x + 5, y + 7), 1)
-        pygame.draw.line(surface, (255, 255, 100), (x + 11, y + 6), (x + 9, y + 7), 1)
-        
-        pygame.draw.line(surface, (20, 0, 0), (x + 4, y + 10), (x + 10, y + 10), 1)
-        surface.set_at((x + 5, y + 11), (255, 255, 255))
-        surface.set_at((x + 9, y + 11), (255, 255, 255))
+def draw_cool_indicator_demon(surface, x, y, time):
+    pulse = abs(math.sin(time * 6))
+    glow_surf = pygame.Surface((18, 18), pygame.SRCALPHA)
+    pygame.draw.circle(glow_surf, (255, 30, 0, int(60 + pulse * 80)), (9, 9), 8)
+    surface.blit(glow_surf, (x - 2, y - 2))
+    
+    pygame.draw.polygon(surface, (180, 10, 10), [
+        (x + 3, y + 3), (x + 11, y + 3), (x + 13, y + 7), (x + 7, y + 13), (x + 1, y + 7)
+    ])
+    pygame.draw.polygon(surface, (255, 50, 0), [(x + 2, y + 3), (x - 1, y - 3), (x + 4, y + 1)])
+    pygame.draw.polygon(surface, (255, 50, 0), [(x + 12, y + 3), (x + 15, y - 3), (x + 10, y + 1)])
+    surface.set_at((x - 1, y - 3), (255, 200, 0))
+    surface.set_at((x + 15, y - 3), (255, 200, 0))
+    
+    pygame.draw.line(surface, (255, 255, 100), (x + 3, y + 6), (x + 5, y + 7), 1)
+    pygame.draw.line(surface, (255, 255, 100), (x + 11, y + 6), (x + 9, y + 7), 1)
+    
+    pygame.draw.line(surface, (20, 0, 0), (x + 4, y + 10), (x + 10, y + 10), 1)
+    surface.set_at((x + 5, y + 11), (255, 255, 255))
+    surface.set_at((x + 9, y + 11), (255, 255, 255))
 
 def draw_detailed_civilian(surface, x, y, direction, time):
     leg_swing = math.sin(time * 16) * 4 * direction
@@ -199,9 +131,9 @@ def draw_giant_demon(surface, time):
 
 def draw_scenery(surface, time):
     surface.fill((10, 2, 2))
-    glow = pygame.Surface((SCREEN_WIDTH, 90), pygame.SRCALPHA)
-    pygame.draw.rect(glow, (140, 25, 0, 45), (0, 0, SCREEN_WIDTH, 90))
-    surface.blit(glow, (0, SCREEN_HEIGHT - 90))
+    glow = pygame.Surface((GAME_WIDTH, 90), pygame.SRCALPHA)
+    pygame.draw.rect(glow, (140, 25, 0, 45), (0, 0, GAME_WIDTH, 90))
+    surface.blit(glow, (0, GAME_HEIGHT - 90))
 
     draw_giant_demon(surface, time)
 
@@ -232,8 +164,8 @@ def draw_scenery(surface, time):
                 else:
                     pygame.draw.rect(surface, (10, 3, 3), (wx, wy, 4, 5))
 
-    pygame.draw.rect(surface, (15, 12, 12), (0, 140, SCREEN_WIDTH, SCREEN_HEIGHT - 140))
-    pygame.draw.rect(surface, (22, 18, 18), (0, 152, SCREEN_WIDTH, GAME_HEIGHT - 152))
+    pygame.draw.rect(surface, (15, 12, 12), (0, 140, GAME_WIDTH, GAME_HEIGHT - 140))
+    pygame.draw.rect(surface, (22, 18, 18), (0, 152, GAME_WIDTH, GAME_HEIGHT - 152))
     pygame.draw.line(surface, (45, 35, 35), (0, 140), (GAME_WIDTH, 140), 1)
     pygame.draw.line(surface, (38, 28, 28), (0, 152), (GAME_WIDTH, 152), 1)
 
@@ -246,5 +178,3 @@ def draw_scenery(surface, time):
         if fh > 1:
             pygame.draw.rect(surface, (255, 40, 0), (fx, 140 - fh, 3, fh))
             pygame.draw.rect(surface, (255, 180, 0), (fx + 1, 140 - fh + 2, 1, fh - 2))
-
-
