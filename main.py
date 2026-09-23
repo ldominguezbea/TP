@@ -114,12 +114,11 @@ def main():
                             game_state = "PROLOGUE"
                         elif selected_option == 4:  # "EXIT"
                             running = False
+                
+            elif event.type == pygame.MOUSEBUTTOMDOWN:
+                if mouse_x == and mouse_y == 
 
-                elif game_state == "PROLOGUE":
-                    if event.key == pygame.K_RETURN:
-                        game_state = "GAMEPLAY"
 
-        # 2. RENDERIZADO
         if game_state == "MENU":
             animacion_menu.draw_scenery(canvas, time_counter)
 
@@ -174,8 +173,10 @@ def main():
             canvas.blit(sub_surf, (20, 36))
 
             start_y = 58
+            from prologo import prologue
             for i, option in enumerate(menu_options):
                 btn_rect = pygame.Rect(26, start_y + (i * 18), 80, 13)
+                pos_NEWGAME = 
                 
                 if btn_rect.collidepoint(scaled_mouse_x, scaled_mouse_y):
                     selected_option = i
@@ -196,22 +197,15 @@ def main():
                 canvas.blit(text_surf, (text_x, btn_rect.y + 1))
 
         elif game_state == "PROLOGUE":
-            canvas.fill((5, 2, 2))
-            prologue_surf = font_prologue.render("EL COMIENZO DEL FIN...", True, (200, 30, 30))
-            px = (GAME_WIDTH - prologue_surf.get_width()) // 2
-            py = (GAME_HEIGHT - prologue_surf.get_height()) // 2 - 10
-            canvas.blit(prologue_surf, (px, py))
-
-            if int(time_counter * 2) % 2 == 0:
-                prompt_surf = font_sub.render("Presiona ENTER para continuar", True, (150, 150, 150))
-                prompt_x = (GAME_WIDTH - prompt_surf.get_width()) // 2
-                canvas.blit(prompt_surf, (prompt_x, py + 25))
+            from prologo import prologue
+            prologue()
 
         elif game_state == "GAMEPLAY":
-            canvas.blit(school_bg, (0, 0))
+            Player()
 
         scaled_surface = pygame.transform.scale(canvas, (SCREEN_WIDTH, SCREEN_HEIGHT))
         screen.blit(scaled_surface, (0, 0))
+
 
         pygame.display.flip()
         clock.tick(60)
