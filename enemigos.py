@@ -814,6 +814,138 @@ class HombreLoboNegro(Enemigo):
             pos_y = self.rect.bottom - self.image.get_height()
             screen.blit(self.image, (pos_x, pos_y))
 
+class Esqueleto_Guerrero (Enemigo):
+
+    def __init__(self, x=550, y=500):
+        super().__init__("Esqueleto Guerrero", 2, x, y)
+
+        self.animaciones = {
+            "correr": cargar_spritesheet_jokai(
+                "assets/enemigos/skeleton_Warrior/Run.png", 1, 8
+            ),
+            "golpear": cargar_spritesheet_jokai(
+                "assets/enemigos/Skeleton_Warrior/Attack_3.png", 1, 4
+            ),
+            "dano": cargar_spritesheet_jokai(
+                "assets/enemigos/Skeleton_Warrior/Hurt.png", 1, 2
+            ),
+            "muerte": cargar_spritesheet_jokai(
+                "assets/enemigos/Skeleton_Warrior/Dead.png", 1, 4
+            ),
+            "saltar": cargar_spritesheet_jokai(
+                "assets/enemigos/Skeleton_Warrior/Idle.png", 1, 7
+            ),
+        }
+
+        self.normalizar_saltos()
+
+        self.estado_actual = "correr"
+        self.frame_actual = 0.0
+        self.velocidad_animacion = 0.15
+        self.image = self.animaciones["correr"][0]
+
+        self.esta_rojo = False
+        self.desaparecer_timer = 3.0
+        self.muerto_definitivo = False
+
+    def normalizar_saltos(self):
+        alto_base = self.animaciones["correr"][0].get_height()
+        frames_saltar_normalizados = []
+
+        for f in self.animaciones["saltar"]:
+            escala = alto_base / f.get_height()
+            nuevo_ancho = int(f.get_width() * escala)
+            f_escalado = pygame.transform.scale(f, (nuevo_ancho, alto_base))
+            frames_saltar_normalizados.append(f_escalado)
+
+        self.animaciones["saltar"] = frames_saltar_normalizados
+
+    def cambiar_estado(self, nuevo_estado):
+        if self.estado_actual != nuevo_estado:
+            self.estado_actual = nuevo_estado
+            self.frame_actual = 0.0
+
+    def actualizar_animacion(self):
+        frames = self.animaciones[self.estado_actual]
+        self.frame_actual += self.velocidad_animacion
+
+        if self.estado_actual == "muerte":
+            if self.frame_actual >= len(frames):
+                self.frame_actual = len(frames) - 1
+        elif self.estado_actual in ("golpear", "dano"):
+            if self.frame_actual >= len(frames):
+                self.esta_rojo = False
+                self.cambiar_estado("correr")
+        elif self.estado_actual == "saltar":
+            if self.frame_actual >= len(frames):
+                self.frame_actual = len(frames) - 1
+        else:
+            if self.frame_actual >= len(frames):
+                self.frame_actual = 0.0
+
+        imagen_frame = frames[int(self.frame_actual)]
+
+        if self.direction == "left":
+            imagen_frame = pygame.transform.flip(imagen_frame, True, False)
+
+        if self.esta_rojo:
+            imagen_frame = imagen_frame.copy()
+            imagen_frame.fill(
+                (255, 50, 50), special_flags=pygame.BLEND_RGB_MULT
+            )
+
+        self.image = imagen_frame
+
+    def take_damage(self, damage):
+        if self.health <= 0:
+            return
+
+        super().take_damage(damage)
+
+        self.esta_rojo = True
+        self.attacking = False
+        self.hitbox = pygame.Rect(0, 0, 0, 0)
+
+        if self.health <= 0:
+            self.cambiar_estado("muerte")
+        else:
+            self.cambiar_estado("dano")
+
+    def update(self, player, dt, width=WIDTH):
+        if self.muerto_definitivo:
+            return
+
+        if self.estado_actual == "muerte":
+            self.aplicar_gravedad_y_suelo()
+            self.hurtbox = pygame.Rect(0, 0, 0, 0)
+            self.desaparecer_timer -= dt
+            if self.desaparecer_timer <= 0:
+                self.muerto_definitivo = True
+
+        elif self.estado_actual == "dano":
+            self.aplicar_gravedad_y_suelo()
+            self.hurtbox.topleft = self.rect.topleft
+        else:
+            super().update(player, dt, width)
+
+            if not self.on_ground:
+                self.cambiar_estado("saltar")
+            elif self.attacking:
+                self.cambiar_estado("golpear")
+            else:
+                self.cambiar_estado("correr")
+
+        self.actualizar_animacion()
+
+    def draw(self, screen):
+        if self.muerto_definitivo:
+            return
+
+        if self.image:
+            pos_x = self.rect.centerx - self.image.get_width() // 2
+            pos_y = self.rect.bottom - self.image.get_height()
+            screen.blit(self.image, (pos_x, pos_y))
+
 
 class Carnicero(Enemigo):
 
@@ -864,7 +996,7 @@ class Dragon(Enemigo):
 
 
 enemigos_nivel_1 = [
-    OrcoRojo,
+    OrcoRojo,Esqueleto_Guerrero,Karasu_tengu
 ]
 
 enemigos_normales = [

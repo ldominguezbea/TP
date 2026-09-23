@@ -5,8 +5,8 @@ import sys
 pygame.init()
 
 # Configuración de pantalla
-ANCHO = 1290
-ALTO = 800
+ANCHO = 1350
+ALTO = 700
 ventana = pygame.display.set_mode((ANCHO, ALTO))
 pygame.display.set_caption("Prólogo")
 
