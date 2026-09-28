@@ -1,9 +1,12 @@
 from animacion_menu import GAME_WIDTH, GAME_HEIGHT
 import pygame
-screen = pygame.display.set_mode((GAME_WIDTH, GAME_HEIGHT))
+from pathlib import Path
+from pathlib import Path
 
-fondo = pygame.image.load("assets/fondos/fondo_mvp.png")
-fondo = pygame.transform.scale(fondo, (GAME_WIDTH, GAME_HEIGHT))
+BASE_DIR = Path(__file__).resolve().parent
+screen = pygame.display.set_mode((GAME_WIDTH, GAME_HEIGHT))
+path_escuela = BASE_DIR / "assets" / "sprites" / "jugador.png"
+fondo_escuela = pygame.image.load(str(path_escuela))
 
 class Player:
     def __init__(self, x, y):
