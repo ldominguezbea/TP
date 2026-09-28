@@ -2,12 +2,11 @@ import pygame
 import random
 import math
 import sys
-import os
 import animacion_menu
+from jugadores import Player
 
 pygame.init()
 
-# Dimensiones generales
 SCREEN_WIDTH = animacion_menu.SCREEN_WIDTH
 SCREEN_HEIGHT = animacion_menu.SCREEN_HEIGHT
 GAME_WIDTH = animacion_menu.GAME_WIDTH
@@ -17,7 +16,7 @@ screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
 pygame.display.set_caption("REQUIEM: El juicio final")
 clock = pygame.time.Clock()
 
-# Fuentes
+
 font_title = pygame.font.SysFont("Impact", 28)
 font_sub = pygame.font.SysFont("Arial", 8, bold=True)
 font_menu = pygame.font.SysFont("Arial", 8, bold=True)
@@ -27,7 +26,6 @@ menu_options = ["NEW GAME", "CONTINUE", "CONTROLS", "TROPHIES", "EXIT"]
 selected_option = 0
 game_state = "MENU"
 
-# Partículas de Humo
 smoke_particles = [
     {
         "x": random.randint(0, GAME_WIDTH),
@@ -39,7 +37,7 @@ smoke_particles = [
     } for _ in range(30)
 ]
 
-# Partículas de Chispas
+
 sparks = [
     {
         "x": random.randint(0, GAME_WIDTH),
@@ -82,7 +80,7 @@ def main():
         scaled_mouse_x = mouse_x * (GAME_WIDTH / SCREEN_WIDTH)
         scaled_mouse_y = mouse_y * (GAME_HEIGHT / SCREEN_HEIGHT)
 
-        # 1. EVENTOS
+
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
@@ -158,7 +156,6 @@ def main():
             from prologo import prologue
             for i, option in enumerate(menu_options):
                 btn_rect = pygame.Rect(26, start_y + (i * 18), 80, 13)
-                pos_NEWGAME = 
                 
                 if btn_rect.collidepoint(scaled_mouse_x, scaled_mouse_y):
                     selected_option = i
@@ -179,12 +176,13 @@ def main():
                 canvas.blit(text_surf, (text_x, btn_rect.y + 1))
 
         elif game_state == "PROLOGUE":
-            from prologo import prologue
             prologue()
 
         elif game_state == "GAMEPLAY":
-            Player()
-            enemy()
+            from enemigos import Enemigo
+            player.update(1 / 60)
+            player = Player(200, 500)
+            enemy = Enemigo(550, 500)
 
         scaled_surface = pygame.transform.scale(canvas, (SCREEN_WIDTH, SCREEN_HEIGHT))
         screen.blit(scaled_surface, (0, 0))

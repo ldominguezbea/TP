@@ -2,6 +2,8 @@ import os
 import random
 import pygame
 
+from jugadores import Player
+
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 clock = pygame.time.Clock()
 
@@ -12,10 +14,6 @@ def cargar_spritesheet_jokai(ruta_relativa, filas, columnas):
 
     sheet = pygame.image.load(ruta_completa).convert_alpha()
 
-    # --- SOLUCIÓN FONDO AZUL ---
-    # Si tus PNGs tienen fondo azul plano en lugar de transparencia transparente real,
-    # descomenta la siguiente línea especificando el color de fondo exacto (RGB):
-    # sheet.set_colorkey((0, 0, 255))
 
     ancho_frame = sheet.get_width() // columnas
     alto_frame = sheet.get_height() // filas
@@ -31,9 +29,7 @@ def cargar_spritesheet_jokai(ruta_relativa, filas, columnas):
 
     return frames
 
-
 WIDTH = 1350
-
 
 class Enemigo:
 
@@ -71,17 +67,14 @@ class Enemigo:
             self.on_ground = True
 
     def update(self, player, dt, width=WIDTH):
-        # --- SOLUCIÓN TEMBLOR / GIRO LOUCO ---
-        # Calculamos la distancia usando los centros en X
+
         dx = player.rect.centerx - self.rect.centerx
 
-        # Margen de tolerancia para que no cambie de lado a cada frame
         if dx < -5:
             self.direction = "left"
         elif dx > 5:
             self.direction = "right"
 
-        # Solo avanza si está más lejos que la distancia de parada
         if abs(dx) > self.stop_distance:
             if self.direction == "right":
                 self.rect.x += self.speed
@@ -91,18 +84,13 @@ class Enemigo:
         if player.rect.bottom < self.rect.top - 30 and self.on_ground:
             self.velocity_y = self.jump_force
             self.on_ground = False
-
         self.aplicar_gravedad_y_suelo()
-
         self.rect.x = max(0, min(width - self.rect.width, self.rect.x))
         self.hurtbox.topleft = self.rect.topleft
-
         if self.attack_cooldown > 0:
             self.attack_cooldown -= dt
-
         distance_x = abs(dx)
         distance_y = abs(self.rect.centery - player.rect.centery)
-
         if distance_x < 100 and distance_y < 80:
             if not self.attacking:
                 self.attack()
@@ -219,7 +207,6 @@ class OrcoRojo(Enemigo):
                 self.frame_actual = 0.0
 
         imagen_frame = frames[int(self.frame_actual)]
-
         if self.direction == "left":
             imagen_frame = pygame.transform.flip(imagen_frame, True, False)
 
@@ -405,7 +392,6 @@ class Jokai(Enemigo):
                 self.cambiar_estado("correr")
 
         self.actualizar_animacion()
-
     def draw(self, screen):
         if self.muerto_definitivo:
             return
@@ -550,7 +536,6 @@ class Karasu_tengu(Enemigo):
 
 
 class HombreLoboRojo(Enemigo):
-
     def __init__(self, x=550, y=500):
         super().__init__("Lobo_rojo", 2, x, y)
 
@@ -884,3 +869,6 @@ enemigos_jefes = [Carnicero, Cthulhu, Cerbero, OrcoRojo2, CaballeroInfernal]
 def crear_enemigo_aleatorio(x=550, y=500):
     clase_enemigo = random.choice(enemigos_normales)
     return clase_enemigo(x, y)
+
+enemy = Enemigo(550, 500)
+enemy.draw()
