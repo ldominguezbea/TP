@@ -12,11 +12,6 @@ def cargar_spritesheet_jokai(ruta_relativa, filas, columnas):
 
     sheet = pygame.image.load(ruta_completa).convert_alpha()
 
-    # --- SOLUCIÓN FONDO AZUL ---
-    # Si tus PNGs tienen fondo azul plano en lugar de transparencia transparente real,
-    # descomenta la siguiente línea especificando el color de fondo exacto (RGB):
-    # sheet.set_colorkey((0, 0, 255))
-
     ancho_frame = sheet.get_width() // columnas
     alto_frame = sheet.get_height() // filas
 
@@ -148,10 +143,23 @@ class Enemigo:
         color = (200, 50, 50) if self.direction == "left" else (50, 200, 50)
         pygame.draw.rect(screen, color, self.rect)
 
+def escalar_animaciones(self, factor):
+        """Escala únicamente las imágenes de las animaciones sin alterar las hitboxes."""
+        if hasattr(self, "animaciones"):
+            for estado, frames in self.animaciones.items():
+                nuevos_frames = []
+                for f in frames:
+                    nuevo_ancho = int(f.get_width() * factor)
+                    nuevo_alto = int(f.get_height() * factor)
+                    f_escalado = pygame.transform.scale(
+                        f, (nuevo_ancho, nuevo_alto)
+                    )
+                    nuevos_frames.append(f_escalado)
+                self.animaciones[estado] = nuevos_frames
 
 class OrcoRojo(Enemigo):
 
-    def __init__(self, x=550, y=500):
+    def __init__(self, x=550, y=500, escala=2):
         super().__init__("Orco_Rojo", 2, x, y)
 
         self.animaciones = {
@@ -174,6 +182,10 @@ class OrcoRojo(Enemigo):
 
         self.normalizar_saltos()
 
+        # Llama a la función para redimensionar los frames
+        if escala != 1.0:
+            self.escalar_animaciones(escala)
+
         self.estado_actual = "correr"
         self.frame_actual = 0.0
         self.velocidad_animacion = 0.15
@@ -182,6 +194,19 @@ class OrcoRojo(Enemigo):
         self.esta_rojo = False
         self.desaparecer_timer = 3.0
         self.muerto_definitivo = False
+
+    def escalar_animaciones(self, factor):
+        """Redimensiona todas las animaciones sin modificar self.rect ni self.hurtbox."""
+        for estado, frames in self.animaciones.items():
+            nuevos_frames = []
+            for f in frames:
+                nuevo_ancho = int(f.get_width() * factor)
+                nuevo_alto = int(f.get_height() * factor)
+                f_escalado = pygame.transform.scale(
+                    f, (nuevo_ancho, nuevo_alto)
+                )
+                nuevos_frames.append(f_escalado)
+            self.animaciones[estado] = nuevos_frames
 
     def normalizar_saltos(self):
         alto_base = self.animaciones["correr"][0].get_height()
@@ -277,7 +302,6 @@ class OrcoRojo(Enemigo):
             return
 
         if self.image:
-            # --- ALINEACIÓN DEL SPRITE CON EL RECT ---
             pos_x = self.rect.centerx - self.image.get_width() // 2
             pos_y = self.rect.bottom - self.image.get_height()
             screen.blit(self.image, (pos_x, pos_y))
@@ -814,9 +838,9 @@ class HombreLoboNegro(Enemigo):
             pos_y = self.rect.bottom - self.image.get_height()
             screen.blit(self.image, (pos_x, pos_y))
 
-class Esqueleto_Guerrero (Enemigo):
+class Esqueleto_Guerrero(Enemigo):
 
-    def __init__(self, x=550, y=500):
+    def __init__(self, x=550, y=500, escala=1.5):  # Modifica 'escala' al tamaño que quieras
         super().__init__("Esqueleto Guerrero", 2, x, y)
 
         self.animaciones = {
@@ -839,6 +863,10 @@ class Esqueleto_Guerrero (Enemigo):
 
         self.normalizar_saltos()
 
+        # Escala solo las imágenes sin afectar rect ni hurtbox
+        if escala != 1.0:
+            self.escalar_animaciones(escala)
+
         self.estado_actual = "correr"
         self.frame_actual = 0.0
         self.velocidad_animacion = 0.15
@@ -847,6 +875,19 @@ class Esqueleto_Guerrero (Enemigo):
         self.esta_rojo = False
         self.desaparecer_timer = 3.0
         self.muerto_definitivo = False
+
+    def escalar_animaciones(self, factor):
+        """Redimensiona los sprites visuales de las animaciones."""
+        for estado, frames in self.animaciones.items():
+            nuevos_frames = []
+            for f in frames:
+                nuevo_ancho = int(f.get_width() * factor)
+                nuevo_alto = int(f.get_height() * factor)
+                f_escalado = pygame.transform.scale(
+                    f, (nuevo_ancho, nuevo_alto)
+                )
+                nuevos_frames.append(f_escalado)
+            self.animaciones[estado] = nuevos_frames
 
     def normalizar_saltos(self):
         alto_base = self.animaciones["correr"][0].get_height()
@@ -936,6 +977,17 @@ class Esqueleto_Guerrero (Enemigo):
                 self.cambiar_estado("correr")
 
         self.actualizar_animacion()
+
+    def draw(self, screen):
+        if self.muerto_definitivo:
+            return
+
+        if self.image:
+            pos_x = self.rect.centerx - self.image.get_width() // 2
+            pos_y = self.rect.bottom - self.image.get_height()
+            screen.blit(self.image, (pos_x, pos_y))
+            
+
 
     def draw(self, screen):
         if self.muerto_definitivo:
