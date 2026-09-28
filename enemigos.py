@@ -3,7 +3,7 @@ import random
 import pygame
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-
+clock = pygame.time.Clock()
 
 def cargar_spritesheet_jokai(ruta_relativa, filas, columnas):
     ruta_completa = os.path.join(

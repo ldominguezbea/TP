@@ -12,26 +12,10 @@ SCREEN_WIDTH = animacion_menu.SCREEN_WIDTH
 SCREEN_HEIGHT = animacion_menu.SCREEN_HEIGHT
 GAME_WIDTH = animacion_menu.GAME_WIDTH
 GAME_HEIGHT = animacion_menu.GAME_HEIGHT
-
+canvas = pygame.Surface((GAME_WIDTH, GAME_HEIGHT))
 screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
 pygame.display.set_caption("REQUIEM: El juicio final")
 clock = pygame.time.Clock()
-
-# Canvas Pixel Art interno
-canvas = pygame.Surface((GAME_WIDTH, GAME_HEIGHT))
-
-# Rutas e imágenes
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-ruta_imagen = os.path.join(BASE_DIR, "fondo_escuela.jpg")
-
-try:
-    school_bg = pygame.image.load(ruta_imagen).convert_alpha()
-    school_bg = pygame.transform.scale(school_bg, (GAME_WIDTH, GAME_HEIGHT))
-    print("-> La imagen 'fondo_escuela.jpg' se cargó con éxito.")
-except FileNotFoundError:
-    print("-> ADVERTENCIA: No se encontró la imagen. Se usará un fondo provisorio.")
-    school_bg = pygame.Surface((GAME_WIDTH, GAME_HEIGHT))
-    school_bg.fill((50, 50, 60))
 
 # Fuentes
 font_title = pygame.font.SysFont("Impact", 28)
@@ -112,12 +96,10 @@ def main():
                     elif event.key == pygame.K_RETURN:
                         if selected_option == 0:  # "NEW GAME"
                             game_state = "PROLOGUE"
+                            prologue()
                         elif selected_option == 4:  # "EXIT"
                             running = False
-                
-            elif event.type == pygame.MOUSEBUTTOMDOWN:
-                if mouse_x == and mouse_y == 
-
+                            break
 
         if game_state == "MENU":
             animacion_menu.draw_scenery(canvas, time_counter)
@@ -202,6 +184,7 @@ def main():
 
         elif game_state == "GAMEPLAY":
             Player()
+            enemy()
 
         scaled_surface = pygame.transform.scale(canvas, (SCREEN_WIDTH, SCREEN_HEIGHT))
         screen.blit(scaled_surface, (0, 0))
