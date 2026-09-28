@@ -38,10 +38,10 @@ class Player:
 
         self.animacion_correr = []
 
-        for i in range(1, 11):
+        for i in range(1, 9):
 
             imagen = pygame.image.load(
-                f"assets/Heroes/p_planta/run/run_{i}.png"
+                f"assets/Heroes/p_tierra/run/run_{i}.png"
             ).convert_alpha()
 
             imagen = pygame.transform.scale(
@@ -57,10 +57,10 @@ class Player:
 
         self.animacion_idle = []
 
-        for i in range(1, 13):
+        for i in range(1, 7):
 
             imagen = pygame.image.load(
-                f"assets/Heroes/p_planta/idle/idle_{i}.png"
+                f"assets/Heroes/p_tierra/idle/idle_{i}.png"
             ).convert_alpha()
 
             imagen = pygame.transform.scale(
@@ -79,7 +79,7 @@ class Player:
         for i in range(1, 4):
 
             imagen = pygame.image.load(
-                f"assets/Heroes/p_planta/jump_up/jump_up_{i}.png"
+                f"assets/Heroes/p_tierra/j_up/j_up_{i}.png"
             ).convert_alpha()
 
             imagen = pygame.transform.scale(
@@ -98,7 +98,7 @@ class Player:
         for i in range(1, 4):
 
             imagen = pygame.image.load(
-                f"assets/Heroes/p_planta/jump_down/jump_down_{i}.png"
+                f"assets/Heroes/p_tierra/j_down/j_down_{i}.png"
             ).convert_alpha()
 
             imagen = pygame.transform.scale(
@@ -117,7 +117,7 @@ class Player:
         for i in range(1, 7):
 
             imagen = pygame.image.load(
-                f"assets/Heroes/p_planta/take_hit/take_hit_{i}.png"
+                f"assets/Heroes/p_tierra/take_hit/take_hit_{i}.png"
             ).convert_alpha()
 
             imagen = pygame.transform.scale(
@@ -135,10 +135,10 @@ class Player:
 
         self.animacion_muerte = []
 
-        for i in range(1, 20):
+        for i in range(1, 19):
 
             imagen = pygame.image.load(
-                f"assets/Heroes/p_planta/death/death_{i}.png"
+                f"assets/Heroes/p_tierra/death/death_{i}.png"
             ).convert_alpha()
 
             imagen = pygame.transform.scale(
@@ -157,10 +157,10 @@ class Player:
 
         self.animacion_defensa = []
 
-        for i in range(1, 20):
+        for i in range(1, 14):
 
             imagen = pygame.image.load(
-                f"assets/Heroes/p_planta/defend/defend_{i}.png"
+                f"assets/Heroes/p_tierra/defend/defend_{i}.png"
             ).convert_alpha()
 
             imagen = pygame.transform.scale(
@@ -179,10 +179,10 @@ class Player:
 
         self.animacion_rodar = []
 
-        for i in range(1, 14):
+        for i in range(1, 7):
 
             imagen = pygame.image.load(
-                f"assets/Heroes/p_planta/slide/slide_{i}.png"
+                f"assets/Heroes/p_tierra/roll/roll_{i}.png"
             ).convert_alpha()
 
             imagen = pygame.transform.scale(
@@ -199,33 +199,12 @@ class Player:
         self.rodando = False
         self.velocidad_rodar_movimiento = 14
 
-
-        self.animacion_ataque_aereo = []
-
-        for i in range(1, 11):
-
-            imagen = pygame.image.load(
-                f"assets/Heroes/p_planta/air_atk/air_atk_{i}.png"
-            ).convert_alpha()
-
-            imagen = pygame.transform.scale(
-                imagen,
-                (600, 300)
-            )
-
-            self.animacion_ataque_aereo.append(imagen)
-
-        self.frame_ataque_aereo = 0
-        self.timer_ataque_aereo = 0
-        self.velocidad_ataque_aereo = 0.08
-        self.atacando_aereo = False
-
         self.animacion_ataque = []
 
-        for i in range(1, 9):
+        for i in range(1, 7):
 
             imagen = pygame.image.load(
-                f"assets/Heroes/p_planta/1_atk/1_atk_{i}.png"
+                f"assets/Heroes/p_tierra/1_atk/1_atk_{i}.png"
             ).convert_alpha()
 
             imagen = pygame.transform.scale(
@@ -239,6 +218,48 @@ class Player:
         self.timer_ataque = 0
         self.velocidad_ataque = 0.08
 
+        self.animacion_ataque_aereo = []
+
+        for i in range(1, 8):
+
+            imagen = pygame.image.load(
+                f"assets/Heroes/p_tierra/air_atk/air_atk_{i}.png"
+            ).convert_alpha()
+
+            imagen = pygame.transform.scale(
+                imagen,
+                (600, 300)
+            )
+
+            self.animacion_ataque_aereo.append(imagen)
+
+        self.frame_ataque_aereo = 0
+        self.timer_ataque_aereo = 0
+        self.velocidad_ataque_aereo = 0.08
+
+        self.atacando_aereo = False
+
+        self.animacion_entrada = []
+
+        for i in range(1, 17):
+
+            imagen = pygame.image.load(
+                f"assets/Heroes/p_tierra/meditate/meditate_{i}.png"
+            ).convert_alpha()
+
+            imagen = pygame.transform.scale(
+                imagen,
+                (600, 300)
+            )
+
+            self.animacion_entrada.append(imagen)
+
+        self.frame_entrada = 0
+        self.timer_entrada = 0
+        self.velocidad_entrada = 0.08
+
+        self.entrada_terminada = False
+
         self.imagen = self.animacion_idle[0]
 
         self.attacking = False
@@ -248,54 +269,6 @@ class Player:
         self.attack_cooldown_time = 0.3
 
         self.has_hit = False
-
-
-
-        self.flecha_imagen = pygame.image.load(
-            "assets/Heroes/p_planta/projectiles_and_effects/diagonal_arrow/diagonal_arrow.png"
-        ).convert_alpha()
-
-        self.flecha_imagen = pygame.transform.scale(
-            self.flecha_imagen,
-            (100, 40)
-        )
-
-        self.flecha_activa = False
-        self.flecha_x = 0
-        self.flecha_y = 0
-        self.flecha_velocidad_x = 10
-        self.flecha_velocidad_y = 7
-
-        self.flecha_rect = self.flecha_imagen.get_rect()
-
-        self.animacion_impacto = []
-
-        for i in range(1, 7):
-
-            imagen = pygame.image.load(
-                f"assets/Heroes/p_planta/projectiles_and_effects/diagonal_arrow_hit/diagonal_arrow_hit_{i}.png"
-            ).convert_alpha()
-
-            imagen = pygame.transform.scale(
-                imagen,
-                (150, 150)
-            )
-
-            self.animacion_impacto.append(imagen)
-
-        self.impacto_activo = False
-        self.frame_impacto = 0
-        self.timer_impacto = 0
-        self.velocidad_impacto = 0.08
-
-        self.impacto_x = 0
-        self.impacto_y = 0
-
-        # El impacto permanece 5 segundos.
-        self.impacto_tiempo = 0
-        self.impacto_duracion = 5.0
-
-        self.impacto_rect = self.animacion_impacto[0].get_rect()
 
         self.hurtbox = pygame.Rect(
             x,
@@ -312,6 +285,41 @@ class Player:
         )
 
     def update(self, dt):
+
+        if not self.entrada_terminada:
+
+            self.timer_entrada += dt
+
+            if self.timer_entrada >= self.velocidad_entrada:
+
+                self.frame_entrada += 1
+                self.timer_entrada = 0
+
+                if self.frame_entrada >= len(self.animacion_entrada):
+
+                    self.frame_entrada = len(self.animacion_entrada) - 1
+                    self.entrada_terminada = True
+
+            self.imagen = self.animacion_entrada[
+                self.frame_entrada
+            ]
+
+            self.velocity_y = 0
+            self.attacking = False
+            self.atacando_aereo = False
+            self.defendiendo = False
+            self.rodando = False
+
+            self.hitbox = pygame.Rect(
+                0,
+                0,
+                0,
+                0
+            )
+
+            self.hurtbox.topleft = self.rect.topleft
+
+            return
 
         if self.muerto:
 
@@ -335,6 +343,7 @@ class Player:
 
                 self.velocity_y = 0
                 self.attacking = False
+                self.atacando_aereo = False
 
                 self.hitbox = pygame.Rect(
                     0,
@@ -349,6 +358,7 @@ class Player:
 
                 self.velocity_y = 0
                 self.attacking = False
+                self.atacando_aereo = False
 
                 self.hitbox = pygame.Rect(
                     0,
@@ -386,6 +396,7 @@ class Player:
 
             self.velocity_y = 0
             self.attacking = False
+            self.atacando_aereo = False
             self.has_hit = False
 
             self.hitbox = pygame.Rect(
@@ -431,6 +442,7 @@ class Player:
 
             self.velocity_y = 0
             self.attacking = False
+            self.atacando_aereo = False
             self.has_hit = False
 
             self.hitbox = pygame.Rect(
@@ -441,6 +453,54 @@ class Player:
             )
 
             self.hurtbox.topleft = self.rect.topleft
+
+            return
+
+        if self.atacando_aereo:
+
+            self.timer_ataque_aereo += dt
+
+            if self.timer_ataque_aereo >= self.velocidad_ataque_aereo:
+
+                self.frame_ataque_aereo += 1
+                self.timer_ataque_aereo = 0
+
+                if self.frame_ataque_aereo >= len(self.animacion_ataque_aereo):
+
+                    self.frame_ataque_aereo = len(self.animacion_ataque_aereo) - 1
+                    self.atacando_aereo = False
+                    self.has_hit = False
+
+                    self.hitbox = pygame.Rect(
+                        0,
+                        0,
+                        0,
+                        0
+                    )
+
+            self.imagen = self.animacion_ataque_aereo[
+                self.frame_ataque_aereo
+            ]
+
+            self.hurtbox.topleft = self.rect.topleft
+
+            if self.direction == "right":
+
+                self.hitbox = pygame.Rect(
+                    self.rect.right,
+                    self.rect.y + 20,
+                    50,
+                    50
+                )
+
+            else:
+
+                self.hitbox = pygame.Rect(
+                    self.rect.left - 50,
+                    self.rect.y + 20,
+                    50,
+                    50
+                )
 
             return
 
@@ -482,81 +542,6 @@ class Player:
 
             self.frame_caer = 0
             self.timer_caer = 0
-
-        # ==========================================================
-        # ATAQUE AEREO
-        # ==========================================================
-
-        if self.atacando_aereo:
-
-            # El personaje queda completamente quieto en el aire
-            self.velocity_y = 0
-
-            self.timer_ataque_aereo += dt
-
-            if self.timer_ataque_aereo >= self.velocidad_ataque_aereo:
-
-                self.frame_ataque_aereo += 1
-                self.timer_ataque_aereo = 0
-
-                if self.frame_ataque_aereo >= len(self.animacion_ataque_aereo):
-
-                    self.frame_ataque_aereo = len(self.animacion_ataque_aereo) - 1
-                    self.atacando_aereo = False
-                    self.attacking = False
-                    self.has_hit = False
-
-                    # La flecha sale al terminar la animación aérea.
-                    self.flecha_activa = True
-                    self.flecha_x = self.rect.centerx
-                    self.flecha_y = self.rect.centery
-
-                    if self.direction == "right":
-                        self.flecha_velocidad_x = 10
-                    else:
-                        self.flecha_velocidad_x = -10
-
-                    # Siempre baja diagonalmente.
-                    self.flecha_velocidad_y = 7
-
-                    self.flecha_rect.center = (
-                        self.flecha_x,
-                        self.flecha_y
-                    )
-
-                    self.hitbox = pygame.Rect(
-                        0,
-                        0,
-                        0,
-                        0
-                    )
-
-            if self.atacando_aereo:
-
-                self.imagen = self.animacion_ataque_aereo[
-                    self.frame_ataque_aereo
-                ]
-
-                if self.direction == "right":
-
-                    self.hitbox = pygame.Rect(
-                        self.rect.right,
-                        self.rect.y + 20,
-                        50,
-                        50
-                    )
-
-                else:
-
-                    self.hitbox = pygame.Rect(
-                        self.rect.left - 50,
-                        self.rect.y + 20,
-                        50,
-                        50
-                    )
-
-            self.hurtbox.topleft = self.rect.topleft
-            return
 
         if self.recibiendo_golpe:
 
@@ -697,7 +682,7 @@ class Player:
 
             self.attack_cooldown -= dt
 
-        if self.attacking:
+        if self.attacking or self.atacando_aereo:
 
             if self.direction == "right":
 
@@ -717,110 +702,6 @@ class Player:
                     50
                 )
 
-    def actualizar_flecha(self, dt):
-
-        if self.flecha_activa:
-
-            self.flecha_x += self.flecha_velocidad_x
-            self.flecha_y += self.flecha_velocidad_y
-
-            self.flecha_rect.center = (
-                int(self.flecha_x),
-                int(self.flecha_y)
-            )
-
-            # Si sale de la pantalla, desaparece.
-            if (
-                self.flecha_rect.right < 0
-                or self.flecha_rect.left > WIDTH
-                or self.flecha_rect.top > HEIGHT
-            ):
-                self.flecha_activa = False
-
-        # ==========================================================
-        # ANIMACION DEL IMPACTO
-        # ==========================================================
-
-        if self.impacto_activo:
-
-            self.timer_impacto += dt
-            self.impacto_tiempo += dt
-
-            if self.timer_impacto >= self.velocidad_impacto:
-
-                self.frame_impacto += 1
-                self.timer_impacto = 0
-
-                if self.frame_impacto >= len(self.animacion_impacto):
-                    self.frame_impacto = len(self.animacion_impacto) - 1
-
-            # El impacto desaparece después de 5 segundos.
-            if self.impacto_tiempo >= self.impacto_duracion:
-                self.impacto_activo = False
-
-    def iniciar_impacto(self, x, y):
-
-        self.flecha_activa = False
-
-        self.impacto_activo = True
-        self.frame_impacto = 0
-        self.timer_impacto = 0
-        self.impacto_tiempo = 0
-
-        self.impacto_x = x
-        self.impacto_y = y
-
-        self.impacto_rect = self.animacion_impacto[0].get_rect(
-            center=(int(x), int(y))
-        )
-
-    def draw_flecha(self):
-
-        if self.flecha_activa:
-
-            imagen = self.flecha_imagen
-
-            # La imagen apunta hacia el lado correspondiente.
-            if self.flecha_velocidad_x < 0:
-                imagen = pygame.transform.flip(
-                    imagen,
-                    True,
-                    False
-                )
-
-            # La flecha se muestra diagonal hacia abajo.
-            imagen = pygame.transform.rotate(
-                imagen,
-                35 if self.flecha_velocidad_x > 0 else -35
-            )
-
-            rect = imagen.get_rect(
-                center=self.flecha_rect.center
-            )
-
-            screen.blit(
-                imagen,
-                rect
-            )
-
-        if self.impacto_activo:
-
-            imagen = self.animacion_impacto[
-                self.frame_impacto
-            ]
-
-            rect = imagen.get_rect(
-                center=(
-                    int(self.impacto_x),
-                    int(self.impacto_y)
-                )
-            )
-
-            screen.blit(
-                imagen,
-                rect
-            )
-
     def rodar(self):
 
         if self.muerto:
@@ -835,6 +716,9 @@ class Player:
         if self.attacking:
             return
 
+        if self.atacando_aereo:
+            return
+
         if self.rodando:
             return
 
@@ -846,6 +730,7 @@ class Player:
         self.velocity_y = 0
 
         self.attacking = False
+        self.atacando_aereo = False
         self.has_hit = False
 
         self.hitbox = pygame.Rect(
@@ -866,6 +751,9 @@ class Player:
         if self.attacking:
             return
 
+        if self.atacando_aereo:
+            return
+
         if self.defendiendo:
             return
 
@@ -881,6 +769,7 @@ class Player:
         self.velocity_y = 0
 
         self.attacking = False
+        self.atacando_aereo = False
 
         self.hitbox = pygame.Rect(
             0,
@@ -900,16 +789,42 @@ class Player:
         if self.rodando:
             return
 
+        if self.attacking:
+            return
+
+        if self.atacando_aereo:
+            return
+
         if self.attack_cooldown > 0:
             return
 
-        if self.attacking or self.atacando_aereo:
-            return
+        if not self.on_ground:
 
-        # F en el aire = ataque aereo.
-        # Funciona tanto subiendo como bajando.
-        if not self.on_ground and self.velocity_y != 0:
-            self.attack_aereo()
+            self.atacando_aereo = True
+
+            self.frame_ataque_aereo = 0
+            self.timer_ataque_aereo = 0
+
+            self.has_hit = False
+
+            if self.direction == "right":
+
+                self.hitbox = pygame.Rect(
+                    self.rect.right,
+                    self.rect.y + 20,
+                    50,
+                    50
+                )
+
+            else:
+
+                self.hitbox = pygame.Rect(
+                    self.rect.left - 50,
+                    self.rect.y + 20,
+                    50,
+                    50
+                )
+
             return
 
         self.attacking = True
@@ -922,65 +837,6 @@ class Player:
         self.attack_cooldown = self.attack_cooldown_time
 
         self.has_hit = False
-
-        if self.direction == "right":
-
-            self.hitbox = pygame.Rect(
-                self.rect.right,
-                self.rect.y + 20,
-                50,
-                50
-            )
-
-        else:
-
-            self.hitbox = pygame.Rect(
-                self.rect.left - 50,
-                self.rect.y + 20,
-                50,
-                50
-            )
-
-    def attack_aereo(self):
-
-        if self.muerto:
-            return
-
-        if self.on_ground:
-            return
-
-        if self.velocity_y == 0:
-            return
-
-        if self.defendiendo or self.rodando:
-            return
-
-        if self.attacking or self.atacando_aereo:
-            return
-
-        self.atacando_aereo = True
-        self.attacking = True
-
-        self.frame_ataque_aereo = 0
-        self.timer_ataque_aereo = 0
-
-        # Se detiene completamente en el aire durante la animacion.
-        self.velocity_y = 0
-
-        self.attack_cooldown = self.attack_cooldown_time
-        self.has_hit = False
-
-        # Crear la flecha diagonal hacia abajo según la dirección.
-        self.flecha_activa = True
-        self.flecha_x = self.rect.centerx
-        self.flecha_y = self.rect.bottom - 10
-
-        if self.direction == "right":
-            self.flecha_velocidad_x = 8
-        else:
-            self.flecha_velocidad_x = -8
-
-        self.flecha_velocidad_y = 8
 
         if self.direction == "right":
 
@@ -1045,8 +901,6 @@ class Player:
             self.attacking = False
             self.atacando_aereo = False
             self.has_hit = False
-            self.flecha_activa = False
-            self.impacto_activo = False
 
             self.hitbox = pygame.Rect(
                 0,
@@ -1094,7 +948,7 @@ class Player:
             2
         )
 
-        if self.attacking:
+        if self.attacking or self.atacando_aereo:
 
             pygame.draw.rect(
                 screen,
@@ -1331,42 +1185,13 @@ while running:
                 player.rodar()
 
     player.update(dt)
-    player.actualizar_flecha(dt)
 
     enemy.update(
         player,
         dt
     )
 
-    # ==============================================================
-    # FLECHA: IMPACTO CONTRA EL ENEMIGO
-    # ==============================================================
-
-    if player.flecha_activa:
-
-        if player.flecha_rect.colliderect(enemy.hurtbox):
-
-            enemy.take_damage(player_damage)
-
-            player.iniciar_impacto(
-                player.flecha_rect.centerx,
-                player.flecha_rect.centery
-            )
-
-    # ==============================================================
-    # FLECHA: IMPACTO CONTRA EL SUELO
-    # ==============================================================
-
-    if player.flecha_activa:
-
-        if player.flecha_rect.bottom >= 590:
-
-            player.iniciar_impacto(
-                player.flecha_rect.centerx,
-                590
-            )
-
-    if player.attacking:
+    if player.attacking or player.atacando_aereo:
 
         if not player.has_hit:
 
@@ -1408,7 +1233,6 @@ while running:
     )
 
     player.draw()
-    player.draw_flecha()
 
     enemy.draw()
 
