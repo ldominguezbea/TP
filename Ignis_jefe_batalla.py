@@ -12,7 +12,7 @@ HEIGHT = 700
 SUELO_Y = 590
 
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
-pygame.display.set_caption("Prueba de Jefe - Fuego Mejorado y Muerte Desactivada")
+pygame.display.set_caption("Batalla contra ignis")
 
 clock = pygame.time.Clock()
 
@@ -307,7 +307,7 @@ def dibujar_barras_vida(screen, player, enemy):
     pct_e = max(0, e_health / e_max_health)
     pygame.draw.rect(screen, (220, 20, 20), (WIDTH - 320, 20, int(300 * pct_e), 20))
     pygame.draw.rect(screen, (255, 255, 255), (WIDTH - 320, 20, 300, 20), 2)
-    screen.blit(fuente.render(f"Impaler Boss: {int(e_health)}", True, (255, 255, 255)), (WIDTH - 320, 45))
+    screen.blit(fuente.render(f"Ignis:The infernal warrior = {int(e_health)}", True, (255, 255, 255)), (WIDTH - 320, 45))
 
 
 player = Player(200, 500)
