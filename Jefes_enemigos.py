@@ -624,3 +624,196 @@ class WerewolfBoss(Enemigo):
             pos_x = self.rect.centerx - (self.image.get_width() // 2)
             pos_y = self.rect.bottom - self.image.get_height()
             screen.blit(self.image, (pos_x, pos_y))
+
+
+
+class CarniceroBoss(Enemigo):
+
+    def __init__(self, x=900, y=500):
+        super().__init__("Carnicero", 15, x, y)
+
+        # Ruta base adaptada a la estructura del proyecto
+        base_path = os.path.join("assets", "Jefes", "Carnicero")
+        ALTURA_MAX = 150
+
+        # Mapeo de animaciones según las carpetas del personaje
+        self.animaciones = {
+            "idle": cargar_animacion_con_altura_maxima(os.path.join(base_path, "01_demon_idle"), ALTURA_MAX),
+            "correr": cargar_animacion_con_altura_maxima(os.path.join(base_path, "02_demon_walk"), ALTURA_MAX),
+            "attack1": cargar_animacion_con_altura_maxima(os.path.join(base_path, "03_demon_cleave"), ALTURA_MAX),
+            "take_hit": cargar_animacion_con_altura_maxima(os.path.join(base_path, "04_demon_take_hit"), ALTURA_MAX),
+            "muerte": cargar_animacion_con_altura_maxima(os.path.join(base_path, "05_demon_death"), ALTURA_MAX),
+        }
+
+        self.estado_actual = "idle"
+        self.frame_actual = 0.0
+        self.velocidad_animacion = 0.25 
+
+        self.image = None
+        for estado, frames in self.animaciones.items():
+            if len(frames) > 0:
+                self.image = frames[0]
+                self.estado_actual = estado
+                break
+
+        if self.image is None:
+            self.image = pygame.Surface((110, ALTURA_MAX))
+            self.image.fill((200, 0, 50))
+
+        self.rect = pygame.Rect(x, y, 110, ALTURA_MAX)
+        self.hurtbox = self.rect.copy()
+        self.hitbox = pygame.Rect(0, 0, 0, 0)
+
+        self.velocity_y = 0
+        self.gravity = 0.6
+        self.jump_force = -13
+        self.on_ground = True
+        self.cooldown_salto = 0.0
+
+        self.direction = "right"
+        self.attacking = False
+        self.has_hit = False
+        
+        self.esta_rojo = False
+        self.hit_timer = 0.0
+
+        self.desaparecer_timer = 3.0
+        self.muerto_definitivo = False
+
+    def cambiar_estado(self, nuevo_estado):
+        if self.estado_actual != nuevo_estado and nuevo_estado in self.animaciones:
+            if len(self.animaciones[nuevo_estado]) > 0:
+                self.estado_actual = nuevo_estado
+                self.frame_actual = 0.0
+
+    def seleccionar_ataque_aleatorio(self):
+        # Mapea los ataques disponibles en la carpeta del personaje
+        ataques = ["attack1"]
+        disponibles = [a for a in ataques if len(self.animaciones.get(a, [])) > 0]
+        return random.choice(disponibles) if disponibles else "idle"
+
+    def realizar_salto(self):
+        # Si no hay carpeta de salto, mantiene la física pero usa el estado 'idle' o 'correr'
+        if self.on_ground:
+            self.velocity_y = self.jump_force
+            self.on_ground = False
+            if "saltar" in self.animaciones:
+                self.cambiar_estado("saltar")
+
+    def actualizar_hitbox_ataque(self):
+        if self.attacking:
+            ancho_hitbox = 140
+            alto_hitbox = 135
+            if self.direction == "left":
+                self.hitbox = pygame.Rect(self.rect.left - ancho_hitbox, self.rect.y, ancho_hitbox, alto_hitbox)
+            else:
+                self.hitbox = pygame.Rect(self.rect.right, self.rect.y, ancho_hitbox, alto_hitbox)
+        else:
+            self.hitbox = pygame.Rect(0, 0, 0, 0)
+
+    def actualizar_animacion(self):
+        frames = self.animaciones.get(self.estado_actual, [])
+        if not frames:
+            return
+
+        self.frame_actual += self.velocidad_animacion
+
+        if self.estado_actual == "muerte":
+            if self.frame_actual >= len(frames):
+                self.frame_actual = len(frames) - 1
+        elif self.estado_actual == "take_hit":
+            if self.frame_actual >= len(frames):
+                self.cambiar_estado("idle")
+        elif self.estado_actual.startswith("attack"):
+            if self.frame_actual >= len(frames):
+                self.attacking = False
+                self.has_hit = False
+                self.hitbox = pygame.Rect(0, 0, 0, 0)
+                self.cambiar_estado("idle")
+        else:
+            if self.frame_actual >= len(frames):
+                self.frame_actual = 0.0
+
+        idx = int(self.frame_actual) % len(frames)
+        imagen_frame = frames[idx]
+
+        if self.direction == "left":
+            imagen_frame = pygame.transform.flip(imagen_frame, True, False)
+
+        if self.esta_rojo:
+            imagen_frame = imagen_frame.copy()
+            imagen_frame.fill((255, 60, 60), special_flags=pygame.BLEND_RGB_MULT)
+
+        self.image = imagen_frame
+
+    def update(self, player, dt, width=WIDTH):
+        if self.muerto_definitivo:
+            return
+
+        if self.esta_rojo:
+            self.hit_timer -= dt
+            if self.hit_timer <= 0:
+                self.esta_rojo = False
+
+        if self.cooldown_salto > 0:
+            self.cooldown_salto -= dt
+
+        if self.health <= 0:
+            self.health = 0
+            self.cambiar_estado("muerte")
+            self.desaparecer_timer -= dt
+            if self.desaparecer_timer <= 0:
+                self.muerto_definitivo = True
+            self.actualizar_animacion()
+            return
+
+        self.velocity_y += self.gravity
+        self.rect.y += self.velocity_y
+
+        if self.rect.bottom >= SUELO_Y:
+            self.rect.bottom = SUELO_Y
+            self.velocity_y = 0
+            self.on_ground = True
+
+        distancia = player.rect.centerx - self.rect.centerx
+
+        if self.on_ground and self.cooldown_salto <= 0 and not self.attacking:
+            if player.rect.y < self.rect.y - 50 or random.random() < 0.02:
+                self.realizar_salto()
+                self.cooldown_salto = 3.0
+
+        if abs(distancia) > 120 and not self.attacking:
+            self.direction = "right" if distancia > 0 else "left"
+            velocidad = 2.5
+            self.rect.x += velocidad if self.direction == "right" else -velocidad
+            if self.on_ground:
+                self.cambiar_estado("correr")
+        elif not self.attacking:
+            self.direction = "right" if distancia > 0 else "left"
+            self.attacking = True
+            self.has_hit = False
+            ataque = self.seleccionar_ataque_aleatorio()
+            self.cambiar_estado(ataque)
+
+        self.actualizar_hitbox_ataque()
+        self.hurtbox = self.rect.copy()
+
+        self.actualizar_animacion()
+
+    def take_damage(self, damage):
+        if self.health <= 0:
+            return
+        self.health = max(0, self.health - damage)
+        self.esta_rojo = True
+        self.hit_timer = 0.15
+        if not self.attacking and self.health > 0:
+            self.cambiar_estado("take_hit")
+
+    def draw(self, screen):
+        if self.muerto_definitivo:
+            return
+
+        if self.image:
+            pos_x = self.rect.centerx - self.image.get_width() // 2
+            pos_y = self.rect.bottom - self.image.get_height()
+            screen.blit(self.image, (pos_x, pos_y))
