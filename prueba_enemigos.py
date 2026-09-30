@@ -1,6 +1,6 @@
 import os
 import pygame
-from enemigos import Jokai , Karasu_tengu, OrcoRojo , HombreLoboRojo , HombreLoboNegro , Esqueleto_Guerrero
+from enemigos import Jokai , Karasu_tengu, OrcoRojo , HombreLoboRojo , HombreLoboNegro , Esqueleto_Guerrero , OjoVolador
 pygame.init()
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -116,7 +116,7 @@ class Player:
 
 
 player = Player(200, 500)
-enemy = OrcoRojo (550, 500)
+enemy = OjoVolador (550, 500)
 
 player_damage = 20
 enemy_damage = 12

@@ -440,6 +440,251 @@ class Jokai(Enemigo):
             screen.blit(self.image, (pos_x, pos_y))
 
 
+class OjoVolador(Enemigo):
+
+    class Proyectil:
+
+        def __init__(self, x, y, direccion, dano=1):
+            self.direccion = direccion
+            self.dano = dano
+            self.velocidad = 350
+            self.frame_actual = 0.0
+            self.velocidad_anim = 0.2
+            self.destruido = False
+            self.estado = "vuelo"
+
+            try:
+                todos_los_frames = cargar_spritesheet_jokai(
+                    "assets/enemigos/Ojo volador/projectile_sprite.png", 1, 8
+                )
+                self.frames_vuelo = todos_los_frames[:3]
+                self.frames_explosion = todos_los_frames[3:]
+            except Exception:
+                surf_vacio = pygame.Surface((16, 16))
+                self.frames_vuelo = [surf_vacio]
+                self.frames_explosion = [surf_vacio]
+
+            self.image = self.frames_vuelo[0]
+            self.rect = self.image.get_rect(center=(x, y))
+
+        def update(self, dt, player):
+            if self.destruido:
+                return
+
+            if self.estado == "vuelo":
+                dir_mult = -1 if self.direccion == "left" else 1
+                self.rect.x += int(self.velocidad * dt * dir_mult)
+
+                self.frame_actual += self.velocidad_anim
+                if self.frame_actual >= len(self.frames_vuelo):
+                    self.frame_actual = 0.0
+
+                frame_img = self.frames_vuelo[int(self.frame_actual)]
+
+                if player:
+                    target_box = getattr(player, "hurtbox", player.rect)
+                    if self.rect.colliderect(target_box):
+                        if hasattr(player, "take_damage"):
+                            player.take_damage(self.dano)
+                        self.estado = "impacto"
+                        self.frame_actual = 0.0
+
+                if self.rect.right < -200 or self.rect.left > 3000:
+                    self.destruido = True
+
+            elif self.estado == "impacto":
+                self.frame_actual += self.velocidad_anim
+                if self.frame_actual >= len(self.frames_explosion):
+                    self.destruido = True
+                    return
+
+                frame_img = self.frames_explosion[int(self.frame_actual)]
+
+            if self.direccion == "left":
+                frame_img = pygame.transform.flip(frame_img, True, False)
+
+            self.image = frame_img
+
+        def draw(self, screen):
+            if not self.destruido and self.image:
+                screen.blit(self.image, self.rect)
+
+    def __init__(self, x=550, y=500, escala_enemigo=1.8, offset_y=120):
+        super().__init__("Ojo volador", 2, x, y)
+
+        ruta_base = "assets/enemigos/Ojo volador/"
+
+        def cargar_anim(nombre_archivo, filas, columnas):
+            try:
+                frames = cargar_spritesheet_jokai(
+                    ruta_base + nombre_archivo, filas, columnas
+                )
+            except FileNotFoundError:
+                frames = cargar_spritesheet_jokai(
+                    ruta_base + "Attack3.png", 1, 6
+                )
+
+            if escala_enemigo != 1.0:
+                frames = [
+                    pygame.transform.scale(
+                        f,
+                        (
+                            int(f.get_width() * escala_enemigo),
+                            int(f.get_height() * escala_enemigo),
+                        ),
+                    )
+                    for f in frames
+                ]
+
+            return frames
+
+        self.animaciones = {
+            "correr": cargar_anim("Flight.png", 1, 8),
+            "golpear": cargar_anim("Attack3.png", 1, 6),
+            "dano": cargar_anim("Hurt.png", 1, 3),
+            "muerte": cargar_anim("Dead.png", 1, 6),
+        }
+
+        self.estado_actual = "correr"
+        self.frame_actual = 0.0
+        self.velocidad_animacion = 0.15
+        self.image = self.animaciones["correr"][0]
+
+        # Ajustar posición inicial con la escala y el desplazamiento hacia abajo
+        self.offset_y = offset_y
+        self.rect = self.image.get_rect(topleft=(x, y + self.offset_y))
+
+        self.esta_rojo = False
+        self.desaparecer_timer = 3.0
+        self.muerto_definitivo = False
+
+        self.proyectiles = []
+        self.disparado_en_este_ataque = False
+        self.cooldown_ataque = 0.0
+        self.tiempo_cooldown = 2.0
+        self.distancia_disparo = 400
+
+    def cambiar_estado(self, nuevo_estado):
+        if self.estado_actual != nuevo_estado:
+            self.estado_actual = nuevo_estado
+            self.frame_actual = 0.0
+            if nuevo_estado == "golpear":
+                self.disparado_en_este_ataque = False
+
+    def disparar(self):
+        origen_x = self.rect.centerx
+        origen_y = self.rect.centery
+        nuevo_proyectil = self.Proyectil(origen_x, origen_y, self.direction)
+        self.proyectiles.append(nuevo_proyectil)
+
+    def actualizar_animacion(self):
+        frames = self.animaciones[self.estado_actual]
+        self.frame_actual += self.velocidad_animacion
+
+        if self.estado_actual == "golpear":
+            if (
+                int(self.frame_actual) >= 2
+                and not self.disparado_en_este_ataque
+            ):
+                self.disparar()
+                self.disparado_en_este_ataque = True
+
+            if self.frame_actual >= len(frames):
+                self.cambiar_estado("correr")
+                return
+
+        elif self.estado_actual == "muerte":
+            if self.frame_actual >= len(frames):
+                self.frame_actual = len(frames) - 1
+        elif self.estado_actual == "dano":
+            if self.frame_actual >= len(frames):
+                self.esta_rojo = False
+                self.cambiar_estado("correr")
+                return
+        else:
+            if self.frame_actual >= len(frames):
+                self.frame_actual = 0.0
+
+        imagen_frame = frames[int(self.frame_actual)]
+
+        if self.direction == "left":
+            imagen_frame = pygame.transform.flip(imagen_frame, True, False)
+
+        if self.esta_rojo:
+            imagen_frame = imagen_frame.copy()
+            imagen_frame.fill(
+                (255, 50, 50), special_flags=pygame.BLEND_RGB_MULT
+            )
+
+        self.image = imagen_frame
+
+    def take_damage(self, damage):
+        if self.health <= 0:
+            return
+
+        super().take_damage(damage)
+
+        self.esta_rojo = True
+        if self.health <= 0:
+            self.cambiar_estado("muerte")
+        else:
+            self.cambiar_estado("dano")
+
+    def update(self, player, dt, width=WIDTH):
+        for p in self.proyectiles:
+            p.update(dt, player)
+        self.proyectiles = [p for p in self.proyectiles if not p.destruido]
+
+        if self.muerto_definitivo:
+            return
+
+        if self.estado_actual == "muerte":
+            if hasattr(self, "aplicar_gravedad_y_suelo"):
+                self.aplicar_gravedad_y_suelo()
+            self.desaparecer_timer -= dt
+            if self.desaparecer_timer <= 0:
+                self.muerto_definitivo = True
+
+        elif self.estado_actual == "dano":
+            if hasattr(self, "aplicar_gravedad_y_suelo"):
+                self.aplicar_gravedad_y_suelo()
+        else:
+            if self.cooldown_ataque > 0:
+                self.cooldown_ataque -= dt
+
+            if player and self.estado_actual != "golpear":
+                distancia = abs(player.rect.centerx - self.rect.centerx)
+                if (
+                    distancia <= self.distancia_disparo
+                    and self.cooldown_ataque <= 0
+                ):
+                    self.direction = (
+                        "left"
+                        if player.rect.centerx < self.rect.centerx
+                        else "right"
+                    )
+                    self.cambiar_estado("golpear")
+                    self.cooldown_ataque = self.tiempo_cooldown
+
+            if self.estado_actual != "golpear":
+                super().update(player, dt, width)
+
+        self.actualizar_animacion()
+
+    def draw(self, screen):
+        for p in self.proyectiles:
+            p.draw(screen)
+
+        if self.muerto_definitivo:
+            return
+
+        if self.image and hasattr(self, "rect"):
+            pos_x = self.rect.centerx - self.image.get_width() // 2
+            pos_y = self.rect.bottom - self.image.get_height()
+            screen.blit(self.image, (pos_x, pos_y))
+
+
+
 class Karasu_tengu(Enemigo):
 
     def __init__(self, x=550, y=500):
