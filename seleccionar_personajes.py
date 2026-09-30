@@ -24,7 +24,6 @@ font_prologue = pygame.font.SysFont("Arial", 12, bold=True)
 font_char_name = pygame.font.SysFont("Impact", 16)
 font_stats = pygame.font.SysFont("Arial", 7, bold=True)
 
-# Menú extendido con la selección de personaje
 menu_options = ["NEW GAME", "SELECT CHARACTER", "CONTINUE", "CONTROLS", "TROPHIES", "EXIT"]
 selected_option = 0
 game_state = "MENU"
