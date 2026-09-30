@@ -29,7 +29,7 @@ menu_options = ["NEW GAME", "SELECT CHARACTER", "CONTINUE", "CONTROLS", "TROPHIE
 selected_option = 0
 game_state = "MENU"
 
-# --- CONFIGURACIÓN DE PERSONAJES ---
+
 characters = [
     {
         "name": "GUERRERO",
@@ -59,7 +59,7 @@ characters = [
 selected_char_index = 0
 active_player = None
 
-# Efectos de partículas
+
 smoke_particles = [
     {
         "x": random.randint(0, GAME_WIDTH),
