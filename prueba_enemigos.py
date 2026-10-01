@@ -116,7 +116,7 @@ class Player:
 
 
 player = Player(200, 500)
-enemy = OjoVolador (550, 500)
+enemy = Karasu_tengu (550, 500)
 
 player_damage = 20
 enemy_damage = 12

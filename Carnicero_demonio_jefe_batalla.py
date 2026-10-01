@@ -1,17 +1,16 @@
 import os
 import sys
-import random
 import re
 import pygame
 
 WIDTH, HEIGHT = 1280, 720
-SUELO_Y = 610 
+SUELO_Y = 610
+
 
 def cargar_animacion_con_altura_maxima(folder_path, altura_max):
     frames = []
     if os.path.exists(folder_path):
         archivos = [f for f in os.listdir(folder_path) if f.endswith(('.png', '.jpg'))]
-        # Ordenamiento numérico natural para evitar el salto entre frames (ej. 1, 2, 3... 10, 11... 22)
         archivos.sort(key=lambda f: int(re.search(r'\d+', f).group()) if re.search(r'\d+', f) else f)
         
         for archivo in archivos:
@@ -23,209 +22,53 @@ def cargar_animacion_con_altura_maxima(folder_path, altura_max):
             frames.append(img)
     return frames
 
+
+class Proyectil:
+    def __init__(self, x, y, vx, vy, radio=8, color=(255, 100, 0), rebota=False, duracion=5.0):
+        self.x = float(x)
+        self.y = float(y)
+        self.vx = float(vx)
+        self.vy = float(vy)
+        self.radio = radio
+        self.color = color
+        self.rebota = rebota
+        self.duracion = duracion
+        self.rect = pygame.Rect(int(x - radio), int(y - radio), radio * 2, radio * 2)
+
+    def update(self, dt, width=WIDTH, suelo_y=SUELO_Y):
+        self.x += self.vx * dt
+        self.y += self.vy * dt
+        self.duracion -= dt
+
+        if self.rebota:
+            if self.x - self.radio <= 0 or self.x + self.radio >= width:
+                self.vx = -self.vx
+                self.x = max(self.radio, min(width - self.radio, self.x))
+            if self.y - self.radio <= 0 or self.y + self.radio >= suelo_y:
+                self.vy = -self.vy
+                self.y = max(self.radio, min(suelo_y - self.radio, self.y))
+
+        self.rect.center = (int(self.x), int(self.y))
+
+    def draw(self, screen):
+        pygame.draw.circle(screen, self.color, (int(self.x), int(self.y)), self.radio)
+        pygame.draw.circle(screen, (255, 240, 180), (int(self.x), int(self.y)), max(2, self.radio // 2))
+
+
 class Enemigo:
     def __init__(self, nombre, vida, x, y):
         self.nombre = nombre
         self.health = vida
         self.max_health = vida
 
-class CarniceroBoss(Enemigo):
-    def __init__(self, x=920, y=SUELO_Y - 400):
-        ALTURA_MAX = 400
-        super().__init__("Athros :The bloodred", 15, x, y)
-
-        base_path = os.path.join("assets", "Jefes", "Carnicero")
-
-        self.animaciones = {
-            "idle": cargar_animacion_con_altura_maxima(os.path.join(base_path, "01_demon_idle"), ALTURA_MAX),
-            "correr": cargar_animacion_con_altura_maxima(os.path.join(base_path, "02_demon_walk"), ALTURA_MAX),
-            "attack1": cargar_animacion_con_altura_maxima(os.path.join(base_path, "03_demon_cleave"), ALTURA_MAX),
-            "take_hit": cargar_animacion_con_altura_maxima(os.path.join(base_path, "04_demon_take_hit"), ALTURA_MAX),
-            "muerte": cargar_animacion_con_altura_maxima(os.path.join(base_path, "05_demon_death"), ALTURA_MAX),
-        }
-
-        self.estado_actual = "idle"
-        self.frame_actual = 0.0
-        self.velocidad_animacion = 0.20 
-
-        self.image = None
-        for estado, frames in self.animaciones.items():
-            if len(frames) > 0:
-                self.image = frames[0]
-                self.estado_actual = estado
-                break
-
-        if self.image is None:
-            self.image = pygame.Surface((260, ALTURA_MAX))
-            self.image.fill((200, 0, 50))
-
-        self.rect = pygame.Rect(x, y, 260, ALTURA_MAX)
-        self.hurtbox = self.rect.copy()
-        self.hitbox = pygame.Rect(0, 0, 0, 0)
-
-        self.velocity_y = 0
-        self.gravity = 0.6
-        self.jump_force = -13
-        self.on_ground = True
-        self.cooldown_salto = 0.0
-
-        self.direction = "left"
-        self.attacking = False
-        self.has_hit = False
-        
-        self.esta_rojo = False
-        self.hit_timer = 0.0
-
-        self.muerte_completada = False
-        self.muerto_definitivo = False
-
-    def cambiar_estado(self, nuevo_estado):
-        if self.estado_actual != nuevo_estado and nuevo_estado in self.animaciones:
-            if len(self.animaciones[nuevo_estado]) > 0:
-                self.estado_actual = nuevo_estado
-                self.frame_actual = 0.0
-
-    def seleccionar_ataque_aleatorio(self):
-        ataques = ["attack1"]
-        disponibles = [a for a in ataques if len(self.animaciones.get(a, [])) > 0]
-        return random.choice(disponibles) if disponibles else "idle"
-
-    def realizar_salto(self):
-        if self.on_ground:
-            self.velocity_y = self.jump_force
-            self.on_ground = False
-
-    def actualizar_hitbox_ataque(self):
-        if self.attacking:
-            ancho_hitbox = 280
-            alto_hitbox = 320
-            if self.direction == "left":
-                self.hitbox = pygame.Rect(self.rect.left - ancho_hitbox, self.rect.y, ancho_hitbox, alto_hitbox)
-            else:
-                self.hitbox = pygame.Rect(self.rect.right, self.rect.y, ancho_hitbox, alto_hitbox)
-        else:
-            self.hitbox = pygame.Rect(0, 0, 0, 0)
-
-    def actualizar_animacion(self):
-        frames = self.animaciones.get(self.estado_actual, [])
-        if not frames:
-            return
-
-        if self.estado_actual == "muerte":
-            self.frame_actual += self.velocidad_animacion
-            if self.frame_actual >= len(frames) - 1:
-                self.frame_actual = float(len(frames) - 1)
-                self.muerte_completada = True
-            
-            idx = min(int(self.frame_actual), len(frames) - 1)
-        else:
-            self.frame_actual += self.velocidad_animacion
-            if self.estado_actual == "take_hit":
-                if self.frame_actual >= len(frames):
-                    self.cambiar_estado("idle")
-            elif self.estado_actual.startswith("attack"):
-                if self.frame_actual >= len(frames):
-                    self.attacking = False
-                    self.has_hit = False
-                    self.hitbox = pygame.Rect(0, 0, 0, 0)
-                    self.cambiar_estado("idle")
-            else:
-                if self.frame_actual >= len(frames):
-                    self.frame_actual = 0.0
-
-            idx = int(self.frame_actual) % len(frames)
-
-        imagen_frame = frames[idx]
-
-        if self.direction == "right":
-            imagen_frame = pygame.transform.flip(imagen_frame, True, False)
-
-        if self.esta_rojo:
-            imagen_frame = imagen_frame.copy()
-            imagen_frame.fill((255, 60, 60), special_flags=pygame.BLEND_RGB_MULT)
-
-        self.image = imagen_frame
-
-    def update(self, player, dt, width=WIDTH):
-        if self.muerto_definitivo:
-            return
-
-        if self.esta_rojo:
-            self.hit_timer -= dt
-            if self.hit_timer <= 0:
-                self.esta_rojo = False
-
-        if self.cooldown_salto > 0:
-            self.cooldown_salto -= dt
-
-        if self.health <= 0:
-            self.health = 0
-            
-            if self.estado_actual != "muerte":
-                self.cambiar_estado("muerte")
-
-            if self.muerte_completada:
-                self.muerto_definitivo = True
-                return
-
-            self.actualizar_animacion()
-            return
-
-        self.velocity_y += self.gravity
-        self.rect.y += self.velocity_y
-
-        if self.rect.bottom >= SUELO_Y:
-            self.rect.bottom = SUELO_Y
-            self.velocity_y = 0
-            self.on_ground = True
-
-        distancia = player.rect.centerx - self.rect.centerx
-
-        if self.on_ground and self.cooldown_salto <= 0 and not self.attacking:
-            if player.rect.y < self.rect.y - 50 or random.random() < 0.02:
-                self.realizar_salto()
-                self.cooldown_salto = 3.0
-
-        if abs(distancia) > 180 and not self.attacking:
-            self.direction = "right" if distancia > 0 else "left"
-            velocidad = 2.5
-            self.rect.x += velocidad if self.direction == "right" else -velocidad
-            if self.on_ground:
-                self.cambiar_estado("correr")
-        elif not self.attacking:
-            self.direction = "right" if distancia > 0 else "left"
-            self.attacking = True
-            self.has_hit = False
-            ataque = self.seleccionar_ataque_aleatorio()
-            self.cambiar_estado(ataque)
-
-        self.actualizar_hitbox_ataque()
-        self.hurtbox = self.rect.copy()
-        self.actualizar_animacion()
-
-    def take_damage(self, damage):
-        if self.health <= 0:
-            return
-        self.health = max(0, self.health - damage)
-        self.esta_rojo = True
-        self.hit_timer = 0.15
-        if not self.attacking and self.health > 0:
-            self.cambiar_estado("take_hit")
-
-    def draw(self, screen):
-        if self.muerto_definitivo:
-            return
-
-        if self.image:
-            pos_x = self.rect.centerx - self.image.get_width() // 2
-            pos_y = self.rect.bottom - self.image.get_height()
-            screen.blit(self.image, (pos_x, pos_y))
-
 
 def ejecutar_batalla_carnicero(screen, player):
+    from Jefes_enemigos import CarniceroBoss
+
     clock = pygame.time.Clock()
     FPS = 60
 
+    # Cargar fondo
     rutas_posibles = [
         "Escenario_batalla_nivel_1.png",
         os.path.join("assets", "fondos", "Escenario_batalla_nivel_1.png"),
@@ -247,7 +90,24 @@ def ejecutar_batalla_carnicero(screen, player):
         fondo_img = pygame.Surface((WIDTH, HEIGHT))
         fondo_img.fill((20, 10, 15))
 
-    jefe = CarniceroBoss(x=920, y=SUELO_Y - 400)
+    # Cargar imagen de cierre de nivel
+    rutas_cierre = [
+        "Cierre_nivel_1.png",
+        os.path.join("assets", "Cierre_nivel_1.png"),
+        os.path.join("assets", "fondos", "Cierre_nivel_1.png"),
+        os.path.join("assets", "UI", "Cierre_nivel_1.png")
+    ]
+    img_cierre = None
+    for r in rutas_cierre:
+        if os.path.exists(r):
+            try:
+                img_cierre = pygame.image.load(r).convert_alpha()
+                img_cierre = pygame.transform.scale(img_cierre, (WIDTH, HEIGHT))
+                break
+            except Exception as e:
+                print(f"Error al cargar {r}: {e}")
+
+    jefe = CarniceroBoss(x=920, y=SUELO_Y - 300)
 
     if hasattr(player, 'rect'):
         player.rect.x = 180
@@ -257,6 +117,8 @@ def ejecutar_batalla_carnicero(screen, player):
     fuente_ui = pygame.font.SysFont("Arial", 16, bold=True)
     
     en_batalla = True
+    timer_muerte_jefe = 0.0
+    mostrar_cierre = False
 
     while en_batalla:
         dt = clock.tick(FPS) / 1000.0
@@ -271,7 +133,13 @@ def ejecutar_batalla_carnicero(screen, player):
 
         keys = pygame.key.get_pressed()
         player.update(keys, dt)
-        jefe.update(player, dt, width=WIDTH)
+        jefe.update(player, dt, width=WIDTH, suelo_y=SUELO_Y)
+
+        # Control del temporizador tras la muerte del jefe
+        if jefe.muerto_definitivo:
+            timer_muerte_jefe += dt
+            if timer_muerte_jefe >= 5.0:
+                mostrar_cierre = True
 
         if hasattr(player, 'rect') and player.rect.bottom > SUELO_Y:
             player.rect.bottom = SUELO_Y
@@ -280,17 +148,28 @@ def ejecutar_batalla_carnicero(screen, player):
             if hasattr(player, 'on_ground'):
                 player.on_ground = True
 
+        target_player_rect = player.rect if hasattr(player, 'rect') else player.hurtbox
+
+        # Daño por proyectiles
+        for proj in jefe.proyectiles[:]:
+            if proj.rect.colliderect(target_player_rect):
+                if hasattr(player, 'take_damage'):
+                    player.take_damage(6)
+                if proj in jefe.proyectiles:
+                    jefe.proyectiles.remove(proj)
+
+        # Daño por machete
         if jefe.attacking and not jefe.has_hit:
-            target_rect = player.rect if hasattr(player, 'rect') else player.hurtbox
-            if jefe.hitbox.colliderect(target_rect):
+            if jefe.hitbox.width > 0 and jefe.hitbox.colliderect(target_player_rect):
                 if hasattr(player, 'take_damage'):
                     player.take_damage(18)
                 jefe.has_hit = True
 
+        # Daño del jugador al jefe
         if not jefe.muerto_definitivo and getattr(player, 'attacking', False) and not getattr(player, 'has_hit', False):
             player_hitbox = getattr(player, 'hitbox', pygame.Rect(0, 0, 0, 0))
             if player_hitbox.colliderect(jefe.hurtbox):
-                jefe.take_damage(10)
+                jefe.take_damage(8)
                 player.has_hit = True
 
         if getattr(player, 'health', 1) <= 0:
@@ -305,28 +184,30 @@ def ejecutar_batalla_carnicero(screen, player):
 
         jefe.draw(screen)
 
-        # Barra de vida del Jefe
-        ancho_barra_jefe = 500
-        alto_barra_jefe = 20
-        x_jefe_ui = (WIDTH - ancho_barra_jefe) // 2
-        y_jefe_ui = 45
+        # UI del Jefe (se dibuja solo si no ha desaparecido por completo)
+        if not jefe.muerto_definitivo:
+            ancho_barra_jefe = 500
+            alto_barra_jefe = 20
+            x_jefe_ui = (WIDTH - ancho_barra_jefe) // 2
+            y_jefe_ui = 45
 
-        pygame.draw.rect(screen, (20, 5, 5), (x_jefe_ui - 2, y_jefe_ui - 2, ancho_barra_jefe + 4, alto_barra_jefe + 4))
-        
-        max_v_jefe = getattr(jefe, 'max_health', 15)
-        pct_jefe = max(0.0, min(1.0, jefe.health / max_v_jefe if max_v_jefe > 0 else 0))
-        w_restante = int(ancho_barra_jefe * pct_jefe)
-        
-        if w_restante > 0:
-            pygame.draw.rect(screen, (180, 30, 10), (x_jefe_ui, y_jefe_ui, w_restante, alto_barra_jefe))
-            pygame.draw.rect(screen, (255, 140, 0), (x_jefe_ui, y_jefe_ui, w_restante, alto_barra_jefe // 2))
-        
-        pygame.draw.rect(screen, (255, 215, 0), (x_jefe_ui - 2, y_jefe_ui - 2, ancho_barra_jefe + 4, alto_barra_jefe + 4), 2)
+            pygame.draw.rect(screen, (20, 5, 5), (x_jefe_ui - 2, y_jefe_ui - 2, ancho_barra_jefe + 4, alto_barra_jefe + 4))
+            
+            max_v_jefe = getattr(jefe, 'max_health', 100)
+            pct_jefe = max(0.0, min(1.0, jefe.health / max_v_jefe if max_v_jefe > 0 else 0))
+            w_restante = int(ancho_barra_jefe * pct_jefe)
+            
+            if w_restante > 0:
+                color_fase = (180, 30, 10) if jefe.fase_actual == 1 else ((255, 100, 0) if jefe.fase_actual == 2 else (255, 200, 0))
+                pygame.draw.rect(screen, color_fase, (x_jefe_ui, y_jefe_ui, w_restante, alto_barra_jefe))
+                pygame.draw.rect(screen, (255, 220, 100), (x_jefe_ui, y_jefe_ui, w_restante, alto_barra_jefe // 2))
+            
+            pygame.draw.rect(screen, (255, 215, 0), (x_jefe_ui - 2, y_jefe_ui - 2, ancho_barra_jefe + 4, alto_barra_jefe + 4), 2)
 
-        lbl_jefe = fuente_jefe.render("Athros :The bloodred", True, (255, 200, 50))
-        screen.blit(lbl_jefe, (WIDTH // 2 - lbl_jefe.get_width() // 2, 15))
+            lbl_jefe = fuente_jefe.render("Athros :The bloodred", True, (255, 200, 50))
+            screen.blit(lbl_jefe, (WIDTH // 2 - lbl_jefe.get_width() // 2, 15))
 
-        # Barra de vida del Jugador
+        # UI del Jugador
         ancho_barra_player = 180
         alto_barra_player = 18
         x_player_ui = 30
@@ -343,6 +224,21 @@ def ejecutar_batalla_carnicero(screen, player):
         
         lbl_player = fuente_ui.render("JUGADOR", True, (255, 255, 255))
         screen.blit(lbl_player, (x_player_ui, 8))
+
+        # Dibujar pantalla de cierre al cumplirse los 7 segundos
+        if mostrar_cierre:
+            if img_cierre:
+                screen.blit(img_cierre, (0, 0))
+            else:
+                # Fondo oscuro de reemplazo si no se encuentra la imagen
+                overlay = pygame.Surface((WIDTH, HEIGHT))
+                overlay.set_alpha(220)
+                overlay.fill((0, 0, 0))
+                screen.blit(overlay, (0, 0))
+                
+                fuente_cierre = pygame.font.SysFont("Impact", 48)
+                lbl_cierre = fuente_cierre.render("NIVEL 1 COMPLETADO", True, (255, 215, 0))
+                screen.blit(lbl_cierre, (WIDTH // 2 - lbl_cierre.get_width() // 2, HEIGHT // 2 - 24))
 
         pygame.display.flip()
 
@@ -368,10 +264,10 @@ if __name__ == "__main__":
 
         def update(self, keys, dt):
             if keys[pygame.K_a] or keys[pygame.K_LEFT]:
-                self.rect.x -= 300 * dt
+                self.rect.x -= 320 * dt
                 self.direction = "left"
             if keys[pygame.K_d] or keys[pygame.K_RIGHT]:
-                self.rect.x += 300 * dt
+                self.rect.x += 320 * dt
                 self.direction = "right"
 
             if (keys[pygame.K_w] or keys[pygame.K_UP]) and self.on_ground:
@@ -385,7 +281,7 @@ if __name__ == "__main__":
             if tecla_ataque and not self.attacking:
                 self.attacking = True
                 self.has_hit = False
-                ancho_hitbox = 80
+                ancho_hitbox = 90
                 
                 if self.direction == "right":
                     self.hitbox = pygame.Rect(self.rect.right, self.rect.y, ancho_hitbox, 110)

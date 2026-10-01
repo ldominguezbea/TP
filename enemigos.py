@@ -440,6 +440,8 @@ class Jokai(Enemigo):
             screen.blit(self.image, (pos_x, pos_y))
 
 
+
+
 class OjoVolador(Enemigo):
 
     class Proyectil:
@@ -509,7 +511,7 @@ class OjoVolador(Enemigo):
             if not self.destruido and self.image:
                 screen.blit(self.image, self.rect)
 
-    def __init__(self, x=550, y=500, escala_enemigo=1.8, offset_y=120):
+    def __init__(self, x=550, y=500, escala_enemigo=1.8):
         super().__init__("Ojo volador", 2, x, y)
 
         ruta_base = "assets/enemigos/Ojo volador/"
@@ -549,10 +551,7 @@ class OjoVolador(Enemigo):
         self.frame_actual = 0.0
         self.velocidad_animacion = 0.15
         self.image = self.animaciones["correr"][0]
-
-        # Ajustar posición inicial con la escala y el desplazamiento hacia abajo
-        self.offset_y = offset_y
-        self.rect = self.image.get_rect(topleft=(x, y + self.offset_y))
+        self.rect = self.image.get_rect(topleft=(x, y))
 
         self.esta_rojo = False
         self.desaparecer_timer = 3.0
@@ -563,6 +562,7 @@ class OjoVolador(Enemigo):
         self.cooldown_ataque = 0.0
         self.tiempo_cooldown = 2.0
         self.distancia_disparo = 400
+        self.velocidad_seguimiento_y = 5.0  # Suavizado de movimiento vertical
 
     def cambiar_estado(self, nuevo_estado):
         if self.estado_actual != nuevo_estado:
@@ -649,6 +649,12 @@ class OjoVolador(Enemigo):
             if hasattr(self, "aplicar_gravedad_y_suelo"):
                 self.aplicar_gravedad_y_suelo()
         else:
+            # Alinear altura con el jugador mientras esté vivo
+            if player:
+                # Ajustar suavemente la posición Y hacia el centro del jugador
+                diferencia_y = player.rect.centery - self.rect.centery
+                self.rect.centery += int(diferencia_y * 0.1)
+
             if self.cooldown_ataque > 0:
                 self.cooldown_ataque -= dt
 
@@ -680,7 +686,7 @@ class OjoVolador(Enemigo):
 
         if self.image and hasattr(self, "rect"):
             pos_x = self.rect.centerx - self.image.get_width() // 2
-            pos_y = self.rect.bottom - self.image.get_height()
+            pos_y = self.rect.centery - self.image.get_height() // 2
             screen.blit(self.image, (pos_x, pos_y))
 
 
