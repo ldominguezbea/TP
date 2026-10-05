@@ -71,9 +71,8 @@ def ejecutar_batalla_carnicero(screen, player):
     # Cargar fondo
     rutas_posibles = [
         "Escenario_batalla_nivel_1.png",
-        os.path.join("assets", "fondos", "Escenario_batalla_nivel_1.png"),
-        os.path.join("assets", "fondos", "escuela_en_llamas.png"),
-        os.path.join("assets", "fondos", "escuela_en_llamas.jpg")
+        os.path.join("assets", "imagenes","Nivel1" "Nivel1_imagen3.png"),
+    
     ]
     
     fondo_img = None
