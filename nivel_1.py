@@ -1,9 +1,9 @@
-
 import pygame
 import enemigos
 import os
 import sys
 import random
+import math
 
 pygame.init()
 pygame.font.init()
@@ -14,17 +14,20 @@ pantalla = pygame.display.set_mode((ANCHO, ALTO))
 pygame.display.set_caption("Nivel 1")
 
 # --- AJUSTES DEL PERSONAJE Y ESCENARIO ---
-ANCHO_HEROE, ALTO_HEROE = 240, 240 
+ANCHO_HEROE, ALTO_HEROE = 600,240
 POSICION_SUELO = 620 
 CANTIDAD_FONDOS = 3
 ANCHO_MUNDO = ANCHO * CANTIDAD_FONDOS  # Ancho total del nivel (3 pantallas)
 
-# Zona del hueco en la Imagen 2 (ubicado entre X = 1950 y X = 2150)
+# Zona del hueco en la Imagen 2
 HUECO_INICIO = ANCHO + 600   # 1950 px
 HUECO_FIN = ANCHO + 800      # 2150 px
+HUECO_CENTRO_X = (HUECO_INICIO + HUECO_FIN) // 2
 
-# Fuente para el texto de interacción
-fuente_interaccion = pygame.font.SysFont("Arial", 30, bold=True)
+# Fuentes
+fuente_pixel = pygame.font.SysFont("Courier", 20, bold=True)
+fuente_boss_title = pygame.font.SysFont("Georgia", 76, bold=True)
+fuente_boss_subtitle = pygame.font.SysFont("Georgia", 32, italic=True)
 # ------------------------------------------
 
 # 2. Carga de los 3 fondos del Nivel 1
@@ -76,7 +79,6 @@ class Jugador(pygame.sprite.Sprite):
         ESCALA = (ANCHO_HEROE, ALTO_HEROE)
         base_path = os.path.join("assets", "Heroes", "P_viento")
 
-        # Cargar animaciones
         for i in range(1, 9):  # idle (1-8)
             img = pygame.image.load(os.path.join(base_path, "idle", f"idle_{i}.png")).convert_alpha()
             self.animaciones['idle'].append(pygame.transform.scale(img, ESCALA))
@@ -120,28 +122,23 @@ class Jugador(pygame.sprite.Sprite):
     def procesar_evento(self, evento):
         """Maneja las pulsaciones únicas de teclas."""
         if evento.type == pygame.KEYDOWN:
-            # Salto (W)
             if evento.key == pygame.K_w and self.en_suelo and not (self.atacando or self.rodando or self.defendiendo):
                 self.velocidad_y = self.fuerza_salto
                 self.en_suelo = False
 
-            # Roll (Q)
             elif evento.key == pygame.K_q and self.en_suelo and not (self.rodando or self.atacando or self.defendiendo):
                 self.rodando = True
                 self.frame_index = 0
 
-            # Defensa (R)
             elif evento.key == pygame.K_r and self.en_suelo and not (self.rodando or self.atacando or self.defendiendo):
                 self.defendiendo = True
                 self.frame_index = 0
 
-            # Ataque Especial (E)
             elif evento.key == pygame.K_e and self.en_suelo and not (self.rodando or self.atacando or self.defendiendo):
                 self.atacando = True
                 self.estado = 'sp_atk'
                 self.frame_index = 0
 
-            # Ataques con Combo (F)
             elif evento.key == pygame.K_f:
                 if not self.en_suelo and not self.atacando:
                     self.atacando = True
@@ -235,14 +232,12 @@ class Jugador(pygame.sprite.Sprite):
         if self.rodando:
             self.velocidad_x = (self.velocidad_movimiento + 3) * (1 if self.mirando_derecha else -1)
 
-        # Actualizar posición en el mundo
         self.pos_x += self.velocidad_x
 
-        # RESTRICCIÓN: No se puede volver atrás del borde izquierdo de la pantalla visible
+        # Bloqueo de marcha atrás
         limite_izquierdo = scroll_x + 80
         self.pos_x = max(limite_izquierdo, min(self.pos_x, ANCHO_MUNDO - 80))
 
-        # Posición horizontal relativa a la cámara
         self.rect.centerx = int(self.pos_x - scroll_x)
 
         self.aplicar_gravedad()
@@ -250,11 +245,33 @@ class Jugador(pygame.sprite.Sprite):
         self.animar()
 
 
+def dibujar_boton_pixel_art(pantalla, centro_x, centro_y):
+    """Renderiza un cuadro pixel art animado (flotante) con el texto PRESS C TO INTERACT."""
+    # Movimiento flotante sinusoidal
+    offset_y = math.sin(pygame.time.get_ticks() * 0.006) * 8
+    pos_y = int(centro_y + offset_y)
+
+    texto = fuente_pixel.render("[ PRESS C TO INTERACT ]", False, (255, 230, 150))
+    rect_txt = texto.get_rect(center=(centro_x, pos_y))
+
+    # Dimensiones del contenedor Pixel Art
+    ancho_box = rect_txt.width + 24
+    alto_box = rect_txt.height + 16
+    rect_box = pygame.Rect(0, 0, ancho_box, alto_box)
+    rect_box.center = (centro_x, pos_y)
+
+    # Renderizado con bordes pixelados
+    pygame.draw.rect(pantalla, (20, 20, 25), rect_box)  # Fondo oscuro
+    pygame.draw.rect(pantalla, (220, 180, 60), rect_box, 4)  # Borde dorado grueso
+    pygame.draw.rect(pantalla, (100, 75, 20), rect_box.inflate(-8, -8), 2)  # Borde interno
+
+    pantalla.blit(texto, rect_txt)
+
+
 # Instancia del héroe
 heroe = Jugador(200, POSICION_SUELO)
 todos_los_sprites = pygame.sprite.Group(heroe)
 
-# Variable de cámara
 scroll_x = 0
 
 # 4. Bucle principal
@@ -262,35 +279,42 @@ ejecutando = True
 reloj = pygame.time.Clock()
 
 while ejecutando:
-    # Determinar si el héroe está en la zona de interacción del hueco
     en_zona_hueco = HUECO_INICIO <= heroe.pos_x <= HUECO_FIN
 
     for evento in pygame.event.get():
         if evento.type == pygame.QUIT:
             ejecutando = False
 
-        # Interacción con la tecla C en el hueco
         if evento.type == pygame.KEYDOWN and evento.key == pygame.K_c and en_zona_hueco:
-            # 1. Pantalla en negro por 2 segundos
+            # --- PANTALLA DE CARGA TIPO DARK SOULS ---
             pantalla.fill((0, 0, 0))
+
+            # Renderizado de texto rojo estilo Dark Souls
+            txt_title = fuente_boss_title.render("Athros", True, (180, 20, 20))
+            txt_subtitle = fuente_boss_subtitle.render("the bloodred", True, (140, 15, 15))
+
+            rect_title = txt_title.get_rect(center=(ANCHO // 2, ALTO // 2 - 25))
+            rect_subtitle = txt_subtitle.get_rect(center=(ANCHO // 2, ALTO // 2 + 45))
+
+            pantalla.blit(txt_title, rect_title)
+            pantalla.blit(txt_subtitle, rect_subtitle)
+
             pygame.display.flip()
             pygame.time.wait(2000)
 
-            # 2. Teletransportar al inicio de la Imagen 3
+            # Teletransporte al inicio de la Imagen 3
             heroe.pos_x = ANCHO * 2 + 150
             scroll_x = ANCHO * 2
-            
-            # Limpiar eventos para evitar entradas no deseadas durante la pausa
+
             pygame.event.clear()
             break
 
         heroe.procesar_evento(evento)
 
-    # RESTRICCIÓN: La cámara solo avanza hacia la derecha (nunca retrocede)
+    # Restricción de cámara (solo avanza hacia adelante)
     target_scroll = int(heroe.pos_x - ANCHO // 2)
     scroll_x = max(scroll_x, min(target_scroll, ANCHO_MUNDO - ANCHO))
 
-    # Actualizar sprites pasando la posición actual de la cámara
     todos_los_sprites.update(scroll_x)
 
     # Dibujar fondos
@@ -299,13 +323,12 @@ while ejecutando:
         if -ANCHO < pos_x_fondo < ANCHO:
             pantalla.blit(fondo_img, (pos_x_fondo, 0))
 
-    todos_los_sprites.draw(pantalla)
+    # Dibujar el botón flotante en la posición del hueco en el mapa
+    screen_hueco_x = HUECO_CENTRO_X - scroll_x
+    if -150 < screen_hueco_x < ANCHO + 150:
+        dibujar_boton_pixel_art(pantalla, screen_hueco_x, POSICION_SUELO - 110)
 
-    # Renderizar el texto "press c to interact" si está en el hueco
-    if en_zona_hueco:
-        texto_surface = fuente_interaccion.render("press c to interact", True, (255, 255, 255))
-        rect_texto = texto_surface.get_rect(center=(ANCHO // 2, ALTO // 2 - 100))
-        pantalla.blit(texto_surface, rect_texto)
+    todos_los_sprites.draw(pantalla)
 
     pygame.display.flip()
     reloj.tick(60)
