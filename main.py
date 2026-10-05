@@ -1,7 +1,6 @@
 import pygame
 import sys
 
-
 pygame.init()
 from config import SCREEN_WIDTH, SCREEN_HEIGHT, GAME_WIDTH, GAME_HEIGHT, BASE_DIR, abrir_archivo
 
@@ -11,12 +10,12 @@ screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
 pygame.display.set_caption("REQUIEM: El juicio final")
 clock = pygame.time.Clock()
 
-# Importaciones seguras una vez que la pantalla de video está inicializada
 import random
 import math
 import animacion_menu
+from prologo import prologue
 
-# Fuentes tipográficas vectoriales escaladas para alta definición
+# Fuentes tipográficas vectoriales
 font_title = pygame.font.SysFont("Impact", 64)
 font_menu = pygame.font.SysFont("Arial", 22, bold=True)
 font_char_name = pygame.font.SysFont("Impact", 42)
@@ -29,7 +28,6 @@ game_state = "MENU"
 
 assets_chars = BASE_DIR / "assets" / "sprites" / "seleccion_personajes"
 
-# --- LISTA DE HÉROES ACTUALIZADA (Tus personajes, nombres y biografías) ---
 characters = [
     {
         "name": "Fei Liang",
@@ -57,10 +55,8 @@ characters = [
     }
 ]
 selected_char_index = 0
-chosen_char_name = None  # héroe confirmado con ENTER
+chosen_char_name = None
 
-# --- IMÁGENES DE LOS PERSONAJES ---
-# Copiá los 4 PNG a: assets/sprites/seleccion_personajes/
 archivos_imagenes = {
     "Fei Liang": "Fei_liang.png",
     "Korg": "Korg.png",
@@ -70,9 +66,10 @@ archivos_imagenes = {
 imagenes_chars = {}
 archivos_ya_abiertos = set()
 
+prologue_bg_surface = None
+
 
 def buscar_imagen(nombre_archivo):
-    """Busca el PNG en varias carpetas posibles, sin importar mayúsculas/minúsculas."""
     carpetas = [
         assets_chars,
         BASE_DIR / "assets" / "sprites",
@@ -89,30 +86,26 @@ def buscar_imagen(nombre_archivo):
 
 
 def obtener_imagen_personaje(char, caja=(314, 314)):
-    """Carga la imagen una sola vez y la escala para que entre en la caja."""
     nombre = char["name"]
     if nombre not in imagenes_chars:
         img = None
         ruta = buscar_imagen(archivos_imagenes[nombre])
         if ruta is None:
-            print(f"[IMAGEN] No encontré {archivos_imagenes[nombre]}. "
-                  f"Ponelo en: {assets_chars}")
+            print(f"[IMAGEN] No se encontró {archivos_imagenes[nombre]}.")
         else:
             try:
                 img = pygame.image.load(str(ruta)).convert_alpha()
                 w, h = img.get_size()
                 esc = min(caja[0] / w, caja[1] / h)
-                # scale (no smoothscale) para mantener el look pixel art nítido
                 img = pygame.transform.scale(img, (int(w * esc), int(h * esc)))
             except pygame.error as e:
                 print(f"[IMAGEN] Error cargando {ruta}: {e}")
-                img = None  # se usa el dibujo vectorial de respaldo
+                img = None
         imagenes_chars[nombre] = img
     return imagenes_chars[nombre]
 
 
 def draw_text_wrapped(surface, text, x, y, max_width, font, color):
-    """Procesador dinámico para el ajuste de líneas de texto en HD"""
     lines = text.split('\n')
     current_y = y
     for line in lines:
@@ -137,42 +130,21 @@ def draw_text_wrapped(surface, text, x, y, max_width, font, color):
 
 
 def draw_character_artwork(surface, name, cx, cy):
-    """Dibujo vectorial de respaldo, se usa solo si falta la imagen PNG"""
     if name == "Fei Liang":
         pygame.draw.rect(surface, (45, 40, 42), (cx - 40, cy - 10, 80, 70), border_radius=5)
         pygame.draw.circle(surface, (235, 225, 215), (cx, cy - 25), 32)
-        pygame.draw.rect(surface, (30, 25, 25), (cx - 20, cy - 32, 40, 16))
-        pygame.draw.circle(surface, (245, 190, 150), (cx, cy - 24), 8)
-        pygame.draw.line(surface, (20, 20, 20), (cx - 45, cy - 45), (cx - 15, cy - 10), 8)
-        pygame.draw.line(surface, (20, 20, 20), (cx + 45, cy - 45), (cx + 15, cy - 10), 8)
-
     elif name == "Korg":
         pygame.draw.rect(surface, (70, 50, 45), (cx - 40, cy - 10, 80, 70), border_radius=5)
         pygame.draw.circle(surface, (240, 185, 145), (cx, cy - 25), 28)
-        for i in range(7):
-            angle = math.pi * (i / 6)
-            bx = cx + int(math.cos(angle) * 38)
-            by = cy - 5 + int(math.sin(angle) * 15)
-            pygame.draw.circle(surface, (245, 130, 30), (bx, by), 9)
-            pygame.draw.circle(surface, (20, 15, 10), (bx, by), 9, 1)
-
     elif name == "Diana":
         pygame.draw.rect(surface, (25, 65, 40), (cx - 45, cy - 15, 90, 75), border_radius=8)
         pygame.draw.circle(surface, (245, 245, 250), (cx, cy - 22), 30)
-        pygame.draw.circle(surface, (245, 195, 155), (cx, cy - 22), 22)
-        pygame.draw.polygon(surface, (245, 195, 155), [(cx - 20, cy - 25), (cx - 42, cy - 35), (cx - 20, cy - 15)])
-        pygame.draw.polygon(surface, (245, 195, 155), [(cx + 20, cy - 25), (cx + 42, cy - 35), (cx + 20, cy - 15)])
-        pygame.draw.rect(surface, (20, 100, 50), (cx - 15, cy - 44, 30, 8))
-
     elif name == "Escanor":
         pygame.draw.rect(surface, (165, 25, 25), (cx - 50, cy - 5, 100, 65), border_radius=10)
-        pygame.draw.rect(surface, (220, 170, 45), (cx - 50, cy - 5, 100, 65), 3, border_radius=10)
         pygame.draw.circle(surface, (240, 190, 145), (cx, cy - 28), 26)
-        pygame.draw.rect(surface, (95, 55, 40), (cx - 24, cy - 56, 48, 28), border_radius=4)
 
 
 def render_menu(time_counter):
-    """Menú principal: escenario animado + opciones"""
     animacion_menu.draw_scenery(canvas, time_counter)
     pygame.transform.scale(canvas, (SCREEN_WIDTH, SCREEN_HEIGHT), screen)
 
@@ -193,21 +165,35 @@ def render_menu(time_counter):
         screen.blit(info, (84, SCREEN_HEIGHT - 60))
 
 
+def render_prologue():
+    global prologue_bg_surface
+    screen.fill((10, 10, 15))
+
+    if prologue_bg_surface is None:
+        prologue_bg_surface = prologue()
+
+    canvas.blit(prologue_bg_surface, (0, 0))
+    scaled_surface = pygame.transform.scale(canvas, (SCREEN_WIDTH, SCREEN_HEIGHT))
+    screen.blit(scaled_surface, (0, 0))
+
+    title_surf = font_title.render("PRÓLOGO", True, (255, 255, 255))
+    screen.blit(title_surf, (SCREEN_WIDTH // 2 - title_surf.get_width() // 2, 80))
+
+    help_surf = font_ui_help.render("Presiona [ENTER] o [ESPACIO] para continuar...", True, (235, 185, 40))
+    screen.blit(help_surf, (SCREEN_WIDTH // 2 - help_surf.get_width() // 2, SCREEN_HEIGHT - 80))
+
+
 def render_character_select_high_res(time_counter):
-    """Estructura de la escena de selección en alta fidelidad nativa"""
+    """Función de renderizado de la selección de personaje."""
     screen.fill((14, 11, 18))
 
     char = characters[selected_char_index]
-    # Lectura mediante tu función personalizada (una sola vez por archivo)
     if char["file"] not in archivos_ya_abiertos:
-        #abrir_archivo(char["file"])
         archivos_ya_abiertos.add(char["file"])
 
-    # Cabecera de escena
     title_surf = font_title.render("SELECCIONA TU HÉROE", True, (230, 40, 40))
     screen.blit(title_surf, (SCREEN_WIDTH // 2 - title_surf.get_width() // 2, 40))
 
-    # Caja central de previsualización del personaje
     box_width, box_height = 320, 320
     box_x = 180
     box_y = 180
@@ -224,18 +210,15 @@ def render_character_select_high_res(time_counter):
     else:
         draw_character_artwork(screen, char["name"], center_x, center_y)
 
-    # Nombre debajo de la caja
     name_surf = font_char_name.render(char["name"], True, (255, 255, 255))
     screen.blit(name_surf, (box_x + box_width // 2 - name_surf.get_width() // 2, box_y + box_height + 20))
 
-    # Flechas místicas animadas por hilos de tiempo
     arrow_pulse = int(math.sin(time_counter * 5) * 6)
     arrow_l = font_title.render("<", True, (235, 185, 40))
     arrow_r = font_title.render(">", True, (235, 185, 40))
     screen.blit(arrow_l, (box_x - 70 - arrow_pulse, box_y + box_height // 2 - 40))
     screen.blit(arrow_r, (box_x + box_width + 45 + arrow_pulse, box_y + box_height // 2 - 40))
 
-    # Panel lateral de descripción detallada
     desc_x = 590
     desc_y = 185
     desc_width = 600
@@ -244,10 +227,8 @@ def render_character_select_high_res(time_counter):
     screen.blit(header_desc, (desc_x, desc_y))
     pygame.draw.line(screen, (60, 50, 70), (desc_x, desc_y + 35), (desc_x + desc_width, desc_y + 35), 2)
 
-    # Renderizado ajustado de la descripción en HD
     draw_text_wrapped(screen, char["desc"], desc_x, desc_y + 55, desc_width, font_desc, (220, 220, 225))
 
-    # Ayuda contextual inferior
     help_surf = font_ui_help.render("[ENTER] CONFIRMAR HÉROE   |   [ESC] VOLVER AL MENÚ", True, (130, 130, 140))
     screen.blit(help_surf, (SCREEN_WIDTH // 2 - help_surf.get_width() // 2, SCREEN_HEIGHT - 65))
 
@@ -273,10 +254,16 @@ def main():
                     elif event.key == pygame.K_RETURN:
                         option = menu_options[selected_option]
                         if option == "NEW GAME":
-                            game_state = "CHARACTER_SELECT"
+                            game_state = "PROLOGUE"
                         elif option == "EXIT":
                             running = False
-                #seleccionar personaje
+
+                elif game_state == "PROLOGUE":
+                    if event.key in (pygame.K_RETURN, pygame.K_SPACE):
+                        game_state = "CHARACTER_SELECT"
+                    elif event.key == pygame.K_ESCAPE:
+                        game_state = "MENU"
+
                 elif game_state == "CHARACTER_SELECT":
                     if event.key == pygame.K_LEFT:
                         selected_char_index = (selected_char_index - 1) % len(characters)
@@ -291,6 +278,8 @@ def main():
         # --- DIBUJO ---
         if game_state == "MENU":
             render_menu(time_counter)
+        elif game_state == "PROLOGUE":
+            render_prologue()
         elif game_state == "CHARACTER_SELECT":
             render_character_select_high_res(time_counter)
 
@@ -298,7 +287,6 @@ def main():
 
     pygame.quit()
     sys.exit()
-
 
 if __name__ == "__main__":
     main()

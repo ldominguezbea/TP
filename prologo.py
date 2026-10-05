@@ -1,27 +1,31 @@
 import pygame
 from pathlib import Path
-from animacion_menu import GAME_WIDTH, GAME_HEIGHT
-
-BASE_DIR = Path(__file__).resolve().parent
-
-def abrir_archivo(ruta):
-    try:
-        with open(ruta, "r", encoding="utf-8") as archivo:
-            for linea in archivo:
-                print(linea.strip().split(","))
-    except FileNotFoundError:
-        print("No se encontro un archivo en la ruta enviada.")
+from config import BASE_DIR, SCREEN_WIDTH, SCREEN_HEIGHT
 
 def prologue():
-    ruta_mapa = BASE_DIR / "fondo_escuela.txt" # Cambiado para que lea la metadata del fondo escuela
+    """Carga y devuelve la imagen del prólogo adaptada a la pantalla completa."""
+    rutas_posibles = [
+        BASE_DIR / "fondo_escuela.jpg",
+        BASE_DIR / "assets" / "fondo_escuela.jpg",
+        BASE_DIR / "imagenes" / "fondo_escuela.jpg",
+        BASE_DIR / "assets" / "sprites" / "fondo_escuela.jpg"
+    ]
     
-    # Llama obligatoriamente a la funcion de apertura personalizada
-    abrir_archivo(ruta_mapa)
-    
-    # Instancia de forma nativa la superficie grafica del escenario escolar sin .load()
-    school_bg = pygame.Surface((GAME_WIDTH, GAME_HEIGHT))
-    school_bg.fill((35, 35, 45))
-    
-    # Elemento visual representativo de la escuela
-    pygame.draw.rect(school_bg, (80, 80, 95), (50, 40, 220, 140)) 
+    imagen_cargada = None
+    for ruta in rutas_posibles:
+        if ruta.exists():
+            try:
+                imagen_cargada = pygame.image.load(str(ruta)).convert()
+                break
+            except pygame.error as e:
+                print(f"[PROLOGO] Error al cargar la imagen {ruta}: {e}")
+
+    if imagen_cargada:
+        # Escala la imagen directamente a la pantalla de alta resolución
+        school_bg = pygame.transform.scale(imagen_cargada, (SCREEN_WIDTH, SCREEN_HEIGHT))
+    else:
+        print("[PROLOGO] No se encontró fondo_escuela.jpg. Generando fondo de respaldo.")
+        school_bg = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
+        school_bg.fill((35, 35, 45))
+
     return school_bg
