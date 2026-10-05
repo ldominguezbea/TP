@@ -1,30 +1,103 @@
 import pygame
 import os
+import sys
+import math
+
+pygame.init()
+pygame.font.init()
+
+# ============================================================
+# CONFIGURACIÓN DEL JUEGO
+# ============================================================
+
+ANCHO, ALTO = 1350, 700
+pantalla = pygame.display.set_mode((ANCHO, ALTO))
+pygame.display.set_caption("Nivel 1")
+
+RELOJ = pygame.time.Clock()
+FPS = 60
+
+# ============================================================
+# CONFIGURACIÓN DEL ESCENARIO
+# ============================================================
+
+POSICION_SUELO = 620
+
+CANTIDAD_FONDOS = 3
+ANCHO_MUNDO = ANCHO * CANTIDAD_FONDOS
+
+# ============================================================
+# ZONA DE INTERACCIÓN
+# ============================================================
+
+# Hueco ubicado en la Imagen 2
+HUECO_INICIO = ANCHO + 600
+HUECO_FIN = ANCHO + 800
+HUECO_CENTRO_X = (HUECO_INICIO + HUECO_FIN) // 2
+
+# ============================================================
+# CONFIGURACIÓN DEL JUGADOR
+# ============================================================
+
+ANCHO_HEROE = 600
+ALTO_HEROE = 240
+
+fuente_pixel = pygame.font.SysFont(
+    "Courier",
+    20,
+    bold=True
+)
+
+fuente_boss_title = pygame.font.SysFont(
+    "Georgia",
+    76,
+    bold=True
+)
+
+fuente_boss_subtitle = pygame.font.SysFont(
+    "Georgia",
+    32,
+    italic=True
+)
 
 
-class p_viento(pygame.sprite.Sprite):
+# ============================================================
+# CARGAR ESCENARIO
+# ============================================================
 
-    def __init__(
-        self,
-        x,
-        y,
-        posicion_suelo
-    ):
+fondos = []
+
+for i in range(1, CANTIDAD_FONDOS + 1):
+
+    ruta_imagen = os.path.join(
+        "imagenes",
+        "Nivel1",
+        f"Nivel1_imagen{i}.png"
+    )
+
+    img = pygame.image.load(ruta_imagen).convert()
+
+    img = pygame.transform.scale(
+        img,
+        (ANCHO, ALTO)
+    )
+
+    fondos.append(img)
+
+
+# ============================================================
+# CLASE DEL JUGADOR
+# ============================================================
+
+class Jugador(pygame.sprite.Sprite):
+
+    def __init__(self, x, y):
 
         super().__init__()
 
-        # ====================================================
-        # CONFIGURACIÓN DEL PERSONAJE
-        # ====================================================
-
-        self.ancho_heroe = 600
-        self.alto_heroe = 240
-
-        self.posicion_suelo = posicion_suelo
-
-        # ====================================================
-        # ANIMACIONES
-        # ====================================================
+        # ----------------------------------------------------
+        # Animaciones
+        # ----------------------------------------------------
 
         self.animaciones = {
             "idle": [],
@@ -41,12 +114,11 @@ class p_viento(pygame.sprite.Sprite):
 
         self.cargar_animaciones()
 
-        # ====================================================
-        # ESTADO
-        # ====================================================
+        # ----------------------------------------------------
+        # Estado
+        # ----------------------------------------------------
 
         self.estado = "idle"
-
         self.frame_index = 0
         self.velocidad_animacion = 0.22
 
@@ -61,9 +133,9 @@ class p_viento(pygame.sprite.Sprite):
         # Posición real dentro del mundo
         self.pos_x = float(x)
 
-        # ====================================================
-        # FÍSICA
-        # ====================================================
+        # ----------------------------------------------------
+        # Física
+        # ----------------------------------------------------
 
         self.velocidad_x = 0
         self.velocidad_y = 0
@@ -72,9 +144,9 @@ class p_viento(pygame.sprite.Sprite):
         self.fuerza_salto = -16
         self.gravedad = 0.8
 
-        # ====================================================
-        # ESTADOS
-        # ====================================================
+        # ----------------------------------------------------
+        # Estados del jugador
+        # ----------------------------------------------------
 
         self.mirando_derecha = True
 
@@ -92,9 +164,9 @@ class p_viento(pygame.sprite.Sprite):
 
     def cargar_animaciones(self):
 
-        escala = (
-            self.ancho_heroe,
-            self.alto_heroe
+        ESCALA = (
+            ANCHO_HEROE,
+            ALTO_HEROE
         )
 
         base_path = os.path.join(
@@ -104,7 +176,7 @@ class p_viento(pygame.sprite.Sprite):
         )
 
         # ----------------------------------------------------
-        # IDLE
+        # Idle
         # ----------------------------------------------------
 
         for i in range(1, 9):
@@ -119,13 +191,13 @@ class p_viento(pygame.sprite.Sprite):
 
             img = pygame.transform.scale(
                 img,
-                escala
+                ESCALA
             )
 
             self.animaciones["idle"].append(img)
 
         # ----------------------------------------------------
-        # RUN
+        # Run
         # ----------------------------------------------------
 
         for i in range(1, 9):
@@ -140,13 +212,13 @@ class p_viento(pygame.sprite.Sprite):
 
             img = pygame.transform.scale(
                 img,
-                escala
+                ESCALA
             )
 
             self.animaciones["run"].append(img)
 
         # ----------------------------------------------------
-        # ROLL
+        # Roll
         # ----------------------------------------------------
 
         for i in range(1, 7):
@@ -161,13 +233,13 @@ class p_viento(pygame.sprite.Sprite):
 
             img = pygame.transform.scale(
                 img,
-                escala
+                ESCALA
             )
 
             self.animaciones["roll"].append(img)
 
         # ----------------------------------------------------
-        # SALTO
+        # Salto
         # ----------------------------------------------------
 
         for i in range(1, 4):
@@ -182,13 +254,13 @@ class p_viento(pygame.sprite.Sprite):
 
             img = pygame.transform.scale(
                 img,
-                escala
+                ESCALA
             )
 
             self.animaciones["j_up"].append(img)
 
         # ----------------------------------------------------
-        # DEFENSA
+        # Defensa
         # ----------------------------------------------------
 
         for i in range(1, 9):
@@ -203,13 +275,13 @@ class p_viento(pygame.sprite.Sprite):
 
             img = pygame.transform.scale(
                 img,
-                escala
+                ESCALA
             )
 
             self.animaciones["defend"].append(img)
 
         # ----------------------------------------------------
-        # ATAQUE 1
+        # Ataque 1
         # ----------------------------------------------------
 
         for i in range(1, 9):
@@ -224,13 +296,13 @@ class p_viento(pygame.sprite.Sprite):
 
             img = pygame.transform.scale(
                 img,
-                escala
+                ESCALA
             )
 
             self.animaciones["1_atk"].append(img)
 
         # ----------------------------------------------------
-        # ATAQUE 2
+        # Ataque 2
         # ----------------------------------------------------
 
         for i in range(1, 19):
@@ -245,13 +317,13 @@ class p_viento(pygame.sprite.Sprite):
 
             img = pygame.transform.scale(
                 img,
-                escala
+                ESCALA
             )
 
             self.animaciones["2_atk"].append(img)
 
         # ----------------------------------------------------
-        # ATAQUE AÉREO
+        # Ataque aéreo
         # ----------------------------------------------------
 
         for i in range(1, 8):
@@ -266,13 +338,13 @@ class p_viento(pygame.sprite.Sprite):
 
             img = pygame.transform.scale(
                 img,
-                escala
+                ESCALA
             )
 
             self.animaciones["air_atk"].append(img)
 
         # ----------------------------------------------------
-        # ATAQUE ESPECIAL
+        # Ataque especial
         # ----------------------------------------------------
 
         for i in range(1, 31):
@@ -287,13 +359,13 @@ class p_viento(pygame.sprite.Sprite):
 
             img = pygame.transform.scale(
                 img,
-                escala
+                ESCALA
             )
 
             self.animaciones["sp_atk"].append(img)
 
         # ----------------------------------------------------
-        # ATAQUE 3
+        # Ataque 3
         # ----------------------------------------------------
 
         for i in range(12, 27):
@@ -308,7 +380,7 @@ class p_viento(pygame.sprite.Sprite):
 
             img = pygame.transform.scale(
                 img,
-                escala
+                ESCALA
             )
 
             self.animaciones["3_atk"].append(img)
@@ -322,9 +394,9 @@ class p_viento(pygame.sprite.Sprite):
         if evento.type != pygame.KEYDOWN:
             return
 
-        # ====================================================
-        # SALTO - W
-        # ====================================================
+        # ----------------------------------------------------
+        # SALTO
+        # ----------------------------------------------------
 
         if (
             evento.key == pygame.K_w
@@ -339,9 +411,9 @@ class p_viento(pygame.sprite.Sprite):
             self.velocidad_y = self.fuerza_salto
             self.en_suelo = False
 
-        # ====================================================
-        # RODAR - Q
-        # ====================================================
+        # ----------------------------------------------------
+        # RODAR
+        # ----------------------------------------------------
 
         elif (
             evento.key == pygame.K_q
@@ -356,9 +428,9 @@ class p_viento(pygame.sprite.Sprite):
             self.rodando = True
             self.frame_index = 0
 
-        # ====================================================
-        # DEFENDER - R
-        # ====================================================
+        # ----------------------------------------------------
+        # DEFENDER
+        # ----------------------------------------------------
 
         elif (
             evento.key == pygame.K_r
@@ -373,9 +445,9 @@ class p_viento(pygame.sprite.Sprite):
             self.defendiendo = True
             self.frame_index = 0
 
-        # ====================================================
-        # ATAQUE ESPECIAL - E
-        # ====================================================
+        # ----------------------------------------------------
+        # ATAQUE ESPECIAL
+        # ----------------------------------------------------
 
         elif (
             evento.key == pygame.K_e
@@ -391,29 +463,20 @@ class p_viento(pygame.sprite.Sprite):
             self.estado = "sp_atk"
             self.frame_index = 0
 
-        # ====================================================
-        # ATAQUE - F
-        # ====================================================
+        # ----------------------------------------------------
+        # ATAQUE NORMAL / COMBO
+        # ----------------------------------------------------
 
         elif evento.key == pygame.K_f:
 
-            # ------------------------------------------------
-            # ATAQUE AÉREO
-            # ------------------------------------------------
-
-            if (
-                not self.en_suelo
-                and not self.atacando
-            ):
+            # Ataque aéreo
+            if not self.en_suelo and not self.atacando:
 
                 self.atacando = True
                 self.estado = "air_atk"
                 self.frame_index = 0
 
-            # ------------------------------------------------
-            # ATAQUE TERRESTRE
-            # ------------------------------------------------
-
+            # Ataque terrestre
             elif (
                 self.en_suelo
                 and not (
@@ -437,14 +500,14 @@ class p_viento(pygame.sprite.Sprite):
                     self.combo_siguiente = True
 
     # ========================================================
-    # MOVIMIENTO CONTINUO
+    # MOVIMIENTO
     # ========================================================
 
     def manejar_movimiento_continuo(self):
 
         teclas = pygame.key.get_pressed()
 
-        # Bloquear movimiento durante acciones
+        # No moverse durante estas acciones
         if (
             self.rodando
             or self.defendiendo
@@ -459,19 +522,13 @@ class p_viento(pygame.sprite.Sprite):
 
         self.velocidad_x = 0
 
-        # ----------------------------------------------------
-        # IZQUIERDA - A
-        # ----------------------------------------------------
-
+        # Izquierda
         if teclas[pygame.K_a]:
 
             self.velocidad_x = -self.velocidad_movimiento
             self.mirando_derecha = False
 
-        # ----------------------------------------------------
-        # DERECHA - D
-        # ----------------------------------------------------
-
+        # Derecha
         if teclas[pygame.K_d]:
 
             self.velocidad_x = self.velocidad_movimiento
@@ -508,7 +565,7 @@ class p_viento(pygame.sprite.Sprite):
             self.estado = "idle"
 
     # ========================================================
-    # ANIMAR
+    # ANIMACIONES
     # ========================================================
 
     def animar(self):
@@ -517,10 +574,7 @@ class p_viento(pygame.sprite.Sprite):
 
         self.frame_index += self.velocidad_animacion
 
-        # ----------------------------------------------------
-        # FINAL DE ANIMACIÓN
-        # ----------------------------------------------------
-
+        # Terminó la animación
         if self.frame_index >= len(anim):
 
             self.frame_index = 0
@@ -535,7 +589,7 @@ class p_viento(pygame.sprite.Sprite):
 
                 self.defendiendo = False
 
-            # Ataques que terminan
+            # Ataques que terminan directamente
             elif self.estado in [
                 "air_atk",
                 "sp_atk",
@@ -568,10 +622,6 @@ class p_viento(pygame.sprite.Sprite):
 
                     self.atacando = False
 
-        # ----------------------------------------------------
-        # FRAME ACTUAL
-        # ----------------------------------------------------
-
         frame_actual = anim[
             int(self.frame_index)
         ]
@@ -599,47 +649,32 @@ class p_viento(pygame.sprite.Sprite):
 
         self.rect.y += self.velocidad_y
 
-        # ----------------------------------------------------
-        # SUELO
-        # ----------------------------------------------------
+        # Suelo
+        if self.rect.bottom >= POSICION_SUELO:
 
-        if self.rect.bottom >= self.posicion_suelo:
-
-            self.rect.bottom = self.posicion_suelo
+            self.rect.bottom = POSICION_SUELO
 
             self.velocidad_y = 0
             self.en_suelo = True
 
     # ========================================================
-    # ACTUALIZAR JUGADOR
+    # UPDATE
     # ========================================================
 
-    def update(
-        self,
-        scroll_x,
-        ancho_mundo
-    ):
+    def update(self, scroll_x):
 
         self.manejar_movimiento_continuo()
 
-        # ----------------------------------------------------
-        # VELOCIDAD AL RODAR
-        # ----------------------------------------------------
-
+        # Velocidad extra al rodar
         if self.rodando:
 
             self.velocidad_x = (
                 self.velocidad_movimiento + 3
             ) * (
-                1
-                if self.mirando_derecha
-                else -1
+                1 if self.mirando_derecha else -1
             )
 
-        # ----------------------------------------------------
-        # POSICIÓN GLOBAL
-        # ----------------------------------------------------
-
+        # Actualizar posición global
         self.pos_x += self.velocidad_x
 
         # ----------------------------------------------------
@@ -652,32 +687,336 @@ class p_viento(pygame.sprite.Sprite):
             limite_izquierdo,
             min(
                 self.pos_x,
-                ancho_mundo - 80
+                ANCHO_MUNDO - 80
             )
         )
 
-        # ----------------------------------------------------
-        # POSICIÓN EN PANTALLA
-        # ----------------------------------------------------
-
+        # Convertir posición del mundo a pantalla
         self.rect.centerx = int(
             self.pos_x - scroll_x
         )
 
-        # ----------------------------------------------------
-        # FÍSICA
-        # ----------------------------------------------------
-
+        # Física
         self.aplicar_gravedad()
 
-        # ----------------------------------------------------
-        # ESTADO
-        # ----------------------------------------------------
-
+        # Estado
         self.actualizar_estado()
 
+        # Animación
+        self.animar()
+
+
+# ============================================================
+# BOTÓN DE INTERACCIÓN
+# ============================================================
+
+def dibujar_boton_pixel_art(
+    pantalla,
+    centro_x,
+    centro_y
+):
+
+    # Animación flotante
+    offset_y = math.sin(
+        pygame.time.get_ticks() * 0.006
+    ) * 8
+
+    pos_y = int(
+        centro_y + offset_y
+    )
+
+    # Texto
+    texto = fuente_pixel.render(
+        "[ PRESS C TO INTERACT ]",
+        False,
+        (255, 230, 150)
+    )
+
+    rect_txt = texto.get_rect(
+        center=(centro_x, pos_y)
+    )
+
+    # Tamaño del cuadro
+    ancho_box = rect_txt.width + 24
+    alto_box = rect_txt.height + 16
+
+    rect_box = pygame.Rect(
+        0,
+        0,
+        ancho_box,
+        alto_box
+    )
+
+    rect_box.center = (
+        centro_x,
+        pos_y
+    )
+
+    # Fondo
+    pygame.draw.rect(
+        pantalla,
+        (20, 20, 25),
+        rect_box
+    )
+
+    # Borde exterior
+    pygame.draw.rect(
+        pantalla,
+        (220, 180, 60),
+        rect_box,
+        4
+    )
+
+    # Borde interior
+    pygame.draw.rect(
+        pantalla,
+        (100, 75, 20),
+        rect_box.inflate(-8, -8),
+        2
+    )
+
+    # Texto
+    pantalla.blit(
+        texto,
+        rect_txt
+    )
+
+
+# ============================================================
+# PANTALLA DE INTERACCIÓN
+# ============================================================
+
+def pantalla_athros():
+
+    pantalla.fill(
+        (0, 0, 0)
+    )
+
+    # Título
+    txt_title = fuente_boss_title.render(
+        "Athros",
+        True,
+        (180, 20, 20)
+    )
+
+    # Subtítulo
+    txt_subtitle = fuente_boss_subtitle.render(
+        "the bloodred",
+        True,
+        (140, 15, 15)
+    )
+
+    # Posiciones
+    rect_title = txt_title.get_rect(
+        center=(
+            ANCHO // 2,
+            ALTO // 2 - 25
+        )
+    )
+
+    rect_subtitle = txt_subtitle.get_rect(
+        center=(
+            ANCHO // 2,
+            ALTO // 2 + 45
+        )
+    )
+
+    # Dibujar
+    pantalla.blit(
+        txt_title,
+        rect_title
+    )
+
+    pantalla.blit(
+        txt_subtitle,
+        rect_subtitle
+    )
+
+    pygame.display.flip()
+
+    # Esperar 2 segundos
+    pygame.time.wait(2000)
+
+
+# ============================================================
+# CREAR JUGADOR
+# ============================================================
+
+heroe = Jugador(
+    200,
+    POSICION_SUELO
+)
+
+todos_los_sprites = pygame.sprite.Group()
+
+todos_los_sprites.add(
+    heroe
+)
+
+
+# ============================================================
+# CÁMARA
+# ============================================================
+
+scroll_x = 0
+
+
+# ============================================================
+# BUCLE PRINCIPAL
+# ============================================================
+
+ejecutando = True
+
+while ejecutando:
+
+    # --------------------------------------------------------
+    # COMPROBAR SI ESTÁ EN LA ZONA DE INTERACCIÓN
+    # --------------------------------------------------------
+
+    en_zona_hueco = (
+        HUECO_INICIO
+        <= heroe.pos_x
+        <= HUECO_FIN
+    )
+
+    # --------------------------------------------------------
+    # EVENTOS
+    # --------------------------------------------------------
+
+    for evento in pygame.event.get():
+
+        # Cerrar juego
+        if evento.type == pygame.QUIT:
+
+            ejecutando = False
+
         # ----------------------------------------------------
-        # ANIMACIÓN
+        # INTERACCIÓN CON C
         # ----------------------------------------------------
 
-        self.animar()
+        if (
+            evento.type == pygame.KEYDOWN
+            and evento.key == pygame.K_c
+            and en_zona_hueco
+        ):
+
+            # Mostrar pantalla de Athros
+            pantalla_athros()
+
+            # ------------------------------------------------
+            # TELETRANSPORTE AL INICIO DE LA IMAGEN 3
+            # ------------------------------------------------
+
+            heroe.pos_x = (
+                ANCHO * 2 + 150
+            )
+
+            scroll_x = (
+                ANCHO * 2
+            )
+
+            # Limpiar eventos pendientes
+            pygame.event.clear()
+
+            break
+
+        # Eventos del jugador
+        heroe.procesar_evento(
+            evento
+        )
+
+    # --------------------------------------------------------
+    # CÁMARA
+    # --------------------------------------------------------
+
+    target_scroll = int(
+        heroe.pos_x
+        - ANCHO // 2
+    )
+
+    # La cámara solamente avanza
+    scroll_x = max(
+        scroll_x,
+        min(
+            target_scroll,
+            ANCHO_MUNDO - ANCHO
+        )
+    )
+
+    # --------------------------------------------------------
+    # ACTUALIZAR JUGADOR
+    # --------------------------------------------------------
+
+    todos_los_sprites.update(
+        scroll_x
+    )
+
+    # --------------------------------------------------------
+    # DIBUJAR ESCENARIO
+    # --------------------------------------------------------
+
+    for i, fondo_img in enumerate(fondos):
+
+        pos_x_fondo = (
+            i * ANCHO
+            - scroll_x
+        )
+
+        if (
+            -ANCHO
+            < pos_x_fondo
+            < ANCHO
+        ):
+
+            pantalla.blit(
+                fondo_img,
+                (
+                    pos_x_fondo,
+                    0
+                )
+            )
+
+    # --------------------------------------------------------
+    # DIBUJAR INTERACCIÓN
+    # --------------------------------------------------------
+
+    screen_hueco_x = (
+        HUECO_CENTRO_X
+        - scroll_x
+    )
+
+    if (
+        -150
+        < screen_hueco_x
+        < ANCHO + 150
+    ):
+
+        dibujar_boton_pixel_art(
+            pantalla,
+            screen_hueco_x,
+            POSICION_SUELO - 110
+        )
+
+    # --------------------------------------------------------
+    # DIBUJAR JUGADOR
+    # --------------------------------------------------------
+
+    todos_los_sprites.draw(
+        pantalla
+    )
+
+    # --------------------------------------------------------
+    # ACTUALIZAR PANTALLA
+    # --------------------------------------------------------
+
+    pygame.display.flip()
+
+    RELOJ.tick(FPS)
+
+
+# ============================================================
+# CERRAR PYGAME
+# ============================================================
+
+pygame.quit()
+sys.exit()
