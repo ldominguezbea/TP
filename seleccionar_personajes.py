@@ -24,12 +24,11 @@ font_prologue = pygame.font.SysFont("Arial", 12, bold=True)
 font_char_name = pygame.font.SysFont("Impact", 16)
 font_stats = pygame.font.SysFont("Arial", 7, bold=True)
 
-# Menú extendido con la selección de personaje
 menu_options = ["NEW GAME", "SELECT CHARACTER", "CONTINUE", "CONTROLS", "TROPHIES", "EXIT"]
 selected_option = 0
 game_state = "MENU"
 
-# --- CONFIGURACIÓN DE PERSONAJES ---
+
 characters = [
     {
         "name": "GUERRERO",
@@ -59,7 +58,7 @@ characters = [
 selected_char_index = 0
 active_player = None
 
-# Efectos de partículas
+
 smoke_particles = [
     {
         "x": random.randint(0, GAME_WIDTH),

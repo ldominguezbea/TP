@@ -1,16 +1,27 @@
-def prologue():
-    from animacion_menu import GAME_WIDTH, GAME_HEIGHT
-    import pygame
-    import os
+import pygame
+from pathlib import Path
+from animacion_menu import GAME_WIDTH, GAME_HEIGHT
 
-    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-    ruta_imagen = os.path.join(BASE_DIR, "fondo_escuela.jpg")
+BASE_DIR = Path(__file__).resolve().parent
 
+def abrir_archivo(ruta):
     try:
-        school_bg = pygame.image.load(ruta_imagen).convert_alpha()
-        school_bg = pygame.transform.scale(school_bg, (GAME_WIDTH, GAME_HEIGHT))
-        print("-> La imagen 'fondo_escuela.jpg' se cargó con éxito.")
+        with open(ruta, "r", encoding="utf-8") as archivo:
+            for linea in archivo:
+                print(linea.strip().split(","))
     except FileNotFoundError:
-        print("-> ADVERTENCIA: No se encontró la imagen. Se usará un fondo provisorio.")
-        school_bg = pygame.Surface((GAME_WIDTH, GAME_HEIGHT))
-        school_bg.fill((50, 50, 60))
+        print("No se encontro un archivo en la ruta enviada.")
+
+def prologue():
+    ruta_mapa = BASE_DIR / "fondo_escuela.txt" # Cambiado para que lea la metadata del fondo escuela
+    
+    # Llama obligatoriamente a la funcion de apertura personalizada
+    abrir_archivo(ruta_mapa)
+    
+    # Instancia de forma nativa la superficie grafica del escenario escolar sin .load()
+    school_bg = pygame.Surface((GAME_WIDTH, GAME_HEIGHT))
+    school_bg.fill((35, 35, 45))
+    
+    # Elemento visual representativo de la escuela
+    pygame.draw.rect(school_bg, (80, 80, 95), (50, 40, 220, 140)) 
+    return school_bg

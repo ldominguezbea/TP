@@ -1,12 +1,5 @@
-from animacion_menu import GAME_WIDTH, GAME_HEIGHT
 import pygame
-from pathlib import Path
-from pathlib import Path
-
-BASE_DIR = Path(__file__).resolve().parent
-screen = pygame.display.set_mode((GAME_WIDTH, GAME_HEIGHT))
-path_escuela = BASE_DIR / "assets" / "sprites" / "jugador.png"
-fondo_escuela = pygame.image.load(str(path_escuela))
+from config import BASE_DIR, GAME_WIDTH, GAME_HEIGHT, abrir_archivo
 
 class Player:
     def __init__(self, x, y):
@@ -21,12 +14,16 @@ class Player:
         self.direction = "right"
 
         self.animacion_correr = []
+        assets_dir = BASE_DIR / "assets" / "Heroes" / "p_fuego" / "fire_knight"
+        
         for i in range(1, 9):
-            imagen = pygame.image.load(
-                f"assets/Heroes/p_fuego/fire_knight/run_{i}.png"
-            ).convert_alpha()
-            imagen = pygame.transform.scale(imagen, (60, 90))
-            self.animacion_correr.append(imagen)
+            path_frame = assets_dir / f"run_{i}.txt"
+            abrir_archivo(path_frame)
+            
+            # Superficies dinámicas de respaldo
+            surface_frame = pygame.Surface((60, 90), pygame.SRCALPHA)
+            pygame.draw.rect(surface_frame, (255, 100, 30), (0, 0, 60, 90), border_radius=4)
+            self.animacion_correr.append(surface_frame)
 
         self.frame_correr = 0
         self.timer_correr = 0
@@ -50,7 +47,6 @@ class Player:
             self.rect.x -= self.speed
             self.direction = "left"
             moviendo = True
-
         if keys[pygame.K_d]:
             self.rect.x += self.speed
             self.direction = "right"
@@ -59,16 +55,13 @@ class Player:
         if moviendo:
             self.timer_correr += dt
             if self.timer_correr >= self.velocidad_animacion:
-                self.frame_correr += 1
-                if self.frame_correr >= 8:
-                    self.frame_correr = 0
+                self.frame_correr = (self.frame_correr + 1) % 8
                 self.timer_correr = 0
         else:
             self.frame_correr = 0
             self.timer_correr = 0
 
         self.imagen = self.animacion_correr[self.frame_correr]
-
         if self.direction == "left":
             self.imagen = pygame.transform.flip(self.imagen, True, False)
 
@@ -80,91 +73,13 @@ class Player:
         self.rect.y += self.velocity_y
 
         suelo_y = 590
-
         if self.rect.bottom >= suelo_y:
             self.rect.bottom = suelo_y
             self.velocity_y = 0
             self.on_ground = True
 
         self.rect.x = max(0, min(GAME_WIDTH - self.rect.width, self.rect.x))
-
         self.hurtbox.topleft = self.rect.topleft
 
-        if self.attack_cooldown > 0:
-            self.attack_cooldown -= dt
-
-        if self.attacking:
-            if self.direction == "right":
-                self.hitbox.topleft = (
-                    self.rect.right,
-                    self.rect.y + 20
-                )
-            else:
-                self.hitbox.topleft = (
-                    self.rect.left - 50,
-                    self.rect.y + 20
-                )
-
-            self.attack_timer -= dt
-
-            if self.attack_timer <= 0:
-                self.attacking = False
-                self.has_hit = False
-                self.hitbox = pygame.Rect(0, 0, 0, 0)
-
-    def attack(self):
-        if self.attack_cooldown > 0:
-            return
-
-        if self.attacking:
-            return
-
-        self.attacking = True
-        self.attack_timer = 0.15
-        self.attack_cooldown = self.attack_cooldown_time
-        self.has_hit = False
-
-        if self.direction == "right":
-            self.hitbox = pygame.Rect(
-                self.rect.right,
-                self.rect.y + 20,
-                50,
-                50
-            )
-        else:
-            self.hitbox = pygame.Rect(
-                self.rect.left - 50,
-                self.rect.y + 20,
-                50,
-                50
-            )
-
-    def take_damage(self, damage):
-        self.health -= damage
-        print("Jugador recibió", damage, "de daño")
-        print("Vida del jugador:", self.health)
-
-    def draw(self):
-        screen.blit(self.imagen, self.rect)
-
-        pygame.draw.rect(
-            screen,
-            (0, 255, 0),
-            self.hurtbox,
-            2
-        )
-
-        if self.attacking:
-            pygame.draw.rect(
-                screen,
-                (255, 255, 0),
-                self.hitbox,
-                2
-            )
-player = Player(200, 500)
-
-player.draw()
-
-pygame.display.flip()
-
-pygame.quit()
+    def draw(self, surface):
+        surface.blit(self.imagen, self.rect)
