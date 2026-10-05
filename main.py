@@ -1,7 +1,7 @@
 import pygame
 import sys
 
-# 1. INICIALIZACIÓN ABSOLUTA: Esto previene cierres inesperados por orden de carga
+
 pygame.init()
 from config import SCREEN_WIDTH, SCREEN_HEIGHT, GAME_WIDTH, GAME_HEIGHT, BASE_DIR, abrir_archivo
 
@@ -23,7 +23,7 @@ font_char_name = pygame.font.SysFont("Impact", 42)
 font_desc = pygame.font.SysFont("Arial", 16, bold=False)
 font_ui_help = pygame.font.SysFont("Arial", 18, bold=True)
 
-menu_options = ["NEW GAME", "SELECT CHARACTER", "CONTINUE", "CONTROLS", "TROPHIES", "EXIT"]
+menu_options = ["NEW GAME", "CONTINUE", "CONTROLS", "TROPHIES", "EXIT"]
 selected_option = 0
 game_state = "MENU"
 
@@ -33,30 +33,83 @@ assets_chars = BASE_DIR / "assets" / "sprites" / "seleccion_personajes"
 characters = [
     {
         "name": "Fei Liang",
-        "file": assets_chars / "image_nu4OJY.txt",
+        "file": assets_chars / "Fei_liang.png",
         "color": (225, 220, 205),
         "desc": "Un héroe capaz de manipular el viento y moverse a una velocidad extraordinaria. Su origen está rodeado de misterio, pero su aparición suele coincidir con grandes amenazas.\n\nÁgil, impredecible y veloz. Utiliza corrientes de aire para aumentar sus movimientos, esquivar ataques y lanzar poderosas ráfagas."
     },
     {
         "name": "Korg",
-        "file": assets_chars / "image_zUzvZd.txt",
+        "file": assets_chars / "Korg.png",
         "color": (240, 150, 50),
         "desc": "Un guerrero elegido por el poder de la tierra. Su cuerpo y su espíritu se volvieron tan resistentes como la roca, convirtiéndolo en uno de los protectores más fuertes del grupo.\n\nSerio, resistente y protector. Puede crear roca, levantar barreras y potenciar sus golpes con energía terrestre."
     },
     {
         "name": "Diana",
-        "file": assets_chars / "image_rOhLRq.txt",
+        "file": assets_chars / "Diana.png",
         "color": (50, 155, 90),
         "desc": "Una heroína conectada con la naturaleza desde su nacimiento. Puede controlar plantas y utilizar su energía para proteger la vida y combatir a quienes amenazan el equilibrio del mundo.\n\nInteligente, tranquila y estratégica. Utiliza su arco junto con enredaderas, raíces y ataques de energía vegetal."
     },
     {
         "name": "Escanor",
-        "file": assets_chars / "image_F6W_Wb.txt",
+        "file": assets_chars / "Escanor.png",
         "color": (195, 35, 35),
         "desc": "Un héroe nacido con el poder de controlar las llamas. Desde pequeño aprendió a dominar su temperamento junto con su poder y ahora lucha para proteger a quienes no pueden defenderse.\n\nValiente, impulsivo y decidido. Combate con una espada enorme y concentra fuego en sus ataques para aumentar su fuerza."
     }
 ]
 selected_char_index = 0
+chosen_char_name = None  # héroe confirmado con ENTER
+
+# --- IMÁGENES DE LOS PERSONAJES ---
+# Copiá los 4 PNG a: assets/sprites/seleccion_personajes/
+archivos_imagenes = {
+    "Fei Liang": "Fei_liang.png",
+    "Korg": "Korg.png",
+    "Diana": "Diana.png",
+    "Escanor": "Escanor.png",
+}
+imagenes_chars = {}
+archivos_ya_abiertos = set()
+
+
+def buscar_imagen(nombre_archivo):
+    """Busca el PNG en varias carpetas posibles, sin importar mayúsculas/minúsculas."""
+    carpetas = [
+        assets_chars,
+        BASE_DIR / "assets" / "sprites",
+        BASE_DIR / "assets",
+        BASE_DIR / "imagenes",
+        BASE_DIR,
+    ]
+    for carpeta in carpetas:
+        if carpeta.is_dir():
+            for archivo in carpeta.iterdir():
+                if archivo.name.lower() == nombre_archivo.lower():
+                    return archivo
+    return None
+
+
+def obtener_imagen_personaje(char, caja=(314, 314)):
+    """Carga la imagen una sola vez y la escala para que entre en la caja."""
+    nombre = char["name"]
+    if nombre not in imagenes_chars:
+        img = None
+        ruta = buscar_imagen(archivos_imagenes[nombre])
+        if ruta is None:
+            print(f"[IMAGEN] No encontré {archivos_imagenes[nombre]}. "
+                  f"Ponelo en: {assets_chars}")
+        else:
+            try:
+                img = pygame.image.load(str(ruta)).convert_alpha()
+                w, h = img.get_size()
+                esc = min(caja[0] / w, caja[1] / h)
+                # scale (no smoothscale) para mantener el look pixel art nítido
+                img = pygame.transform.scale(img, (int(w * esc), int(h * esc)))
+            except pygame.error as e:
+                print(f"[IMAGEN] Error cargando {ruta}: {e}")
+                img = None  # se usa el dibujo vectorial de respaldo
+        imagenes_chars[nombre] = img
+    return imagenes_chars[nombre]
+
 
 def draw_text_wrapped(surface, text, x, y, max_width, font, color):
     """Procesador dinámico para el ajuste de líneas de texto en HD"""
@@ -82,8 +135,9 @@ def draw_text_wrapped(surface, text, x, y, max_width, font, color):
             surface.blit(text_surf, (x, current_y))
             current_y += font.get_linesize()
 
+
 def draw_character_artwork(surface, name, cx, cy):
-    """Renderiza vectorialmente las características físicas de tus personajes en el recuadro central"""
+    """Dibujo vectorial de respaldo, se usa solo si falta la imagen PNG"""
     if name == "Fei Liang":
         pygame.draw.rect(surface, (45, 40, 42), (cx - 40, cy - 10, 80, 70), border_radius=5)
         pygame.draw.circle(surface, (235, 225, 215), (cx, cy - 25), 32)
@@ -91,7 +145,7 @@ def draw_character_artwork(surface, name, cx, cy):
         pygame.draw.circle(surface, (245, 190, 150), (cx, cy - 24), 8)
         pygame.draw.line(surface, (20, 20, 20), (cx - 45, cy - 45), (cx - 15, cy - 10), 8)
         pygame.draw.line(surface, (20, 20, 20), (cx + 45, cy - 45), (cx + 15, cy - 10), 8)
-    
+
     elif name == "Korg":
         pygame.draw.rect(surface, (70, 50, 45), (cx - 40, cy - 10, 80, 70), border_radius=5)
         pygame.draw.circle(surface, (240, 185, 145), (cx, cy - 25), 28)
@@ -109,19 +163,45 @@ def draw_character_artwork(surface, name, cx, cy):
         pygame.draw.polygon(surface, (245, 195, 155), [(cx - 20, cy - 25), (cx - 42, cy - 35), (cx - 20, cy - 15)])
         pygame.draw.polygon(surface, (245, 195, 155), [(cx + 20, cy - 25), (cx + 42, cy - 35), (cx + 20, cy - 15)])
         pygame.draw.rect(surface, (20, 100, 50), (cx - 15, cy - 44, 30, 8))
-        
+
     elif name == "Escanor":
         pygame.draw.rect(surface, (165, 25, 25), (cx - 50, cy - 5, 100, 65), border_radius=10)
         pygame.draw.rect(surface, (220, 170, 45), (cx - 50, cy - 5, 100, 65), 3, border_radius=10)
         pygame.draw.circle(surface, (240, 190, 145), (cx, cy - 28), 26)
         pygame.draw.rect(surface, (95, 55, 40), (cx - 24, cy - 56, 48, 28), border_radius=4)
 
+
+def render_menu(time_counter):
+    """Menú principal: escenario animado + opciones"""
+    animacion_menu.draw_scenery(canvas, time_counter)
+    pygame.transform.scale(canvas, (SCREEN_WIDTH, SCREEN_HEIGHT), screen)
+
+    title_surf = font_title.render("REQUIEM", True, (230, 40, 40))
+    screen.blit(title_surf, (80, 60))
+    sub_surf = font_menu.render("EL JUICIO FINAL", True, (235, 185, 40))
+    screen.blit(sub_surf, (84, 135))
+
+    for i, option in enumerate(menu_options):
+        activa = i == selected_option
+        color = (255, 255, 255) if activa else (150, 130, 130)
+        texto = ("> " if activa else "  ") + option
+        surf = font_menu.render(texto, True, color)
+        screen.blit(surf, (84, 230 + i * 42))
+
+    if chosen_char_name:
+        info = font_ui_help.render(f"Héroe elegido: {chosen_char_name}", True, (235, 185, 40))
+        screen.blit(info, (84, SCREEN_HEIGHT - 60))
+
+
 def render_character_select_high_res(time_counter):
     """Estructura de la escena de selección en alta fidelidad nativa"""
     screen.fill((14, 11, 18))
-    
+
     char = characters[selected_char_index]
-    abrir_archivo(char["file"]) # Lectura mediante tu función personalizada
+    # Lectura mediante tu función personalizada (una sola vez por archivo)
+    if char["file"] not in archivos_ya_abiertos:
+        #abrir_archivo(char["file"])
+        archivos_ya_abiertos.add(char["file"])
 
     # Cabecera de escena
     title_surf = font_title.render("SELECCIONA TU HÉROE", True, (230, 40, 40))
@@ -137,7 +217,12 @@ def render_character_select_high_res(time_counter):
 
     center_x = box_x + box_width // 2
     center_y = box_y + box_height // 2
-    draw_character_artwork(screen, char["name"], center_x, center_y)
+
+    img = obtener_imagen_personaje(char)
+    if img:
+        screen.blit(img, img.get_rect(center=(center_x, center_y)))
+    else:
+        draw_character_artwork(screen, char["name"], center_x, center_y)
 
     # Nombre debajo de la caja
     name_surf = font_char_name.render(char["name"], True, (255, 255, 255))
@@ -154,11 +239,11 @@ def render_character_select_high_res(time_counter):
     desc_x = 590
     desc_y = 185
     desc_width = 600
-    
+
     header_desc = font_menu.render("BIOGRAFÍA Y ESTILO DE COMBATE", True, char["color"])
     screen.blit(header_desc, (desc_x, desc_y))
     pygame.draw.line(screen, (60, 50, 70), (desc_x, desc_y + 35), (desc_x + desc_width, desc_y + 35), 2)
-    
+
     # Renderizado ajustado de la descripción en HD
     draw_text_wrapped(screen, char["desc"], desc_x, desc_y + 55, desc_width, font_desc, (220, 220, 225))
 
@@ -166,15 +251,15 @@ def render_character_select_high_res(time_counter):
     help_surf = font_ui_help.render("[ENTER] CONFIRMAR HÉROE   |   [ESC] VOLVER AL MENÚ", True, (130, 130, 140))
     screen.blit(help_surf, (SCREEN_WIDTH // 2 - help_surf.get_width() // 2, SCREEN_HEIGHT - 65))
 
+
 def main():
-    global selected_option, game_state, selected_char_index
+    global selected_option, game_state, selected_char_index, chosen_char_name
     time_counter = 0
     running = True
 
     while running:
         clock.tick(60)
         time_counter += 0.05
-        mouse_x, mouse_y = pygame.mouse.get_pos()
 
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -187,17 +272,33 @@ def main():
                         selected_option = (selected_option + 1) % len(menu_options)
                     elif event.key == pygame.K_RETURN:
                         option = menu_options[selected_option]
-                        if option == "SELECT CHARACTER": 
+                        if option == "NEW GAME":
                             game_state = "CHARACTER_SELECT"
-                        elif option == "EXIT": 
+                        elif option == "EXIT":
                             running = False
-
+                #seleccionar personaje
                 elif game_state == "CHARACTER_SELECT":
                     if event.key == pygame.K_LEFT:
                         selected_char_index = (selected_char_index - 1) % len(characters)
                     elif event.key == pygame.K_RIGHT:
                         selected_char_index = (selected_char_index + 1) % len(characters)
-                    elif event.key == pygame.K_ESCAPE: 
+                    elif event.key == pygame.K_RETURN:
+                        chosen_char_name = characters[selected_char_index]["name"]
+                        game_state = "MENU"
+                    elif event.key == pygame.K_ESCAPE:
                         game_state = "MENU"
 
+        # --- DIBUJO ---
+        if game_state == "MENU":
+            render_menu(time_counter)
+        elif game_state == "CHARACTER_SELECT":
+            render_character_select_high_res(time_counter)
 
+        pygame.display.flip()
+
+    pygame.quit()
+    sys.exit()
+
+
+if __name__ == "__main__":
+    main()
