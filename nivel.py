@@ -4,6 +4,8 @@ import sys
 import math
 
 from jugadores import p_viento
+from jugadores import p_tierra
+from jugadores import p_fuego
 
 
 # ============================================================
@@ -150,14 +152,12 @@ def dibujar_boton_interaccion(
         pos_y
     )
 
-    # Fondo
     pygame.draw.rect(
         superficie,
         (20, 20, 25),
         rect_box
     )
 
-    # Borde exterior
     pygame.draw.rect(
         superficie,
         (220, 180, 60),
@@ -165,7 +165,6 @@ def dibujar_boton_interaccion(
         4
     )
 
-    # Borde interior
     pygame.draw.rect(
         superficie,
         (100, 75, 20),
@@ -173,7 +172,6 @@ def dibujar_boton_interaccion(
         2
     )
 
-    # Texto
     superficie.blit(
         texto,
         rect_texto
@@ -232,10 +230,22 @@ def mostrar_athros():
 
 
 # ============================================================
-# CREAR JUGADOR
+# CREAR JUGADORES
 # ============================================================
 
-heroe = p_viento(
+heroe1 = p_viento(
+    200,
+    POSICION_SUELO,
+    POSICION_SUELO
+)
+
+heroe2 = p_tierra(
+    200,
+    POSICION_SUELO,
+    POSICION_SUELO
+)
+
+heroe3 = p_fuego(
     200,
     POSICION_SUELO,
     POSICION_SUELO
@@ -243,13 +253,16 @@ heroe = p_viento(
 
 
 # ============================================================
-# ESTADO DEL JUGADOR
+# JUGADOR ACTUAL
 # ============================================================
+#
+# None   = todavía no se eligió personaje
+# heroe1 = P_viento
+# heroe2 = P_tierra
+# heroe3 = P_fuego
+#
 
-# IMPORTANTE:
-# El jugador existe, pero NO está visible al comenzar.
-
-jugador_visible = False
+jugador_actual = None
 
 
 # ============================================================
@@ -274,20 +287,26 @@ ejecutando = True
 
 while ejecutando:
 
-    # --------------------------------------------------------
+    # ========================================================
     # COMPROBAR ZONA DE INTERACCIÓN
-    # --------------------------------------------------------
+    # ========================================================
 
-    en_zona_hueco = (
-        jugador_visible
-        and HUECO_INICIO
-        <= heroe.pos_x
-        <= HUECO_FIN
-    )
+    if jugador_actual is not None:
 
-    # --------------------------------------------------------
+        en_zona_hueco = (
+            HUECO_INICIO
+            <= jugador_actual.pos_x
+            <= HUECO_FIN
+        )
+
+    else:
+
+        en_zona_hueco = False
+
+
+    # ========================================================
     # EVENTOS
-    # --------------------------------------------------------
+    # ========================================================
 
     for evento in pygame.event.get():
 
@@ -299,24 +318,63 @@ while ejecutando:
 
             ejecutando = False
 
+
         # ====================================================
-        # TECLA U
+        # SELECCIONAR P_VIENTO - U
         # ====================================================
-        #
-        # Al presionar U aparece el héroe.
-        #
 
         if (
             evento.type == pygame.KEYDOWN
             and evento.key == pygame.K_u
-            and not jugador_visible
+            and jugador_actual is None
         ):
 
-            jugador_visible = True
+            jugador_actual = heroe1
+
+            todos_los_sprites.empty()
 
             todos_los_sprites.add(
-                heroe
+                jugador_actual
             )
+
+
+        # ====================================================
+        # SELECCIONAR P_TIERRA - I
+        # ====================================================
+
+        if (
+            evento.type == pygame.KEYDOWN
+            and evento.key == pygame.K_i
+            and jugador_actual is None
+        ):
+
+            jugador_actual = heroe2
+
+            todos_los_sprites.empty()
+
+            todos_los_sprites.add(
+                jugador_actual
+            )
+
+
+        # ====================================================
+        # SELECCIONAR P_FUEGO - J
+        # ====================================================
+
+        if (
+            evento.type == pygame.KEYDOWN
+            and evento.key == pygame.K_j
+            and jugador_actual is None
+        ):
+
+            jugador_actual = heroe3
+
+            todos_los_sprites.empty()
+
+            todos_los_sprites.add(
+                jugador_actual
+            )
+
 
         # ====================================================
         # INTERACCIÓN CON C
@@ -326,49 +384,66 @@ while ejecutando:
             evento.type == pygame.KEYDOWN
             and evento.key == pygame.K_c
             and en_zona_hueco
+            and jugador_actual is not None
         ):
 
-            # Mostrar pantalla de Athros
+            # ------------------------------------------------
+            # MOSTRAR PANTALLA DE ATHROS
+            # ------------------------------------------------
+
             mostrar_athros()
 
             # ------------------------------------------------
-            # TELETRANSPORTE
+            # TELETRANSPORTAR JUGADOR ACTUAL
             # ------------------------------------------------
 
-            heroe.pos_x = (
+            jugador_actual.pos_x = (
                 ANCHO * 2 + 150
             )
+
+            # ------------------------------------------------
+            # ACTUALIZAR CÁMARA
+            # ------------------------------------------------
 
             scroll_x = (
                 ANCHO * 2
             )
 
+            # ------------------------------------------------
+            # LIMPIAR EVENTOS
+            # ------------------------------------------------
+
             pygame.event.clear()
 
             break
+
 
         # ====================================================
         # EVENTOS DEL JUGADOR
         # ====================================================
 
-        if jugador_visible:
+        if jugador_actual is not None:
 
-            heroe.procesar_evento(
+            jugador_actual.procesar_evento(
                 evento
             )
+
 
     # ========================================================
     # CÁMARA
     # ========================================================
 
-    if jugador_visible:
+    if jugador_actual is not None:
 
         target_scroll = int(
-            heroe.pos_x
+            jugador_actual.pos_x
             - ANCHO // 2
         )
 
-        # La cámara solamente avanza
+        # ----------------------------------------------------
+        # LA CÁMARA SOLAMENTE AVANZA
+        # ----------------------------------------------------
+
         scroll_x = max(
             scroll_x,
             min(
@@ -377,16 +452,18 @@ while ejecutando:
             )
         )
 
+
     # ========================================================
     # ACTUALIZAR JUGADOR
     # ========================================================
 
-    if jugador_visible:
+    if jugador_actual is not None:
 
         todos_los_sprites.update(
             scroll_x,
             ANCHO_MUNDO
         )
+
 
     # ========================================================
     # DIBUJAR FONDOS
@@ -413,6 +490,7 @@ while ejecutando:
                 )
             )
 
+
     # ========================================================
     # DIBUJAR INTERACCIÓN
     # ========================================================
@@ -428,10 +506,7 @@ while ejecutando:
         < ANCHO + 150
     ):
 
-        # Solo mostrar la interacción
-        # cuando el jugador ya apareció.
-
-        if jugador_visible:
+        if jugador_actual is not None:
 
             dibujar_boton_interaccion(
                 pantalla,
@@ -439,15 +514,17 @@ while ejecutando:
                 POSICION_SUELO - 110
             )
 
+
     # ========================================================
     # DIBUJAR JUGADOR
     # ========================================================
 
-    if jugador_visible:
+    if jugador_actual is not None:
 
         todos_los_sprites.draw(
             pantalla
         )
+
 
     # ========================================================
     # ACTUALIZAR PANTALLA
