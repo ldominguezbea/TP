@@ -36,13 +36,13 @@ NODE_R = 38
 # boss: clave de la silueta del jefe | tag/big: texto del cartel
 # ----------------------------------------------------------------------------
 tierra_levels = [
-    {"id": "Nivel 2", "file": None, "lat": 0, "lon": -110, "boss": "2", "tag": "NIVEL", "big": "2"},
+    {"id": "Nivel 2", "file": "nivel_2.py", "lat": 0, "lon": -110, "boss": "2", "tag": "NIVEL", "big": "2"},
     {"id": "Nivel 1", "file": "nivel_1.py", "lat": 25, "lon": 0, "boss": "1", "tag": "NIVEL", "big": "1"},
-    {"id": "Nivel 3", "file": None, "lat": 0, "lon": 110, "boss": "3", "tag": "NIVEL", "big": "3"},
+    {"id": "Nivel 3", "file": "nivel_3.py", "lat": 0, "lon": 110, "boss": "3", "tag": "NIVEL", "big": "3"},
 ]
 gehena_levels = [
-    {"id": "Nivel 4", "file": None, "lat": 20, "lon": -80, "boss": "4", "tag": "NIVEL", "big": "4"},
-    {"id": "Nivel Secreto", "file": None, "lat": -10, "lon": 80, "boss": "?", "tag": "???", "big": "SECRETO"},
+    {"id": "Nivel 4", "file": "nivel_4.py", "lat": 20, "lon": -80, "boss": "4", "tag": "NIVEL", "big": "4"},
+    {"id": "Nivel Secreto", "file": "nivel_5.py", "lat": -10, "lon": 80, "boss": "?", "tag": "???", "big": "SECRETO"},
 ]
  
 current_planet = "TIERRA"
@@ -56,20 +56,46 @@ SUN_LON = 35.0       # posicion del sol en el "mundo" (gira junto con el planeta
  
  
 def ejecutar_nivel(script_name):
-    """Ejecuta el script del nivel seleccionado."""
-    if script_name and os.path.exists(script_name):
-        subprocess.Popen([sys.executable, script_name])
-        pygame.quit()
-        sys.exit()
-    elif script_name:
-        print(f"[Aviso] El archivo '{script_name}' no existe en el directorio.")
-    else:
+    """Abre el nivel seleccionado y espera a que termine."""
+    if not script_name:
         print("[Aviso] Este nivel aún no está disponible.")
- 
- 
-# ----------------------------------------------------------------------------
-# Utilidades
-# ----------------------------------------------------------------------------
+        return
+
+    carpeta_selector = os.path.dirname(os.path.abspath(__file__))
+    ruta_nivel = os.path.abspath(os.path.join(carpeta_selector, script_name))
+
+    if not os.path.isfile(ruta_nivel):
+        print("[ERROR] No se encontró el nivel:")
+        print(ruta_nivel)
+        input("Presioná ENTER para cerrar...")
+        return
+
+    print(f"[OK] Abriendo nivel: {ruta_nivel}")
+
+    ejecutable_python = sys.executable
+    if ejecutable_python.lower().endswith("pythonw.exe"):
+        ejecutable_python = os.path.join(
+            os.path.dirname(ejecutable_python),
+            "python.exe"
+        )
+
+    try:
+        pygame.quit()
+
+        # El selector espera mientras se ejecuta el nivel.
+        # Esto evita que el proceso del nivel dependa del selector.
+        resultado = subprocess.run(
+            [ejecutable_python, ruta_nivel],
+            cwd=carpeta_selector
+        )
+
+        print(f"[INFO] Nivel terminado. Código: {resultado.returncode}")
+        sys.exit()
+
+    except Exception as error:
+        print(f"[ERROR] No se pudo iniciar el nivel: {error}")
+        input("Presioná ENTER para cerrar...")
+
 def lerp(a, b, t):
     return a + (b - a) * t
  
@@ -630,6 +656,162 @@ def scene_secret(k):
 SCENES = {"1": scene_boss1, "2": scene_boss2, "3": scene_boss3, "4": scene_boss4, "?": scene_secret}
  
  
+# ----------------------------------------------------------------------------
+# ICONOS ANIMADOS DE LOS NIVELES
+# ----------------------------------------------------------------------------
+def _portal_colors(kind):
+    return {
+        "1": ((255, 55, 45), (120, 8, 20), (255, 170, 90)),   # rojo
+        "2": ((135, 20, 55), (55, 5, 25), (235, 55, 110)),     # bordo
+        "3": ((55, 235, 115), (5, 75, 45), (150, 255, 170)),   # verde
+    }[kind]
+
+
+def draw_animated_portal(cx, cy, radius, kind, ticks):
+    """Portal que gira constantemente sobre sí mismo."""
+    outer, inner, glow = _portal_colors(kind)
+
+    # Halo pulsante.
+    pulse = 0.92 + 0.10 * math.sin(ticks * 0.006)
+    for i in range(7, 0, -1):
+        rr = int(radius * (1.0 + i * 0.075))
+        alpha = int(10 * (8 - i) * pulse)
+        pygame.draw.circle(
+            screen, glow + (max(0, min(70, alpha)),),
+            (cx, cy), rr, max(1, int(radius * 0.035))
+        )
+
+    # Núcleo.
+    pygame.draw.circle(screen, (7, 5, 12), (cx, cy), int(radius * 0.92))
+    pygame.draw.circle(screen, inner, (cx, cy), int(radius * 0.86))
+
+    # Anillos giratorios.
+    rot = ticks * 0.0045
+    for ring in range(3):
+        rr = radius * (0.42 + ring * 0.18)
+        points = []
+        segments = 30
+        phase = rot * (1 if ring % 2 == 0 else -1) + ring * 1.7
+
+        for j in range(segments):
+            a = math.tau * j / segments + phase
+            wobble = 1.0 + 0.055 * math.sin(ticks * 0.008 + j * 1.9 + ring)
+            points.append((
+                cx + math.cos(a) * rr * wobble,
+                cy + math.sin(a) * rr * wobble
+            ))
+
+        pygame.draw.lines(
+            screen, outer, True, points,
+            max(2, int(radius * 0.045))
+        )
+
+    # Tres brazos de energía que giran en sentido contrario.
+    for arm in range(3):
+        pts = []
+        start = rot * (1.25 if arm % 2 == 0 else -1.0) + arm * math.tau / 3
+        for j in range(24):
+            t = j / 23
+            a = start + t * math.tau * 1.5
+            rr = radius * (0.08 + t * 0.62)
+            pts.append((cx + math.cos(a) * rr, cy + math.sin(a) * rr))
+        pygame.draw.lines(
+            screen, glow, False, pts,
+            max(2, int(radius * 0.032))
+        )
+
+    # Núcleo luminoso.
+    core_r = max(2, int(radius * (0.11 + 0.025 * math.sin(ticks * 0.012))))
+    pygame.draw.circle(screen, glow, (cx, cy), core_r)
+    pygame.draw.circle(screen, (255, 245, 220), (cx, cy), max(1, core_r // 3))
+
+
+def draw_animated_fire(cx, cy, radius, ticks):
+    """Icono del Nivel 4 formado solamente por fuego animado."""
+    surf_size = int(radius * 2.6)
+    fire = pygame.Surface((surf_size, surf_size), pygame.SRCALPHA)
+    c = surf_size // 2
+    base_y = int(radius * 1.22)
+
+    # Resplandor.
+    for i in range(7, 0, -1):
+        rr = int(radius * (0.75 + i * 0.11))
+        pygame.draw.circle(fire, (255, 55, 5, 10), (c, base_y), rr)
+
+    flames = [
+        (-0.62, 0.90, 0.95, 0.0),
+        (-0.38, 1.08, 1.20, 1.8),
+        (-0.12, 0.82, 1.00, 3.2),
+        (0.12, 1.18, 1.30, 0.9),
+        (0.40, 0.98, 1.10, 2.5),
+        (0.64, 0.82, 0.92, 4.1),
+    ]
+
+    for ox, hmul, wmul, phase in flames:
+        sway = math.sin(ticks * 0.010 + phase) * radius * 0.10
+        flick = 1.0 + 0.12 * math.sin(ticks * 0.013 + phase * 1.7)
+        x = c + ox * radius + sway
+        h = radius * hmul * flick
+        w = radius * 0.42 * wmul
+
+        # Rojo exterior.
+        pts = [
+            (x - w * 0.62, base_y),
+            (x - w * 0.72, base_y - h * 0.35),
+            (x - w * 0.25, base_y - h * 0.72),
+            (x - w * 0.10, base_y - h),
+            (x + w * 0.10, base_y - h * 0.72),
+            (x + w * 0.52, base_y - h * 0.52),
+            (x + w * 0.70, base_y),
+        ]
+        pygame.draw.polygon(fire, (205, 22, 5, 255), pts)
+
+        # Naranja.
+        iw, ih = w * 0.68, h * 0.68
+        ipts = [
+            (x - iw * 0.60, base_y),
+            (x - iw * 0.52, base_y - ih * 0.35),
+            (x - iw * 0.10, base_y - ih * 0.76),
+            (x + iw * 0.03, base_y - ih),
+            (x + iw * 0.22, base_y - ih * 0.58),
+            (x + iw * 0.55, base_y),
+        ]
+        pygame.draw.polygon(fire, (255, 105, 10, 255), ipts)
+
+        # Amarillo interior.
+        yw, yh = w * 0.34, h * 0.42
+        ypts = [
+            (x - yw, base_y),
+            (x - yw * 0.75, base_y - yh * 0.40),
+            (x, base_y - yh),
+            (x + yw * 0.75, base_y - yh * 0.35),
+            (x + yw, base_y),
+        ]
+        pygame.draw.polygon(fire, (255, 220, 65, 255), ypts)
+
+    # Chispas ascendentes.
+    for i in range(18):
+        phase = i * 1.73
+        x = c + math.sin(ticks * 0.004 + phase) * radius * 0.95
+        cycle = (ticks * (0.035 + (i % 4) * 0.006) + i * 37) % int(radius * 1.65)
+        y = base_y - cycle
+        alpha = int(220 * (1 - cycle / (radius * 1.65)))
+        if alpha > 0:
+            pygame.draw.circle(
+                fire,
+                (255, 185 + (i % 2) * 35, 45, alpha),
+                (int(x), int(y)),
+                max(1, int(radius * 0.035))
+            )
+
+    # Recorte circular.
+    mask = pygame.Surface(fire.get_size(), pygame.SRCALPHA)
+    pygame.draw.circle(mask, (255, 255, 255, 255), (c, c), int(radius * 1.02))
+    fire.blit(mask, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
+    screen.blit(fire, fire.get_rect(center=(cx, cy)))
+
+
+
 def make_node_surface(key):
     big = SCENES[key](2.0)
     dd = NODE_R * 2
@@ -691,39 +873,59 @@ def get_plaque(tag, big, selected):
 def draw_level_node(cx, cy, lvl, selected, ticks, scale):
     pulse = math.sin(ticks * 0.008)
     r = NODE_R * scale * (1 + 0.06 * pulse if selected else 1)
+
     if selected:
         gs = int(r * 5.2)
         g = pygame.transform.smoothscale(NODE_GLOW, (gs, gs))
         screen.blit(g, g.get_rect(center=(cx, cy)))
-    # Borde de fuego
-    n = 24
-    boost = 1.4 if selected else 1.0
-    for layer, (color, frac) in enumerate(((( 200, 30, 0), 1.0), ((255, 130, 10), 0.68), ((255, 224, 90), 0.38))):
-        for k in range(n):
-            ang = k * math.tau / n + ticks * 0.0005
-            ln = (10 + 7 * math.sin(ticks * 0.012 + k * 1.9) + 4 * math.sin(ticks * 0.021 + k * 3.1)) * scale * boost
-            ln = ln * frac
-            sway = 0.12 * math.sin(ticks * 0.009 + k)
-            hw = math.pi / n * 1.15 * (1 - layer * 0.18)
-            b1 = (cx + math.cos(ang - hw) * (r + 1), cy + math.sin(ang - hw) * (r + 1))
-            b2 = (cx + math.cos(ang + hw) * (r + 1), cy + math.sin(ang + hw) * (r + 1))
-            tip = (cx + math.cos(ang + sway) * (r + 3 + ln), cy + math.sin(ang + sway) * (r + 3 + ln))
-            pygame.draw.polygon(screen, color, [b1, tip, b2])
-    pygame.draw.circle(screen, (40, 8, 0), (cx, cy), r + 4)
-    inner = pygame.transform.smoothscale(NODE_SURFS[lvl["boss"]], (max(4, int(2 * r)), max(4, int(2 * r))))
-    screen.blit(inner, inner.get_rect(center=(cx, cy)))
-    pygame.draw.circle(screen, (255, 140, 20), (cx, cy), r + 3, 3)
-    pygame.draw.circle(screen, (255, 226, 120) if selected else (255, 190, 70), (cx, cy), r, 1)
- 
+
+    # Niveles 1, 2 y 3: portales animados.
+    if lvl["boss"] in ("1", "2", "3"):
+        draw_animated_portal(cx, cy, r, lvl["boss"], ticks)
+
+    # Nivel 4: fuego animado.
+    elif lvl["boss"] == "4":
+        draw_animated_fire(cx, cy, r, ticks)
+
+    # Nivel secreto: se conserva el signo de interrogación.
+    else:
+        inner = pygame.transform.smoothscale(
+            NODE_SURFS[lvl["boss"]],
+            (max(4, int(2 * r)), max(4, int(2 * r)))
+        )
+        screen.blit(inner, inner.get_rect(center=(cx, cy)))
+
+    pygame.draw.circle(
+        screen, (255, 140, 20), (cx, cy), r + 3,
+        max(2, int(3 * scale))
+    )
+    pygame.draw.circle(
+        screen,
+        (255, 226, 120) if selected else (255, 190, 70),
+        (cx, cy), r, max(1, int(scale))
+    )
+
     plaque = get_plaque(lvl["tag"], lvl["big"], selected)
     if scale < 0.98:
         plaque = pygame.transform.smoothscale(
-            plaque, (int(plaque.get_width() * max(0.7, scale)), int(plaque.get_height() * max(0.7, scale))))
+            plaque,
+            (
+                int(plaque.get_width() * max(0.7, scale)),
+                int(plaque.get_height() * max(0.7, scale))
+            )
+        )
+
     prect = plaque.get_rect(midtop=(cx, cy + r + 10))
     screen.blit(plaque, prect)
-    return pygame.Rect(cx - r - 6, cy - r - 6, 2 * r + 12, int(2 * r + 12 + prect.height + 10))
- 
- 
+
+    return pygame.Rect(
+        cx - r - 6,
+        cy - r - 6,
+        2 * r + 12,
+        int(2 * r + 12 + prect.height + 10)
+    )
+
+
 # ----------------------------------------------------------------------------
 # Fondo espacial
 # ----------------------------------------------------------------------------
