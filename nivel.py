@@ -1,7 +1,6 @@
 import pygame
 import os
-import sys
-import math
+
 
 from jugador1 import p_viento
 from jugador2 import p_tierra
@@ -571,4 +570,4 @@ while ejecutando:
 # ============================================================
 
 pygame.quit()
-sys.exit()
+
