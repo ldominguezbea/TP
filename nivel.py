@@ -3,9 +3,10 @@ import os
 import sys
 import math
 
-from jugadores import p_viento
-from jugadores import p_tierra
-from jugadores import p_fuego
+from jugador1 import p_viento
+from jugador2 import p_tierra
+from jugador3 import p_fuego
+from jugador4 import p_planta
 
 
 # ============================================================
@@ -251,6 +252,16 @@ heroe3 = p_fuego(
     POSICION_SUELO
 )
 
+# ============================================================
+# NUEVO: CREAR P_PLANTA
+# ============================================================
+
+heroe4 = p_planta(
+    200,
+    POSICION_SUELO,
+    POSICION_SUELO
+)
+
 
 # ============================================================
 # JUGADOR ACTUAL
@@ -260,6 +271,7 @@ heroe3 = p_fuego(
 # heroe1 = P_viento
 # heroe2 = P_tierra
 # heroe3 = P_fuego
+# heroe4 = P_planta
 #
 
 jugador_actual = None
@@ -368,6 +380,25 @@ while ejecutando:
         ):
 
             jugador_actual = heroe3
+
+            todos_los_sprites.empty()
+
+            todos_los_sprites.add(
+                jugador_actual
+            )
+
+
+        # ====================================================
+        # SELECCIONAR P_PLANTA - K
+        # ====================================================
+
+        if (
+            evento.type == pygame.KEYDOWN
+            and evento.key == pygame.K_k
+            and jugador_actual is None
+        ):
+
+            jugador_actual = heroe4
 
             todos_los_sprites.empty()
 
