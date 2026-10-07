@@ -66,121 +66,22 @@ def cargar_animacion_con_altura_maxima(ruta_carpeta, altura_maxima=135, rango_fr
             print(f"Error cargando {ruta_carpeta}: {e}")
     return frames
 
+import json
+import math
+import os
+import random
+ 
+import pygame
+ 
+ESCALA = 2                                                  # pixel-perfect: x2 en pantalla
+CARPETA_SPRITES = os.path.join("assets", "imagenes", "Jefes", "Ciervo")
+ 
+ 
+# ----------------------------------------------------------------------------
+
+
 
 # --- CLASES AUXILIARES ---
-
-class BolaFuegoEspecial(pygame.sprite.Sprite):
-    def __init__(self, x_inicio, y_inicio, x_destino, y_destino):
-        super().__init__()
-        self.image = pygame.Surface((22, 22), pygame.SRCALPHA)
-        pygame.draw.circle(self.image, (255, 60, 0), (11, 11), 11)
-        pygame.draw.circle(self.image, (255, 200, 0), (11, 11), 6)
-        pygame.draw.circle(self.image, (255, 255, 255), (11, 11), 3)
-        
-        self.rect = self.image.get_rect(center=(x_inicio, y_inicio))
-        self.x = float(x_inicio)
-        self.y = float(y_inicio)
-        
-        self.x_destino = x_destino
-        self.y_destino = y_destino
-        self.radio_impacto = 38
-        
-        dx = x_destino - x_inicio
-        dy = y_destino - y_inicio
-        distancia = max(1.0, (dx**2 + dy**2)**0.5)
-        velocidad = 5.5
-        
-        self.vx = (dx / distancia) * velocidad
-        self.vy = (dy / distancia) * velocidad
-        
-        self.impactado = False
-        self.dano = 12
-        self.has_hit = False
-
-    def aplicar_danio_jugador(self, player):
-        if self.has_hit:
-            return
-        if hasattr(player, 'take_damage'):
-            player.take_damage(self.dano)
-        elif hasattr(player, 'recibir_danio'):
-            player.recibir_danio(self.dano)
-        elif hasattr(player, 'health'):
-            player.health -= self.dano
-        self.has_hit = True
-
-    def update(self, player, dt):
-        if self.impactado:
-            return
-
-        self.x += self.vx
-        self.y += self.vy
-        self.rect.center = (int(self.x), int(self.y))
-
-        cuerpo_jugador = getattr(player, 'hurtbox', player.rect)
-
-        if self.rect.colliderect(cuerpo_jugador):
-            self.aplicar_danio_jugador(player)
-            self.impactado = True
-            return
-
-        distancia_al_destino = ((self.x - self.x_destino)**2 + (self.y - self.y_destino)**2)**0.5
-        if distancia_al_destino <= 10 or self.y >= self.y_destino:
-            self.impactado = True
-            
-            distancia_jugador = ((cuerpo_jugador.centerx - self.x_destino)**2 + (cuerpo_jugador.centery - self.y_destino)**2)**0.5
-            if distancia_jugador <= self.radio_impacto:
-                self.aplicar_danio_jugador(player)
-
-    def draw(self, screen):
-        if not self.impactado:
-            surface_roja = pygame.Surface((self.radio_impacto * 2, 16), pygame.SRCALPHA)
-            pygame.draw.ellipse(surface_roja, (255, 0, 0, 140), surface_roja.get_rect())
-            pygame.draw.ellipse(surface_roja, (255, 100, 0, 180), surface_roja.get_rect().inflate(-8, -4))
-            screen.blit(surface_roja, (self.x_destino - self.radio_impacto, self.y_destino - 8))
-            
-            screen.blit(self.image, self.rect)
-
-
-class MiniDemonio:
-    def __init__(self, x, y, retraso_inicial=0.0):
-        self.x = x
-        self.y = y
-        self.intervalo_disparo = 4.0
-        self.timer_disparo = retraso_inicial
-        self.tiempo_vivo = 0.0
-
-    def update(self, dt, player, lista_proyectiles):
-        self.tiempo_vivo += dt
-        self.timer_disparo -= dt
-        if self.timer_disparo <= 0:
-            self.timer_disparo = self.intervalo_disparo
-            cuerpo = getattr(player, 'hurtbox', player.rect)
-            x_destino = cuerpo.centerx
-            y_destino = cuerpo.bottom
-            lista_proyectiles.append(BolaFuegoEspecial(self.x, self.y, x_destino, y_destino))
-
-    def draw(self, screen):
-        offset_y = int(pygame.time.get_ticks() % 800 < 400) * 3
-        pos_y = self.y + offset_y
-
-        aura = pygame.Surface((50, 50), pygame.SRCALPHA)
-        pygame.draw.circle(aura, (255, 30, 0, 60), (25, 25), 22)
-        screen.blit(aura, (self.x - 25, pos_y - 25))
-
-        pygame.draw.polygon(screen, (120, 0, 20), [
-            (self.x, pos_y + 18),
-            (self.x - 14, pos_y - 6),
-            (self.x + 14, pos_y - 6)
-        ])
-        
-        pygame.draw.circle(screen, (180, 10, 10), (int(self.x), int(pos_y - 8)), 11)
-
-        pygame.draw.polygon(screen, (40, 0, 0), [(self.x - 8, pos_y - 14), (self.x - 14, pos_y - 24), (self.x - 3, pos_y - 17)])
-        pygame.draw.polygon(screen, (40, 0, 0), [(self.x + 8, pos_y - 14), (self.x + 14, pos_y - 24), (self.x + 3, pos_y - 17)])
-
-        pygame.draw.circle(screen, (255, 230, 0), (int(self.x - 4), int(pos_y - 10)), 3)
-        pygame.draw.circle(screen, (255, 230, 0), (int(self.x + 4), int(pos_y - 10)), 3)
-
 
 # --- JEFES ---
 
@@ -430,41 +331,6 @@ class WerewolfBoss(Enemigo):
         self.desaparecer_timer = 3.0
         self.muerto_definitivo = False
 
-        self.en_fase_especial = False
-        self.timer_fase_especial = 0.0
-        self.cooldown_inicio_fase = 15.0
-        self.timer_para_fase = self.cooldown_inicio_fase
-        self.invulnerable = False
-        
-        self.minidemonios = []
-        self.proyectiles_fase = []
-
-    def iniciar_fase_especial(self):
-        self.en_fase_especial = True
-        self.timer_fase_especial = 20.0
-        self.invulnerable = True
-        self.attacking = False
-        self.hitbox = pygame.Rect(0, 0, 0, 0)
-        
-        self.rect.centerx = WIDTH // 2
-        self.rect.bottom = SUELO_Y - 200
-        self.cambiar_estado("volar")
-
-        self.minidemonios = [
-            MiniDemonio(120, 200, retraso_inicial=0.0),
-            MiniDemonio(420, 160, retraso_inicial=1.0),
-            MiniDemonio(WIDTH - 420, 160, retraso_inicial=2.0),
-            MiniDemonio(WIDTH - 120, 200, retraso_inicial=3.0)
-        ]
-        self.proyectiles_fase.clear()
-
-    def finalizar_fase_especial(self):
-        self.en_fase_especial = False
-        self.invulnerable = False
-        self.timer_para_fase = self.cooldown_inicio_fase
-        self.minidemonios.clear()
-        self.proyectiles_fase.clear()
-        self.cambiar_estado("idle")
 
     def cambiar_estado(self, nuevo_estado):
         if self.estado_actual != nuevo_estado and nuevo_estado in self.animaciones:
@@ -478,7 +344,7 @@ class WerewolfBoss(Enemigo):
         return random.choice(disponibles) if disponibles else "idle"
 
     def actualizar_hitbox_ataque(self):
-        if self.attacking and not self.en_fase_especial:
+        if self.attacking:
             ancho_hitbox = 140
             alto_hitbox = 135
             if self.direction == "left":
@@ -532,36 +398,11 @@ class WerewolfBoss(Enemigo):
 
         if self.health <= 0:
             self.health = 0
-            self.en_fase_especial = False
-            self.invulnerable = False
             self.cambiar_estado("muerte")
             self.desaparecer_timer -= dt
             if self.desaparecer_timer <= 0:
                 self.muerto_definitivo = True
             self.actualizar_animacion()
-            return
-
-        if self.en_fase_especial:
-            self.timer_fase_especial -= dt
-            
-            for demonio in self.minidemonios:
-                demonio.update(dt, player, self.proyectiles_fase)
-                
-            for p in self.proyectiles_fase[:]:
-                p.update(player, dt)
-                if p.impactado:
-                    self.proyectiles_fase.remove(p)
-
-            if self.timer_fase_especial <= 0:
-                self.finalizar_fase_especial()
-
-            self.actualizar_animacion()
-            return
-
-        if self.timer_para_fase > 0:
-            self.timer_para_fase -= dt
-        elif not self.attacking and self.on_ground:
-            self.iniciar_fase_especial()
             return
 
         if self.cooldown_ataque > 0:
@@ -615,12 +456,6 @@ class WerewolfBoss(Enemigo):
     def draw(self, screen):
         if self.muerto_definitivo:
             return
-
-        if self.en_fase_especial:
-            for p in self.proyectiles_fase:
-                p.draw(screen)
-            for demonio in self.minidemonios:
-                demonio.draw(screen)
 
         if self.image:
             pos_x = self.rect.centerx - (self.image.get_width() // 2)
