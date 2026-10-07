@@ -443,10 +443,11 @@ class Jokai(Enemigo):
 
 
 class OjoVolador(Enemigo):
+    DANO_PROYECTIL = 10
 
     class Proyectil:
 
-        def __init__(self, x, y, direccion, dano=1):
+        def __init__(self, x, y, direccion, dano=10):
             self.direccion = direccion
             self.dano = dano
             self.velocidad = 350
@@ -454,6 +455,8 @@ class OjoVolador(Enemigo):
             self.velocidad_anim = 0.2
             self.destruido = False
             self.estado = "vuelo"
+            self.x_inicial = x
+            self.alcance_max = 1500  # px desde donde fue disparado
 
             try:
                 todos_los_frames = cargar_spritesheet_jokai(
@@ -473,6 +476,8 @@ class OjoVolador(Enemigo):
             if self.destruido:
                 return
 
+            frame_img = self.image
+
             if self.estado == "vuelo":
                 dir_mult = -1 if self.direccion == "left" else 1
                 self.rect.x += int(self.velocidad * dt * dir_mult)
@@ -484,14 +489,18 @@ class OjoVolador(Enemigo):
                 frame_img = self.frames_vuelo[int(self.frame_actual)]
 
                 if player:
-                    target_box = getattr(player, "hurtbox", player.rect)
+                    # Hurtbox del jugador pasada a coordenadas de MUNDO
+                    target_box = getattr(player, "hurtbox", player.rect).copy()
+                    if hasattr(player, "pos_x"):
+                        target_box.centerx = int(player.pos_x)
+
                     if self.rect.colliderect(target_box):
                         if hasattr(player, "take_damage"):
                             player.take_damage(self.dano)
                         self.estado = "impacto"
                         self.frame_actual = 0.0
 
-                if self.rect.right < -200 or self.rect.left > 3000:
+                if abs(self.rect.centerx - self.x_inicial) > self.alcance_max:
                     self.destruido = True
 
             elif self.estado == "impacto":
@@ -507,13 +516,14 @@ class OjoVolador(Enemigo):
 
             self.image = frame_img
 
-        def draw(self, screen):
+        def draw(self, screen, scroll_x=0):
             if not self.destruido and self.image:
-                screen.blit(self.image, self.rect)
+                screen.blit(self.image, (self.rect.x - scroll_x, self.rect.y))
 
-    def __init__(self, x=550, y=500, escala_enemigo=1.8):
+    def __init__(self, x=550, y=500, escala_enemigo=1.8, suelo_y=620):
         super().__init__("Ojo volador", 2, x, y)
 
+        self.suelo_y = suelo_y
         ruta_base = "assets/enemigos/Ojo volador/"
 
         def cargar_anim(nombre_archivo, filas, columnas):
@@ -537,7 +547,6 @@ class OjoVolador(Enemigo):
                     )
                     for f in frames
                 ]
-
             return frames
 
         self.animaciones = {
@@ -551,7 +560,7 @@ class OjoVolador(Enemigo):
         self.frame_actual = 0.0
         self.velocidad_animacion = 0.15
         self.image = self.animaciones["correr"][0]
-        self.rect = self.image.get_rect(topleft=(x, y))
+        self.rect = self.image.get_rect(midbottom=(x, self.suelo_y))
 
         self.esta_rojo = False
         self.desaparecer_timer = 3.0
@@ -562,7 +571,6 @@ class OjoVolador(Enemigo):
         self.cooldown_ataque = 0.0
         self.tiempo_cooldown = 2.0
         self.distancia_disparo = 400
-        self.velocidad_seguimiento_y = 5.0  # Suavizado de movimiento vertical
 
     def cambiar_estado(self, nuevo_estado):
         if self.estado_actual != nuevo_estado:
@@ -572,20 +580,18 @@ class OjoVolador(Enemigo):
                 self.disparado_en_este_ataque = False
 
     def disparar(self):
-        origen_x = self.rect.centerx
-        origen_y = self.rect.centery
-        nuevo_proyectil = self.Proyectil(origen_x, origen_y, self.direction)
-        self.proyectiles.append(nuevo_proyectil)
+        nuevo = self.Proyectil(
+            self.rect.centerx, self.rect.centery,
+            self.direction, dano=self.DANO_PROYECTIL
+        )
+        self.proyectiles.append(nuevo)
 
     def actualizar_animacion(self):
         frames = self.animaciones[self.estado_actual]
         self.frame_actual += self.velocidad_animacion
 
         if self.estado_actual == "golpear":
-            if (
-                int(self.frame_actual) >= 2
-                and not self.disparado_en_este_ataque
-            ):
+            if int(self.frame_actual) >= 2 and not self.disparado_en_este_ataque:
                 self.disparar()
                 self.disparado_en_este_ataque = True
 
@@ -612,11 +618,11 @@ class OjoVolador(Enemigo):
 
         if self.esta_rojo:
             imagen_frame = imagen_frame.copy()
-            imagen_frame.fill(
-                (255, 50, 50), special_flags=pygame.BLEND_RGB_MULT
-            )
+            imagen_frame.fill((255, 50, 50), special_flags=pygame.BLEND_RGB_MULT)
 
         self.image = imagen_frame
+        # El rect siempre coincide con el sprite y conserva los "pies"
+        self.rect = self.image.get_rect(midbottom=self.rect.midbottom)
 
     def take_damage(self, damage):
         if self.health <= 0:
@@ -638,37 +644,28 @@ class OjoVolador(Enemigo):
         if self.muerto_definitivo:
             return
 
+        # Seguro: si la vida llegó a 0 por otro lado, entra igual en "muerte"
+        if self.health <= 0 and self.estado_actual != "muerte":
+            self.cambiar_estado("muerte")
+
         if self.estado_actual == "muerte":
-            if hasattr(self, "aplicar_gravedad_y_suelo"):
-                self.aplicar_gravedad_y_suelo()
             self.desaparecer_timer -= dt
             if self.desaparecer_timer <= 0:
                 self.muerto_definitivo = True
 
         elif self.estado_actual == "dano":
-            if hasattr(self, "aplicar_gravedad_y_suelo"):
-                self.aplicar_gravedad_y_suelo()
-        else:
-            # Alinear altura con el jugador mientras esté vivo
-            if player:
-                # Ajustar suavemente la posición Y hacia el centro del jugador
-                diferencia_y = player.rect.centery - self.rect.centery
-                self.rect.centery += int(diferencia_y * 0.1)
+            pass
 
+        else:
             if self.cooldown_ataque > 0:
                 self.cooldown_ataque -= dt
 
             if player and self.estado_actual != "golpear":
-                distancia = abs(player.rect.centerx - self.rect.centerx)
-                if (
-                    distancia <= self.distancia_disparo
-                    and self.cooldown_ataque <= 0
-                ):
-                    self.direction = (
-                        "left"
-                        if player.rect.centerx < self.rect.centerx
-                        else "right"
-                    )
+                # pos_x = posición en MUNDO del jugador (rect.centerx es de pantalla)
+                px = getattr(player, "pos_x", player.rect.centerx)
+                distancia = abs(px - self.rect.centerx)
+                if distancia <= self.distancia_disparo and self.cooldown_ataque <= 0:
+                    self.direction = "left" if px < self.rect.centerx else "right"
                     self.cambiar_estado("golpear")
                     self.cooldown_ataque = self.tiempo_cooldown
 
@@ -676,18 +673,17 @@ class OjoVolador(Enemigo):
                 super().update(player, dt, width)
 
         self.actualizar_animacion()
+        self.rect.bottom = self.suelo_y   # siempre pegado al suelo
 
-    def draw(self, screen):
+    def draw(self, screen, scroll_x=0):
         for p in self.proyectiles:
-            p.draw(screen)
+            p.draw(screen, scroll_x)
 
         if self.muerto_definitivo:
             return
 
-        if self.image and hasattr(self, "rect"):
-            pos_x = self.rect.centerx - self.image.get_width() // 2
-            pos_y = self.rect.centery - self.image.get_height() // 2
-            screen.blit(self.image, (pos_x, pos_y))
+        if self.image:
+            screen.blit(self.image, (self.rect.x - scroll_x, self.rect.y))
 
 
 

@@ -6,6 +6,30 @@ import pygame
 WIDTH, HEIGHT = 1280, 720
 SUELO_Y = 610
 
+# Directorio base absoluto donde se encuentra este archivo .py
+DIRECTORIO_BASE = os.path.dirname(os.path.abspath(__file__))
+
+# Carga de la textura sun_spirit.png desde la carpeta assets/barras de vida
+rutas_sun_spirit = [
+    os.path.join(DIRECTORIO_BASE, "assets", "barras de vida", "sun_spirit.png"),
+    os.path.join("assets", "barras de vida", "sun_spirit.png"),
+    os.path.join(DIRECTORIO_BASE, "sun_spirit.png"),
+    "sun_spirit.png"
+]
+
+IMG_SUN_SPIRIT = None
+for r in rutas_sun_spirit:
+    if os.path.exists(r):
+        try:
+            IMG_SUN_SPIRIT = pygame.image.load(r).convert_alpha()
+            print(f"✅ Textura 'sun_spirit.png' cargada con éxito desde: {r}")
+            break
+        except Exception as e:
+            print(f"❌ Error al cargar {r}: {e}")
+
+if IMG_SUN_SPIRIT is None:
+    print("⚠️ ADVERTENCIA: No se encontró 'sun_spirit.png' en 'assets/barras de vida/'.")
+
 
 def cargar_animacion_con_altura_maxima(folder_path, altura_max):
     frames = []
@@ -62,7 +86,7 @@ class Enemigo:
         self.max_health = vida
 
 
-def ejecutar_batalla_carnicero(screen, player):
+def ejecutar_batalla_carnicero(screen, player, img_bar=None):
     from Jefes_enemigos import CarniceroBoss
 
     clock = pygame.time.Clock()
@@ -70,9 +94,10 @@ def ejecutar_batalla_carnicero(screen, player):
 
     # Cargar fondo
     rutas_posibles = [
-        "Escenario_batalla_nivel_1.png",
-        os.path.join("assets", "imagenes","Nivel1" "Nivel1_imagen3.png"),
-    
+        os.path.join(DIRECTORIO_BASE, "Escenario_batalla_nivel_1.png"),
+        os.path.join(DIRECTORIO_BASE, "assets", "imagenes", "Nivel1", "Nivel1_imagen3.png"),
+        os.path.join(DIRECTORIO_BASE, "imagenes", "Nivel1", "Nivel1_imagen3.png"),
+        "Escenario_batalla_nivel_1.png"
     ]
     
     fondo_img = None
@@ -91,10 +116,11 @@ def ejecutar_batalla_carnicero(screen, player):
 
     # Cargar imagen de cierre de nivel
     rutas_cierre = [
-        "Cierre_nivel_1.png",
-        os.path.join("assets", "Cierre_nivel_1.png"),
-        os.path.join("assets", "fondos", "Cierre_nivel_1.png"),
-        os.path.join("assets", "UI", "Cierre_nivel_1.png")
+        os.path.join(DIRECTORIO_BASE, "Cierre_nivel_1.png"),
+        os.path.join(DIRECTORIO_BASE, "assets", "Cierre_nivel_1.png"),
+        os.path.join(DIRECTORIO_BASE, "assets", "fondos", "Cierre_nivel_1.png"),
+        os.path.join(DIRECTORIO_BASE, "assets", "UI", "Cierre_nivel_1.png"),
+        "Cierre_nivel_1.png"
     ]
     img_cierre = None
     for r in rutas_cierre:
@@ -119,6 +145,9 @@ def ejecutar_batalla_carnicero(screen, player):
     timer_muerte_jefe = 0.0
     mostrar_cierre = False
 
+    # Determinar qué imagen de barra usar
+    textura_barra = img_bar if img_bar is not None else IMG_SUN_SPIRIT
+
     while en_batalla:
         dt = clock.tick(FPS) / 1000.0
 
@@ -135,7 +164,7 @@ def ejecutar_batalla_carnicero(screen, player):
         jefe.update(player, dt, width=WIDTH, suelo_y=SUELO_Y)
 
         # Control del temporizador tras la muerte del jefe
-        if jefe.muerto_definitivo:
+        if getattr(jefe, 'muerto_definitivo', False):
             timer_muerte_jefe += dt
             if timer_muerte_jefe >= 5.0:
                 mostrar_cierre = True
@@ -158,14 +187,14 @@ def ejecutar_batalla_carnicero(screen, player):
                     jefe.proyectiles.remove(proj)
 
         # Daño por machete
-        if jefe.attacking and not jefe.has_hit:
-            if jefe.hitbox.width > 0 and jefe.hitbox.colliderect(target_player_rect):
+        if getattr(jefe, 'attacking', False) and not getattr(jefe, 'has_hit', False):
+            if hasattr(jefe, 'hitbox') and jefe.hitbox.width > 0 and jefe.hitbox.colliderect(target_player_rect):
                 if hasattr(player, 'take_damage'):
                     player.take_damage(18)
                 jefe.has_hit = True
 
         # Daño del jugador al jefe
-        if not jefe.muerto_definitivo and getattr(player, 'attacking', False) and not getattr(player, 'has_hit', False):
+        if not getattr(jefe, 'muerto_definitivo', False) and getattr(player, 'attacking', False) and not getattr(player, 'has_hit', False):
             player_hitbox = getattr(player, 'hitbox', pygame.Rect(0, 0, 0, 0))
             if player_hitbox.colliderect(jefe.hurtbox):
                 jefe.take_damage(8)
@@ -183,28 +212,70 @@ def ejecutar_batalla_carnicero(screen, player):
 
         jefe.draw(screen)
 
-        # UI del Jefe (se dibuja solo si no ha desaparecido por completo)
-        if not jefe.muerto_definitivo:
-            ancho_barra_jefe = 500
-            alto_barra_jefe = 20
-            x_jefe_ui = (WIDTH - ancho_barra_jefe) // 2
-            y_jefe_ui = 45
-
-            pygame.draw.rect(screen, (20, 5, 5), (x_jefe_ui - 2, y_jefe_ui - 2, ancho_barra_jefe + 4, alto_barra_jefe + 4))
-            
+        # ----------------------------------------------------
+        # UI DEL JEFE (Con la textura sun_spirit.png)
+        # ----------------------------------------------------
+        if not getattr(jefe, 'muerto_definitivo', False):
             max_v_jefe = getattr(jefe, 'max_health', 100)
             pct_jefe = max(0.0, min(1.0, jefe.health / max_v_jefe if max_v_jefe > 0 else 0))
-            w_restante = int(ancho_barra_jefe * pct_jefe)
-            
-            if w_restante > 0:
-                color_fase = (180, 30, 10) if jefe.fase_actual == 1 else ((255, 100, 0) if jefe.fase_actual == 2 else (255, 200, 0))
-                pygame.draw.rect(screen, color_fase, (x_jefe_ui, y_jefe_ui, w_restante, alto_barra_jefe))
-                pygame.draw.rect(screen, (255, 220, 100), (x_jefe_ui, y_jefe_ui, w_restante, alto_barra_jefe // 2))
-            
-            pygame.draw.rect(screen, (255, 215, 0), (x_jefe_ui - 2, y_jefe_ui - 2, ancho_barra_jefe + 4, alto_barra_jefe + 4), 2)
 
-            lbl_jefe = fuente_jefe.render("Athros :The bloodred", True, (255, 200, 50))
-            screen.blit(lbl_jefe, (WIDTH // 2 - lbl_jefe.get_width() // 2, 15))
+            if textura_barra is not None:
+                # 1. Ajuste de dimensiones de sun_spirit.png
+                ancho_b_jefe = 600
+                escala = ancho_b_jefe / textura_barra.get_width()
+                alto_b_jefe = int(textura_barra.get_height() * escala)
+                bar_scaled = pygame.transform.scale(textura_barra, (ancho_b_jefe, alto_b_jefe))
+
+                x_jefe_ui = (WIDTH - ancho_b_jefe) // 2
+                y_jefe_ui = 30
+
+                # 2. Zona de relleno de vida (Detrás de la imagen)
+                x_fill = x_jefe_ui + int(ancho_b_jefe * 0.12)
+                y_fill = y_jefe_ui + int(alto_b_jefe * 0.25)
+                w_max_fill = int(ancho_b_jefe * 0.76)
+                h_fill = int(alto_b_jefe * 0.50)
+
+                w_restante = int(w_max_fill * pct_jefe)
+
+                # Fondo barra vacía
+                pygame.draw.rect(screen, (25, 5, 5), (x_fill, y_fill, w_max_fill, h_fill))
+
+                # Relleno de vida activa según fase
+                if w_restante > 0:
+                    fase = getattr(jefe, 'fase_actual', 1)
+                    color_fase = (180, 30, 10) if fase == 1 else ((255, 100, 0) if fase == 2 else (255, 200, 0))
+                    pygame.draw.rect(screen, color_fase, (x_fill, y_fill, w_restante, h_fill))
+                    pygame.draw.rect(screen, (255, 220, 100), (x_fill, y_fill, w_restante, max(1, h_fill // 3)))
+
+                # 3. Superposición de la imagen ornamental sun_spirit.png
+                screen.blit(bar_scaled, (x_jefe_ui, y_jefe_ui))
+
+                # 4. Nombre del Jefe
+                lbl_sombra = fuente_jefe.render("Athros : The Bloodred", True, (0, 0, 0))
+                lbl_jefe = fuente_jefe.render("Athros : The Bloodred", True, (255, 215, 0))
+                rect_lbl = lbl_jefe.get_rect(center=(WIDTH // 2, y_jefe_ui - 12))
+                screen.blit(lbl_sombra, (rect_lbl.x + 2, rect_lbl.y + 2))
+                screen.blit(lbl_jefe, rect_lbl)
+
+            else:
+                # Respaldo simple por si la imagen falla
+                ancho_barra_jefe = 500
+                alto_barra_jefe = 20
+                x_jefe_ui = (WIDTH - ancho_barra_jefe) // 2
+                y_jefe_ui = 45
+
+                pygame.draw.rect(screen, (20, 5, 5), (x_jefe_ui - 2, y_jefe_ui - 2, ancho_barra_jefe + 4, alto_barra_jefe + 4))
+                w_restante = int(ancho_barra_jefe * pct_jefe)
+
+                if w_restante > 0:
+                    fase = getattr(jefe, 'fase_actual', 1)
+                    color_fase = (180, 30, 10) if fase == 1 else ((255, 100, 0) if fase == 2 else (255, 200, 0))
+                    pygame.draw.rect(screen, color_fase, (x_jefe_ui, y_jefe_ui, w_restante, alto_barra_jefe))
+                    pygame.draw.rect(screen, (255, 220, 100), (x_jefe_ui, y_jefe_ui, w_restante, alto_barra_jefe // 2))
+
+                pygame.draw.rect(screen, (255, 215, 0), (x_jefe_ui - 2, y_jefe_ui - 2, ancho_barra_jefe + 4, alto_barra_jefe + 4), 2)
+                lbl_jefe = fuente_jefe.render("Athros : The Bloodred", True, (255, 200, 50))
+                screen.blit(lbl_jefe, (WIDTH // 2 - lbl_jefe.get_width() // 2, 15))
 
         # UI del Jugador
         ancho_barra_player = 180
@@ -224,12 +295,11 @@ def ejecutar_batalla_carnicero(screen, player):
         lbl_player = fuente_ui.render("JUGADOR", True, (255, 255, 255))
         screen.blit(lbl_player, (x_player_ui, 8))
 
-        # Dibujar pantalla de cierre al cumplirse los 7 segundos
+        # Dibujar pantalla de cierre
         if mostrar_cierre:
             if img_cierre:
                 screen.blit(img_cierre, (0, 0))
             else:
-                # Fondo oscuro de reemplazo si no se encuentra la imagen
                 overlay = pygame.Surface((WIDTH, HEIGHT))
                 overlay.set_alpha(220)
                 overlay.fill((0, 0, 0))
@@ -241,10 +311,11 @@ def ejecutar_batalla_carnicero(screen, player):
 
         pygame.display.flip()
 
+
 if __name__ == "__main__":
     pygame.init()
     screen = pygame.display.set_mode((WIDTH, HEIGHT))
-    pygame.display.set_caption("Batalla de Jefe - Athros :The bloodred")
+    pygame.display.set_caption("Batalla de Jefe - Athros : The Bloodred")
 
     class JugadorPrueba:
         def __init__(self, x, y):
