@@ -11,7 +11,6 @@ from sonidos_selector_de_nivelels import Audio
  
 # Requiere:  pip install pygame numpy
 # Requiere tener efectos_selector.py y sonidos.py en la misma carpeta.
- 
 pygame.init()
 pygame.font.init()
  
