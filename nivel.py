@@ -6,7 +6,7 @@ import math
 from jugador1 import p_viento
 from jugador2 import p_tierra
 from jugador3 import p_fuego
-from jugador4 import p_planta
+from jugador import p_planta
 
 
 # ============================================================
@@ -83,11 +83,14 @@ fuente_boss_subtitle = pygame.font.SysFont(
 # CARGAR FONDOS
 # ============================================================
 
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
 fondos = []
 
 for i in range(1, CANTIDAD_FONDOS + 1):
 
     ruta_imagen = os.path.join(
+        BASE_DIR,
         "imagenes",
         "Nivel1",
         f"Nivel1_imagen{i}.png"
@@ -294,9 +297,7 @@ while ejecutando:
         )
 
     else:
-
         en_zona_hueco = False
-
 
     # ========================================================
     # EVENTOS
@@ -304,18 +305,15 @@ while ejecutando:
 
     for evento in pygame.event.get():
 
-        # ====================================================
         # CERRAR JUEGO
-        # ====================================================
-
         if evento.type == pygame.QUIT:
 
             ejecutando = False
+            continue
 
-
-        # ====================================================
+        # ----------------------------------------------------
         # SELECCIONAR P_VIENTO - U
-        # ====================================================
+        # ----------------------------------------------------
 
         if (
             evento.type == pygame.KEYDOWN
@@ -326,17 +324,13 @@ while ejecutando:
             jugador_actual = heroe1
 
             todos_los_sprites.empty()
+            todos_los_sprites.add(jugador_actual)
 
-            todos_los_sprites.add(
-                jugador_actual
-            )
-
-
-        # ====================================================
+        # ----------------------------------------------------
         # SELECCIONAR P_TIERRA - I
-        # ====================================================
+        # ----------------------------------------------------
 
-        if (
+        elif (
             evento.type == pygame.KEYDOWN
             and evento.key == pygame.K_i
             and jugador_actual is None
@@ -345,17 +339,13 @@ while ejecutando:
             jugador_actual = heroe2
 
             todos_los_sprites.empty()
+            todos_los_sprites.add(jugador_actual)
 
-            todos_los_sprites.add(
-                jugador_actual
-            )
-
-
-        # ====================================================
+        # ----------------------------------------------------
         # SELECCIONAR P_FUEGO - J
-        # ====================================================
+        # ----------------------------------------------------
 
-        if (
+        elif (
             evento.type == pygame.KEYDOWN
             and evento.key == pygame.K_j
             and jugador_actual is None
@@ -364,17 +354,13 @@ while ejecutando:
             jugador_actual = heroe3
 
             todos_los_sprites.empty()
+            todos_los_sprites.add(jugador_actual)
 
-            todos_los_sprites.add(
-                jugador_actual
-            )
-
-
-        # ====================================================
+        # ----------------------------------------------------
         # SELECCIONAR P_PLANTA - K
-        # ====================================================
+        # ----------------------------------------------------
 
-        if (
+        elif (
             evento.type == pygame.KEYDOWN
             and evento.key == pygame.K_k
             and jugador_actual is None
@@ -383,17 +369,13 @@ while ejecutando:
             jugador_actual = heroe4
 
             todos_los_sprites.empty()
+            todos_los_sprites.add(jugador_actual)
 
-            todos_los_sprites.add(
-                jugador_actual
-            )
-
-
-        # ====================================================
+        # ----------------------------------------------------
         # INTERACCIÓN CON C
-        # ====================================================
+        # ----------------------------------------------------
 
-        if (
+        elif (
             evento.type == pygame.KEYDOWN
             and evento.key == pygame.K_c
             and en_zona_hueco
@@ -402,32 +384,29 @@ while ejecutando:
 
             mostrar_athros()
 
-            # Teletransportar al jugador
+            # Teletransportar al jugador.
             jugador_actual.pos_x = ANCHO * 2 + 150
 
-            # Actualizar la cámara
+            # Actualizar la cámara.
             scroll_x = ANCHO * 2
 
-            # Actualizar inmediatamente la posición visual
+            # Actualizar la posición visual.
             jugador_actual.rect.centerx = int(
                 jugador_actual.pos_x - scroll_x
             )
 
+            # Evitar procesar eventos antiguos después
+            # de regresar de la pantalla de Athros.
             pygame.event.clear()
-
             break
 
-
-        # ====================================================
+        # ----------------------------------------------------
         # EVENTOS DEL JUGADOR
-        # ====================================================
+        # ----------------------------------------------------
 
         if jugador_actual is not None:
 
-            jugador_actual.procesar_evento(
-                evento
-            )
-
+            jugador_actual.procesar_evento(evento)
 
     # ========================================================
     # CÁMARA
@@ -439,7 +418,7 @@ while ejecutando:
             jugador_actual.pos_x - ANCHO // 2
         )
 
-        # La cámara solamente avanza
+        # La cámara solamente avanza.
         scroll_x = max(
             scroll_x,
             min(
@@ -448,28 +427,18 @@ while ejecutando:
             )
         )
 
-
     # ========================================================
     # ACTUALIZAR JUGADOR Y PROYECTILES
     # ========================================================
 
     if jugador_actual is not None:
 
-        # Actualizar movimiento, gravedad y animación
+        # El jugador actualiza sus proyectiles internamente.
+        # No volver a llamar proyectiles.update() aquí.
         todos_los_sprites.update(
             scroll_x,
             ANCHO_MUNDO
         )
-
-        # Actualizar las flechas del personaje.
-        # Esto es necesario porque el grupo de proyectiles
-        # es independiente del grupo de jugadores.
-        if hasattr(jugador_actual, "proyectiles"):
-
-            jugador_actual.proyectiles.update(
-                scroll_x
-            )
-
 
     # ========================================================
     # DIBUJAR FONDOS
@@ -485,7 +454,6 @@ while ejecutando:
                 fondo,
                 (posicion_x, 0)
             )
-
 
     # ========================================================
     # DIBUJAR INTERACCIÓN
@@ -509,7 +477,6 @@ while ejecutando:
                 POSICION_SUELO - 110
             )
 
-
     # ========================================================
     # DIBUJAR JUGADOR
     # ========================================================
@@ -520,9 +487,8 @@ while ejecutando:
             pantalla
         )
 
-
     # ========================================================
-    # DIBUJAR PROYECTILES (FLECHA DE P_PLANTA)
+    # DIBUJAR PROYECTILES
     # ========================================================
 
     if (
@@ -533,7 +499,6 @@ while ejecutando:
         jugador_actual.proyectiles.draw(
             pantalla
         )
-
 
     # ========================================================
     # ACTUALIZAR PANTALLA

@@ -20,21 +20,20 @@ BASE_EFECTOS = os.path.join(
 
 
 # ============================================================
-# FLECHA AEREA: IMPACTA CONTRA EL SUELO
+# FLECHA AEREA: IMPACTA EN EL SUELO DEL JUGADOR
 # ============================================================
 
 class FlechaAerea(pygame.sprite.Sprite):
 
     def __init__(self, x, y, posicion_suelo, mirando_derecha):
-
         super().__init__()
 
-        self.posicion_suelo = posicion_suelo
+        # Es la coordenada Y del suelo donde se apoya el jugador.
+        self.posicion_suelo = int(posicion_suelo)
         self.mirando_derecha = mirando_derecha
 
         self.pos_x = float(x)
         self.pos_y = float(y)
-
         self.velocidad_x = 7 if mirando_derecha else -7
         self.velocidad_y = 4
         self.gravedad = 0.35
@@ -44,109 +43,75 @@ class FlechaAerea(pygame.sprite.Sprite):
         self.velocidad_animacion = 0.25
 
         ruta_flecha = os.path.join(
-            BASE_EFECTOS,
-            "arrow",
-            "arrow_.png"
+            BASE_EFECTOS, "arrow", "arrow_.png"
         )
-
         ruta_hit = os.path.join(
-            BASE_EFECTOS,
-            "diagonal_arrow_hit"
+            BASE_EFECTOS, "diagonal_arrow_hit"
         )
 
-        self.image = pygame.image.load(
-            ruta_flecha
-        ).convert_alpha()
-
-        self.image = pygame.transform.scale(
-            self.image,
-            (120, 120)
-        )
+        self.image = pygame.image.load(ruta_flecha).convert_alpha()
+        self.image = pygame.transform.scale(self.image, (120, 120))
 
         if not mirando_derecha:
-            self.image = pygame.transform.flip(
-                self.image,
-                True,
-                False
-            )
+            self.image = pygame.transform.flip(self.image, True, False)
 
-        self.rect = self.image.get_rect(
-            center=(x, y)
-        )
+        self.rect = self.image.get_rect(center=(x, y))
 
         self.animacion_hit = []
-
         for i in range(1, 7):
-
-            ruta = os.path.join(
-                ruta_hit,
-                f"diagonal_arrow_hit_{i}.png"
-            )
-
-            imagen = pygame.image.load(
-                ruta
-            ).convert_alpha()
-
-            imagen = pygame.transform.scale(
-                imagen,
-                (180, 180)
-            )
-
+            ruta = os.path.join(ruta_hit, f"diagonal_arrow_hit_{i}.png")
+            imagen = pygame.image.load(ruta).convert_alpha()
+            imagen = pygame.transform.scale(imagen, (180, 180))
             self.animacion_hit.append(imagen)
 
+    def colocar_animacion_apoyada(self, centro_x_pantalla):
+        # Alinear el último píxel VISIBLE con el suelo. Algunas imágenes
+        # tienen margen transparente abajo, así que midbottom por sí solo
+        # puede dejar el efecto visual flotando.
+        limites_visibles = self.image.get_bounding_rect(min_alpha=1)
+        self.rect = self.image.get_rect()
+        self.rect.centerx = int(centro_x_pantalla)
+        self.rect.top = self.posicion_suelo - limites_visibles.bottom
+
+    def iniciar_impacto_suelo(self, scroll_x=0):
+        # Conservar la X del punto donde la flecha llegó al suelo y apoyar
+        # el contenido visible de la animación sobre el suelo del jugador.
+        self.estado = "hit"
+        self.frame_index = 0
+        self.image = self.animacion_hit[0]
+        centro_x_pantalla = int(self.pos_x - scroll_x)
+        self.colocar_animacion_apoyada(centro_x_pantalla)
+
     def update(self, scroll_x=0):
-
         if self.estado == "flecha":
-
             self.pos_x += self.velocidad_x
             self.pos_y += self.velocidad_y
-
             self.velocidad_y += self.gravedad
 
-            self.rect.centerx = int(
-                self.pos_x - scroll_x
-            )
-
+            self.rect.centerx = int(self.pos_x - scroll_x)
             self.rect.centery = int(self.pos_y)
 
-            # Impacto contra el suelo.
-
-            if self.rect.bottom >= self.posicion_suelo:
-
-                centro_x = self.rect.centerx
-
-                self.estado = "hit"
-                self.frame_index = 0
-
-                self.image = self.animacion_hit[0]
-
-                self.rect = self.image.get_rect(
-                    midbottom=(
-                        centro_x,
-                        self.posicion_suelo
-                    )
-                )
+            # No usar rect.bottom aquí: la imagen de la flecha tiene
+            # transparencia y su rectángulo puede tocar el suelo antes
+            # de que la flecha visualmente llegue a él. Esperar a que su
+            # trayectoria alcance la altura real del suelo.
+            if self.pos_y >= self.posicion_suelo:
+                self.pos_y = float(self.posicion_suelo)
+                self.iniciar_impacto_suelo(scroll_x)
 
         elif self.estado == "hit":
-
             self.frame_index += self.velocidad_animacion
 
             if self.frame_index >= len(self.animacion_hit):
                 self.kill()
                 return
 
-            centro_x = self.rect.centerx
+            self.image = self.animacion_hit[int(self.frame_index)]
+            centro_x_pantalla = int(self.pos_x - scroll_x)
 
-            self.image = self.animacion_hit[
-                int(self.frame_index)
-            ]
-
-            self.rect = self.image.get_rect(
-                midbottom=(
-                    centro_x,
-                    self.posicion_suelo
-                )
-            )
+            # Recolocar cada fotograma usando sus píxeles visibles, para
+            # que ninguno quede flotando por el margen transparente inferior.
+            self.colocar_animacion_apoyada(centro_x_pantalla)
 
 
 # ============================================================
@@ -398,13 +363,19 @@ class RafagaFlechas(pygame.sprite.Sprite):
 
 
 
+
+
+
+
+
+
 class p_planta(pygame.sprite.Sprite):
 
     def __init__(self, x, y, posicion_suelo):
         super().__init__()
 
         # ====================================================
-        # CONFIGURACIÓN
+        # CONFIGURACION
         # ====================================================
 
         self.ancho_heroe = 600
@@ -444,7 +415,7 @@ class p_planta(pygame.sprite.Sprite):
         self.pos_x = float(x)
 
         # ====================================================
-        # FÍSICA
+        # FISICA
         # ====================================================
 
         self.velocidad_x = 0
@@ -471,6 +442,14 @@ class p_planta(pygame.sprite.Sprite):
 
         self.frame_rafaga = 8
         self.rafaga_creada = False
+
+        # ====================================================
+        # NUEVO: FLECHA HORIZONTAL DEL SEGUNDO ATAQUE
+        # ====================================================
+
+        self.frame_flecha_horizontal = 8
+        self.flecha_horizontal_creada = False
+        self.ancho_mundo = 0
 
         # ====================================================
         # PROYECTILES
@@ -538,7 +517,11 @@ class p_planta(pygame.sprite.Sprite):
             evento.type == pygame.KEYDOWN
             and evento.key == pygame.K_w
             and self.en_suelo
-            and not (self.atacando or self.rodando or self.defendiendo)
+            and not (
+                self.atacando
+                or self.rodando
+                or self.defendiendo
+            )
         ):
             self.velocidad_y = self.fuerza_salto
             self.en_suelo = False
@@ -548,7 +531,11 @@ class p_planta(pygame.sprite.Sprite):
             evento.type == pygame.KEYDOWN
             and evento.key == pygame.K_q
             and self.en_suelo
-            and not (self.rodando or self.atacando or self.defendiendo)
+            and not (
+                self.rodando
+                or self.atacando
+                or self.defendiendo
+            )
         ):
             self.rodando = True
             self.frame_index = 0
@@ -558,7 +545,11 @@ class p_planta(pygame.sprite.Sprite):
             evento.type == pygame.MOUSEBUTTONDOWN
             and evento.button == pygame.BUTTON_RIGHT
             and self.en_suelo
-            and not (self.rodando or self.atacando or self.defendiendo)
+            and not (
+                self.rodando
+                or self.atacando
+                or self.defendiendo
+            )
         ):
             self.defendiendo = True
             self.frame_index = 0
@@ -568,7 +559,11 @@ class p_planta(pygame.sprite.Sprite):
             evento.type == pygame.KEYDOWN
             and evento.key == pygame.K_e
             and self.en_suelo
-            and not (self.rodando or self.atacando or self.defendiendo)
+            and not (
+                self.rodando
+                or self.atacando
+                or self.defendiendo
+            )
         ):
             self.atacando = True
             self.estado = "sp_atk"
@@ -580,7 +575,7 @@ class p_planta(pygame.sprite.Sprite):
             and evento.button == pygame.BUTTON_LEFT
         ):
 
-            # ATAQUE AÉREO
+            # ATAQUE AEREO
             if not self.en_suelo and not self.atacando:
 
                 self.atacando = True
@@ -664,7 +659,7 @@ class p_planta(pygame.sprite.Sprite):
             self.estado = "idle"
 
     # ========================================================
-    # ANIMAR Y GENERAR RAFAGA EN EL FRAME 8
+    # ANIMAR Y GENERAR PROYECTILES
     # ========================================================
 
     def animar(self):
@@ -672,7 +667,7 @@ class p_planta(pygame.sprite.Sprite):
         anim = self.animaciones[self.estado]
 
         # ----------------------------------------------------
-        # GENERAR LA RAFAGA UNA SOLA VEZ EN EL OCTAVO FRAME
+        # RAFAGA DEL TERCER ATAQUE: ORIGINAL
         # ----------------------------------------------------
 
         if (
@@ -700,7 +695,46 @@ class p_planta(pygame.sprite.Sprite):
             self.proyectiles.add(rafaga)
 
         # ----------------------------------------------------
-        # AVANZAR ANIMACIÓN
+        # NUEVO: FLECHA HORIZONTAL DEL SEGUNDO ATAQUE
+        # ----------------------------------------------------
+
+        
+        # ----------------------------------------------------
+        # FLECHA HORIZONTAL DEL SEGUNDO ATAQUE
+        # ----------------------------------------------------
+
+        if (
+            self.estado == "2_atk"
+            and int(self.frame_index) + 1
+            >= self.frame_flecha_horizontal
+            and not self.flecha_horizontal_creada
+        ):
+
+            self.flecha_horizontal_creada = True
+
+            distancia = 100
+
+            x_flecha = (
+                self.pos_x + distancia
+                if self.mirando_derecha
+                else self.pos_x - distancia
+            )
+
+            # Aparece delante del héroe, a la altura del torso.
+            y_flecha = self.rect.bottom - 80
+
+            flecha = FlechaHorizontal(
+                x_flecha,
+                y_flecha,
+                self.mirando_derecha,
+                self.ancho_mundo
+            )
+
+            self.proyectiles.add(flecha)
+
+
+        # ----------------------------------------------------
+        # AVANZAR ANIMACION
         # ----------------------------------------------------
 
         self.frame_index += self.velocidad_animacion
@@ -725,6 +759,10 @@ class p_planta(pygame.sprite.Sprite):
                 if self.combo_siguiente:
                     self.estado = "2_atk"
                     self.combo_siguiente = False
+
+                    # NUEVO: permitir disparar en el segundo ataque
+                    self.flecha_horizontal_creada = False
+
                 else:
                     self.atacando = False
 
@@ -736,11 +774,11 @@ class p_planta(pygame.sprite.Sprite):
                     self.frame_index = 0
                     self.rafaga_creada = False
                     self.combo_siguiente = False
+
                 else:
                     self.atacando = False
 
             self.frame_index = 0
-
             anim = self.animaciones[self.estado]
 
         # ----------------------------------------------------
@@ -782,10 +820,12 @@ class p_planta(pygame.sprite.Sprite):
 
     def update(self, scroll_x, ancho_mundo):
 
+        # NUEVO: guardar el ancho del mapa para la flecha.
+        self.ancho_mundo = ancho_mundo
+
         self.manejar_movimiento_continuo()
 
         if self.rodando:
-
             self.velocidad_x = (
                 self.velocidad_movimiento + 3
             ) * (1 if self.mirando_derecha else -1)
@@ -805,5 +845,5 @@ class p_planta(pygame.sprite.Sprite):
         self.actualizar_estado()
         self.animar()
 
-        # Actualizar proyectiles
+        # Actualizar proyectiles originales y nuevos.
         self.proyectiles.update(scroll_x)

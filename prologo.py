@@ -57,7 +57,7 @@ while ejecutando:
 
 pygame.quit()
 sys.exit()
-=======
+
 from pathlib import Path
 from animacion_menu import GAME_WIDTH, GAME_HEIGHT
 
