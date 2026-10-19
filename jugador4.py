@@ -20,7 +20,7 @@ BASE_EFECTOS = os.path.join(
 
 
 # ============================================================
-# FLECHA AÉREA: IMPACTA CONTRA EL SUELO
+# FLECHA AEREA: IMPACTA CONTRA EL SUELO
 # ============================================================
 
 class FlechaAerea(pygame.sprite.Sprite):
