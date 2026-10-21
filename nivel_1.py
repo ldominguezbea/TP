@@ -12,10 +12,12 @@ pygame.font.init()
 ANCHO, ALTO = 1350, 700
 POSICION_SUELO = 620
 
-# 5 escenarios de oleadas + 1 escenario para la transición al jefe
-CANTIDAD_OLEADAS = 5
+# Recorrido lateral continuo hasta la entrada del jefe.
 CANTIDAD_FONDOS = 3
-ANCHO_MUNDO = ANCHO * (CANTIDAD_OLEADAS + 1)
+ANCHO_MUNDO = ANCHO * 7
+PORTAL_X = ANCHO_MUNDO - 500
+HUECO_INICIO = PORTAL_X - 150
+HUECO_FIN = PORTAL_X + 150
 
 pantalla = pygame.display.set_mode((ANCHO, ALTO))
 pygame.display.set_caption("Nivel 1 - Batalla de Jefe")
@@ -23,18 +25,13 @@ pygame.display.set_caption("Nivel 1 - Batalla de Jefe")
 # Tamaño del sprite ajustado a escala humana
 ANCHO_HEROE, ALTO_HEROE = 300, 300
 
-# El portal del jefe se ubica en el escenario de transición (escenario índice 5)
-ESCENARIO_PORTAL = CANTIDAD_OLEADAS
-HUECO_INICIO = ESCENARIO_PORTAL * ANCHO + 400
-HUECO_FIN = ESCENARIO_PORTAL * ANCHO + 900
-
 # Fuentes
 fuente_lava_pixel = pygame.font.SysFont("Courier", 9, bold=True)
 fuente_boss_title = pygame.font.SysFont("Georgia", 76, bold=True)
 fuente_boss_subtitle = pygame.font.SysFont("Georgia", 32, italic=True)
 fuente_jefe = pygame.font.SysFont("Georgia", 26, bold=True, italic=True)
 fuente_ui = pygame.font.SysFont("Arial", 16, bold=True)
-fuente_oleada = pygame.font.SysFont("Impact", 22)
+fuente_progreso = pygame.font.SysFont("Impact", 22)
 
 
 # ==============================================================================
@@ -192,6 +189,8 @@ class Jugador(pygame.sprite.Sprite):
         self.velocidad_movimiento = 7
         self.fuerza_salto = -16
         self.gravedad = 0.8
+        self.plataformas = []
+        self.scroll_x_actual = 0
 
         # Estados de acción
         self.mirando_derecha = True
@@ -366,10 +365,28 @@ class Jugador(pygame.sprite.Sprite):
             self.image = frame_actual
 
     def aplicar_gravedad(self):
+        bottom_anterior = self.rect.bottom
+        self.en_suelo = False
         self.velocidad_y += self.gravedad
         self.rect.y += self.velocidad_y
 
-        if self.rect.bottom >= POSICION_SUELO:
+        if self.velocidad_y >= 0:
+            for plataforma in self.plataformas:
+                plataforma_pantalla = plataforma.move(-self.scroll_x_actual, 0)
+                zona_suelo = plataforma_pantalla.inflate(-20, 0)
+                pisa_plataforma = (
+                    bottom_anterior <= zona_suelo.top
+                    and self.rect.bottom >= zona_suelo.top
+                    and self.rect.centerx + 30 > zona_suelo.left
+                    and self.rect.centerx - 30 < zona_suelo.right
+                )
+                if pisa_plataforma:
+                    self.rect.bottom = zona_suelo.top
+                    self.velocidad_y = 0
+                    self.en_suelo = True
+                    break
+
+        if not self.en_suelo and self.rect.bottom >= POSICION_SUELO:
             self.rect.bottom = POSICION_SUELO
             self.velocidad_y = 0
             self.en_suelo = True
@@ -380,6 +397,7 @@ class Jugador(pygame.sprite.Sprite):
         self.health = max(0, self.health - damage)
 
     def update(self, scroll_x, transicion_realizada, limite_max_x=HUECO_FIN):
+        self.scroll_x_actual = scroll_x
         self.manejar_movimiento_continuo()
 
         if self.rodando:
@@ -713,11 +731,154 @@ def ejecutar_batalla_carnicero(screen, player, fondo_img):
 
 
 # ==============================================================================
-# SISTEMA DE OLEADAS POR ESCENARIO (5 OLEADAS)
+# GRUPOS DE ENEMIGOS ACTIVADOS POR DISTANCIA
 # ==============================================================================
-ENEMIGOS_POR_OLEADA = [3, 4, 4, 5, 6]  # 5 oleadas
 TIPOS_ENEMIGO = [OrcoRojo, OjoVolador, Karasu_tengu]
-VELOCIDAD_CAMARA = 30
+DISTANCIA_ENTRE_GRUPOS = 850
+PRIMER_GRUPO_X = 800
+ULTIMO_GRUPO_X = HUECO_INICIO - 1100
+PUNTOS_GRUPO = list(range(PRIMER_GRUPO_X, ULTIMO_GRUPO_X + 1, DISTANCIA_ENTRE_GRUPOS))
+
+def generar_plataformas_nivel():
+    plataformas = []
+    x = 350
+    y = 520
+
+    while x < HUECO_INICIO - 100:
+        ancho = random.randint(190, 280)
+        plataformas.append(pygame.Rect(x, y, ancho, 18))
+
+        # El hueco y el cambio de altura quedan dentro del alcance de un salto.
+        x += ancho + random.randint(35, 105)
+        y = max(325, min(560, y + random.randint(-75, 75)))
+
+    return plataformas
+
+
+def generar_diseno_plataforma():
+    return {
+        "estilo": random.randrange(5),
+        "color": random.choice([
+            (111, 76, 48), (80, 91, 77), (91, 80, 65),
+            (105, 91, 67), (72, 78, 79),
+        ]),
+        "detalles": [
+            (random.random(), random.randint(3, 13), random.randint(3, 8))
+            for _ in range(7)
+        ],
+        "libros": [
+            (random.randint(9, 20), random.choice([
+                (121, 43, 36), (49, 76, 84), (163, 125, 55),
+                (71, 99, 64), (97, 65, 104),
+            ]))
+            for _ in range(5)
+        ],
+        "ladrillos": [
+            random.choice([(119, 91, 72), (91, 83, 73), (132, 112, 91)])
+            for _ in range(7)
+        ],
+        "manchas": [
+            (random.random(), random.randint(6, 16), random.randint(3, 7))
+            for _ in range(4)
+        ],
+        "runa": random.choice([(210, 48, 25), (178, 50, 32), (125, 39, 35)]),
+    }
+
+
+def dibujar_plataformas(screen, scroll_x, plataformas, disenos):
+    for plataforma, diseno in zip(plataformas, disenos):
+        rect = plataforma.move(-scroll_x, 0)
+        if rect.right < 0 or rect.left > ANCHO:
+            continue
+
+        estilo = diseno["estilo"]
+        base = diseno["color"]
+        pygame.draw.rect(screen, (27, 24, 23), rect.move(0, 7))
+
+        if estilo == 0:
+            pygame.draw.rect(screen, (68, 47, 34), rect)
+            pygame.draw.rect(screen, base, (rect.x, rect.y, rect.width, 7))
+            pygame.draw.line(screen, (166, 133, 91), (rect.x + 4, rect.y + 2), (rect.right - 5, rect.y + 2), 2)
+            pygame.draw.polygon(
+                screen, (47, 37, 30),
+                [(rect.x + rect.width // 2, rect.y + 8),
+                 (rect.x + rect.width // 2 + 18, rect.bottom - 2),
+                 (rect.x + rect.width // 2 + 7, rect.bottom - 2)]
+            )
+        elif estilo == 1:
+            pygame.draw.rect(screen, (36, 35, 39), rect)
+            book_x = rect.x + 8
+            for book_width, book_color in diseno["libros"]:
+                if book_x + book_width > rect.right - 5:
+                    break
+                book = pygame.Rect(book_x, rect.y - 12, book_width, 20)
+                pygame.draw.rect(screen, book_color, book)
+                pygame.draw.rect(screen, (197, 174, 128), (book.x + 3, book.y + 4, 2, 12))
+                book_x += book_width + 5
+            pygame.draw.line(screen, (91, 69, 60), (rect.x, rect.y + 8), (rect.right, rect.y + 8), 3)
+        elif estilo == 2:
+            pygame.draw.rect(screen, (27, 45, 48), rect)
+            pygame.draw.rect(screen, (75, 53, 42), rect, 5)
+            for fraccion, largo, inclinacion in diseno["detalles"][:5]:
+                chalk_x = rect.x + int(fraccion * max(1, rect.width - largo))
+                pygame.draw.line(
+                    screen, (134, 133, 105),
+                    (chalk_x, rect.y + 5), (chalk_x + largo, rect.y + 5 + inclinacion // 2), 2
+                )
+            pygame.draw.circle(screen, diseno["runa"], (rect.right - 18, rect.y + 5), 5, 1)
+            pygame.draw.line(screen, diseno["runa"], (rect.right - 22, rect.y + 5), (rect.right - 14, rect.y + 5), 1)
+        elif estilo == 3:
+            pygame.draw.rect(screen, (43, 39, 42), rect)
+            ladrillo_x = rect.x
+            for indice, (fraccion, alto, _) in enumerate(diseno["detalles"]):
+                ladrillo_x = rect.x + int(fraccion * max(1, rect.width - 24))
+                pygame.draw.rect(
+                    screen, diseno["ladrillos"][indice],
+                    (ladrillo_x, rect.y + 2, min(25, rect.right - ladrillo_x), max(4, alto - 2))
+                )
+            pygame.draw.line(screen, (113, 83, 67), (rect.x + 3, rect.y + 1), (rect.right - 4, rect.y + 1), 2)
+        else:
+            pygame.draw.rect(screen, (38, 39, 43), rect)
+            pygame.draw.rect(screen, (75, 67, 58), (rect.x, rect.y + 4, rect.width, 9), border_radius=4)
+            for fraccion, _, _ in diseno["detalles"][:4]:
+                banda_x = rect.x + int(fraccion * max(1, rect.width - 9))
+                pygame.draw.rect(screen, (144, 130, 105), (banda_x, rect.y + 2, 5, 14))
+            pygame.draw.circle(screen, (84, 101, 101), (rect.x + 9, rect.y + 9), 5, 2)
+            pygame.draw.circle(screen, (84, 101, 101), (rect.right - 9, rect.y + 9), 5, 2)
+
+        # Sangre seca y runas pintadas en restos de mobiliario escolar.
+        for fraccion, largo, alto in diseno["manchas"]:
+            mancha_x = rect.x + int(fraccion * max(1, rect.width - largo))
+            pygame.draw.ellipse(
+                screen, (83, 25, 29),
+                (mancha_x, rect.y + 2, largo, max(3, alto // 2))
+            )
+            pygame.draw.line(
+                screen, (109, 31, 32),
+                (mancha_x + largo // 2, rect.y + 4),
+                (mancha_x + largo // 2 - 2, rect.y + min(16, alto)), 1
+            )
+
+        if estilo in (0, 3):
+            # Silueta discreta de un estudiante caído entre los escombros.
+            cuerpo_x = rect.x + rect.width // 2
+            cuerpo_y = rect.y - 5
+            pygame.draw.ellipse(screen, (24, 21, 25), (cuerpo_x - 12, cuerpo_y - 5, 10, 9))
+            pygame.draw.line(
+                screen, (24, 21, 25), (cuerpo_x - 2, cuerpo_y),
+                (cuerpo_x + 18, cuerpo_y + 4), 5
+            )
+            pygame.draw.line(
+                screen, (24, 21, 25), (cuerpo_x + 10, cuerpo_y + 2),
+                (cuerpo_x + 20, cuerpo_y - 4), 3
+            )
+
+        for fraccion, alto, largo in diseno["detalles"]:
+            detalle_x = rect.x + int(fraccion * max(1, rect.width - 8))
+            pygame.draw.line(
+                screen, (39, 34, 30), (detalle_x, rect.y + 8),
+                (min(rect.right - 2, detalle_x + largo), min(rect.bottom - 2, rect.y + alto)), 1
+            )
 
 
 def crear_enemigo(clase, x):
@@ -736,25 +897,81 @@ def crear_enemigo(clase, x):
     enemigo.suelo_y = POSICION_SUELO
     if isinstance(enemigo, (OrcoRojo, Karasu_tengu)):
         enemigo.rect.bottom = POSICION_SUELO
+        enemigo.jump_force = -15
     return enemigo
 
 
-def generar_enemigos_oleada(indice_escenario):
-    """Crea la oleada correspondiente al índice de escenario indicado."""
-    cantidad = ENEMIGOS_POR_OLEADA[indice_escenario]
-    base = indice_escenario * ANCHO
-    paso = 650 // cantidad
-
+def generar_grupo_enemigos(posicion):
+    """Genera un grupo pequeño al alcanzar una distancia concreta del recorrido."""
+    cantidad = random.randint(2, 3)
     enemigos = []
+    indice_grupo = round((posicion - PRIMER_GRUPO_X) / DISTANCIA_ENTRE_GRUPOS)
     for i in range(cantidad):
-        x = base + 600 + i * paso + random.randint(0, max(1, paso - 60))
-        clase = random.choice(TIPOS_ENEMIGO)
-        enemigos.append(crear_enemigo(clase, x))
+        x = posicion + random.randint(100, 220) + i * 65
+        enemigo = crear_enemigo(random.choice(TIPOS_ENEMIGO), x)
+        enemigo.plataformas = plataformas_nivel
+        enemigo.flank_side = (-1 if i % 2 == 0 else 1) * (
+            1 if indice_grupo % 2 == 0 else -1
+        )
+        enemigo.preferred_distance = random.randint(55, 115)
+        enemigo.strafe_timer = random.uniform(0.6, 1.8)
+        enemigo.strafe_direction = random.choice((-1, 1))
+        enemigo.jump_cooldown = random.uniform(0.4, 1.4)
+        enemigo.speed = random.randint(3, 5)
+        enemigos.append(enemigo)
+    for enemigo in enemigos:
+        enemigo.allies = enemigos
     return enemigos
 
 
 def enemigo_derrotado(enemigo):
     return enemigo.health <= 0 or getattr(enemigo, 'muerto_definitivo', False)
+
+
+def separar_enemigos(enemigos, ancho_mundo):
+    enemigos_activos = [
+        enemigo for enemigo in enemigos
+        if enemigo.health > 0 and not getattr(enemigo, "muerto_definitivo", False)
+    ]
+
+    for _ in range(3):
+        for indice, primero in enumerate(enemigos_activos):
+            for segundo in enemigos_activos[indice + 1:]:
+                if not primero.rect.inflate(0, 20).colliderect(
+                    segundo.rect.inflate(0, 20)
+                ):
+                    continue
+
+                signo = 1 if primero.rect.centerx <= segundo.rect.centerx else -1
+                distancia_minima = (primero.rect.width + segundo.rect.width) // 2 + 18
+                distancia_actual = abs(segundo.rect.centerx - primero.rect.centerx)
+                empuje = distancia_minima - distancia_actual
+                if empuje <= 0:
+                    continue
+
+                primero_x_anterior = primero.rect.x
+                segundo_x_anterior = segundo.rect.x
+                empuje_primero = (empuje + 1) // 2
+                empuje_segundo = empuje // 2
+                primero.rect.centerx -= signo * empuje_primero
+                segundo.rect.centerx += signo * empuje_segundo
+                primero.rect.x = max(
+                    0, min(ancho_mundo - primero.rect.width, primero.rect.x)
+                )
+                segundo.rect.x = max(
+                    0, min(ancho_mundo - segundo.rect.width, segundo.rect.x)
+                )
+                primero.hitbox.x += primero.rect.x - primero_x_anterior
+                segundo.hitbox.x += segundo.rect.x - segundo_x_anterior
+
+                if hasattr(primero, "actualizar_hurtbox"):
+                    primero.actualizar_hurtbox()
+                else:
+                    primero.hurtbox.topleft = primero.rect.topleft
+                if hasattr(segundo, "actualizar_hurtbox"):
+                    segundo.actualizar_hurtbox()
+                else:
+                    segundo.hurtbox.topleft = segundo.rect.topleft
 
 
 # ==============================================================================
@@ -766,9 +983,14 @@ mostrar_comic_inicio(pantalla)
 heroe = Jugador(200, POSICION_SUELO)
 todos_los_sprites = pygame.sprite.Group(heroe)
 vista_heroe = VistaJugadorMundo(heroe)
+plataformas_nivel = generar_plataformas_nivel()
+disenos_plataformas = [
+    generar_diseno_plataforma() for _ in plataformas_nivel
+]
+heroe.plataformas = plataformas_nivel
 
-escenario_actual = 0
-enemigos_nivel = generar_enemigos_oleada(escenario_actual)
+enemigos_nivel = []
+proximo_grupo = 0
 
 scroll_x = 0
 transicion_realizada = False
@@ -779,32 +1001,24 @@ reloj = pygame.time.Clock()
 while ejecutando:
     dt = reloj.tick(60) / 1000.0
 
-    if escenario_actual < CANTIDAD_OLEADAS:
-        oleada_limpiada = all(enemigo_derrotado(e) for e in enemigos_nivel)
-    else:
-        oleada_limpiada = True
+    while (
+        proximo_grupo < len(PUNTOS_GRUPO)
+        and heroe.pos_x >= PUNTOS_GRUPO[proximo_grupo]
+    ):
+        enemigos_nivel.extend(
+            generar_grupo_enemigos(PUNTOS_GRUPO[proximo_grupo])
+        )
+        proximo_grupo += 1
 
-    # --- Límite de avance del jugador ---
-    fin_escenario = (escenario_actual + 1) * ANCHO
-    if escenario_actual < CANTIDAD_OLEADAS - 1:
-        limite_max_x = fin_escenario + 100 if oleada_limpiada else fin_escenario - 80
-    elif escenario_actual == CANTIDAD_OLEADAS - 1:
-        limite_max_x = (CANTIDAD_OLEADAS + 1) * ANCHO if oleada_limpiada else fin_escenario - 80
-    else:
-        limite_max_x = HUECO_FIN
+    todos_los_grupos_generados = proximo_grupo == len(PUNTOS_GRUPO)
+    enemigos_pendientes = [
+        enemigo for enemigo in enemigos_nivel if not enemigo_derrotado(enemigo)
+    ]
+    portal_liberado = todos_los_grupos_generados and not enemigos_pendientes
+    limite_max_x = HUECO_FIN if portal_liberado else HUECO_INICIO - 40
 
-    # --- Avance de escenario / oleadas ---
-    if oleada_limpiada and escenario_actual < CANTIDAD_OLEADAS and heroe.pos_x >= fin_escenario - 40:
-        escenario_actual += 1
-        if escenario_actual < CANTIDAD_OLEADAS:
-            enemigos_nivel = generar_enemigos_oleada(escenario_actual)
-            oleada_limpiada = False
-        else:
-            enemigos_nivel = []
-
-    todas_superadas = (escenario_actual >= ESCENARIO_PORTAL)
     en_zona_hueco = (
-        todas_superadas
+        portal_liberado
         and HUECO_INICIO <= heroe.pos_x <= HUECO_FIN
         and not transicion_realizada
     )
@@ -837,15 +1051,16 @@ while ejecutando:
     if not ejecutando:
         break
 
-    # --- Cámara desplazable ---
-    scroll_objetivo = escenario_actual * ANCHO
-    if scroll_x < scroll_objetivo:
-        scroll_x = min(scroll_objetivo, scroll_x + VELOCIDAD_CAMARA)
-
     todos_los_sprites.update(scroll_x, transicion_realizada, limite_max_x=limite_max_x)
+    scroll_x = max(0, min(heroe.pos_x - ANCHO * 0.4, ANCHO_MUNDO - ANCHO))
+    heroe.rect.centerx = int(heroe.pos_x - scroll_x)
+    heroe.actualizar_hitboxes()
     vista_heroe.sync(scroll_x)
 
     # --- Enemigos y combate en mundo ---
+    for enemigo in enemigos_nivel:
+        enemigo.allies = enemigos_nivel
+
     for enemigo in enemigos_nivel:
         if enemigo_derrotado(enemigo) and getattr(enemigo, 'muerto_definitivo', False):
             if isinstance(enemigo, OjoVolador):
@@ -853,11 +1068,8 @@ while ejecutando:
             continue
 
         enemigo.suelo_y = POSICION_SUELO
+        enemigo.plataformas = plataformas_nivel
         enemigo.update(vista_heroe, dt, width=ANCHO_MUNDO)
-
-        # Forzar alineación estricta con el suelo para los enemigos terrestres
-        if isinstance(enemigo, (OrcoRojo, Karasu_tengu)):
-            enemigo.rect.bottom = POSICION_SUELO
 
         if enemigo.health <= 0:
             continue
@@ -875,15 +1087,17 @@ while ejecutando:
                 heroe.take_damage(getattr(enemigo, 'dano_ataque', 10))
                 enemigo.has_hit = True
 
-    # --- Renderizado de fondos ---
-    for i in range(CANTIDAD_OLEADAS + 1):
+    separar_enemigos(enemigos_nivel, ANCHO_MUNDO)
+
+    # --- Fondo continuo: cada tramo da paso al siguiente escenario ---
+    for i in range(ANCHO_MUNDO // ANCHO):
         pos_x_fondo = i * ANCHO - scroll_x
         if -ANCHO < pos_x_fondo < ANCHO:
-            if i < CANTIDAD_OLEADAS:
-                pantalla.blit(fondos[0], (pos_x_fondo, 0))  # Las 5 oleadas usan la primera imagen
-            else:
-                pantalla.blit(fondos[1], (pos_x_fondo, 0))  # Escenario del portal usa la segunda imagen
+            pantalla.blit(fondos[i % len(fondos)], (pos_x_fondo, 0))
 
+    dibujar_plataformas(
+        pantalla, scroll_x, plataformas_nivel, disenos_plataformas
+    )
     # Renderizado de héroe y enemigos
     todos_los_sprites.draw(pantalla)
 
@@ -896,26 +1110,26 @@ while ejecutando:
             enemigo.draw(pantalla)
             enemigo.rect.x = pos_x_orig
 
-    # --- UI y Notificador de oleadas ---
+    # --- Progreso del recorrido y acceso al jefe ---
     dibujar_barra_jugador(pantalla, heroe)
 
-    if escenario_actual < CANTIDAD_OLEADAS:
-        if not oleada_limpiada:
-            str_oleada = f"OLEADA {escenario_actual + 1} / {CANTIDAD_OLEADAS}"
-            color_ol = (220, 50, 50)
-        else:
-            str_oleada = f"¡OLEADA {escenario_actual + 1} COMPLETADA! AVANZA HACIA LA DERECHA"
-            color_ol = (50, 220, 100)
+    progreso = min(100, int(heroe.pos_x * 100 / PORTAL_X))
+    if portal_liberado:
+        str_progreso = "CAMINO DESPEJADO: ACÉRCATE AL PORTAL"
+        color_progreso = (90, 230, 130)
+    elif enemigos_pendientes:
+        str_progreso = f"RUMBO A ATHROS: {progreso}%  |  ENEMIGOS: {len(enemigos_pendientes)}"
+        color_progreso = (255, 190, 90)
     else:
-        str_oleada = "¡TODAS LAS OLEADAS SUPERADAS! DIRÍGETE AL PORTAL"
-        color_ol = (255, 200, 50)
+        str_progreso = f"RUMBO A ATHROS: {progreso}%"
+        color_progreso = (230, 210, 160)
 
-    txt_ol_sombra = fuente_oleada.render(str_oleada, True, (0, 0, 0))
-    txt_ol = fuente_oleada.render(str_oleada, True, color_ol)
-    rect_ol = txt_ol.get_rect(topright=(ANCHO - 30, 20))
+    txt_progreso_sombra = fuente_progreso.render(str_progreso, True, (0, 0, 0))
+    txt_progreso = fuente_progreso.render(str_progreso, True, color_progreso)
+    rect_progreso = txt_progreso.get_rect(topright=(ANCHO - 30, 20))
 
-    pantalla.blit(txt_ol_sombra, (rect_ol.x + 2, rect_ol.y + 2))
-    pantalla.blit(txt_ol, rect_ol)
+    pantalla.blit(txt_progreso_sombra, (rect_progreso.x + 2, rect_progreso.y + 2))
+    pantalla.blit(txt_progreso, rect_progreso)
 
     if en_zona_hueco:
         dibujar_boton_demoniaco(pantalla)

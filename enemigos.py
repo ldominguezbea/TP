@@ -1,5 +1,6 @@
 import os
 import random
+import math
 import pygame
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -30,6 +31,10 @@ def cargar_spritesheet_jokai(ruta_relativa, filas, columnas):
 WIDTH = 1350
 
 
+def obtener_frame_seguro(frames, indice):
+    return frames[max(0, min(len(frames) - 1, int(indice)))]
+
+
 class Enemigo:
 
     def __init__(self, name, speed, x=550, y=500):
@@ -51,85 +56,183 @@ class Enemigo:
         self.gravity = 0.5
         self.jump_force = -12
         self.on_ground = False
+        self.suelo_y = 590
+        self.plataformas = []
+        self.flank_side = 1
+        self.preferred_distance = 80
+        self.strafe_timer = 1.0
+        self.strafe_direction = 1
+        self.jump_cooldown = 0.0
+        self.dodge_timer = 0.0
+        self.allies = []
+        self.attack_range = 140
+        self.combat_phase = "approach"
+        self.phase_timer = 0.0
+        self.dodge_direction = 1
+        self.dodge_cooldown = 0.0
 
         # Distancia mínima para detenerse antes de empujar o traspasar al jugador
-        self.stop_distance = 50
+        self.stop_distance = 35
 
     def aplicar_gravedad_y_suelo(self):
+        bottom_anterior = self.rect.bottom
+        self.on_ground = False
         self.velocity_y += self.gravity
         self.rect.y += self.velocity_y
 
-        suelo_y = 590
-        if self.rect.bottom >= suelo_y:
-            self.rect.bottom = suelo_y
+        if self.velocity_y >= 0:
+            for plataforma in self.plataformas:
+                zona_suelo = plataforma.inflate(-20, 0)
+                pisa_plataforma = (
+                    bottom_anterior <= zona_suelo.top
+                    and self.rect.bottom >= zona_suelo.top
+                    and self.rect.right > zona_suelo.left
+                    and self.rect.left < zona_suelo.right
+                )
+                if pisa_plataforma:
+                    self.rect.bottom = zona_suelo.top
+                    self.velocity_y = 0
+                    self.on_ground = True
+                    break
+
+        if not self.on_ground and self.rect.bottom >= self.suelo_y:
+            self.rect.bottom = self.suelo_y
             self.velocity_y = 0
             self.on_ground = True
 
     def update(self, player, dt, width=WIDTH):
-        # --- SOLUCIÓN TEMBLOR / GIRO LOUCO ---
-        # Calculamos la distancia usando los centros en X
-        dx = player.rect.centerx - self.rect.centerx
-
-        # Margen de tolerancia para que no cambie de lado a cada frame
-        if dx < -5:
-            self.direction = "left"
-        elif dx > 5:
-            self.direction = "right"
-
-        # Solo avanza si está más lejos que la distancia de parada
-        if abs(dx) > self.stop_distance:
-            if self.direction == "right":
-                self.rect.x += self.speed
-            else:
-                self.rect.x -= self.speed
-
-        if player.rect.bottom < self.rect.top - 30 and self.on_ground:
-            self.velocity_y = self.jump_force
-            self.on_ground = False
-
-        self.aplicar_gravedad_y_suelo()
-
-        self.rect.x = max(0, min(width - self.rect.width, self.rect.x))
-        self.hurtbox.topleft = self.rect.topleft
+        if self.combat_phase == "attack" and not self.attacking:
+            self.combat_phase = "retreat"
+            self.phase_timer = 0.55
 
         if self.attack_cooldown > 0:
-            self.attack_cooldown -= dt
-
-        distance_x = abs(dx)
-        distance_y = abs(self.rect.centery - player.rect.centery)
-
-        if distance_x < 100 and distance_y < 80:
-            if not self.attacking:
-                self.attack()
+            self.attack_cooldown = max(0, self.attack_cooldown - dt)
 
         if self.attacking:
-            if self.direction == "right":
-                self.hitbox.topleft = (self.rect.right, self.rect.y + 20)
-            else:
-                self.hitbox.topleft = (self.rect.left - 50, self.rect.y + 20)
-
             self.attack_timer -= dt
             if self.attack_timer <= 0:
                 self.attacking = False
                 self.has_hit = False
                 self.hitbox = pygame.Rect(0, 0, 0, 0)
+                self.combat_phase = "retreat"
+                self.phase_timer = 0.55
+
+        target = getattr(player, "jugador", player)
+        target_x = getattr(player, "pos_x", target.rect.centerx)
+        dx = target_x - self.rect.centerx
+        distance_x = abs(dx)
+        distance_y = abs(target.rect.centery - self.rect.centery)
+        target_attacking = getattr(target, "atacando", False)
+        self.dodge_cooldown = max(0, self.dodge_cooldown - dt)
+
+        player_hitbox = getattr(target, "hitbox", pygame.Rect(0, 0, 0, 0))
+        attack_nearby = (
+            target_attacking
+            and distance_x < 260
+            and (
+                player_hitbox.colliderect(self.rect.inflate(100, 40))
+                or distance_x < 165
+            )
+        )
+        player_closing = (
+            distance_x < 260
+            and getattr(target, "velocidad_x", 0) * dx < 0
+        )
+        if (
+            (attack_nearby or player_closing)
+            and self.dodge_cooldown <= 0
+            and not self.attacking
+            and self.combat_phase != "dodge"
+        ):
+            self.combat_phase = "dodge"
+            self.phase_timer = 0.38
+            self.dodge_direction = -1 if dx > 0 else 1
+            self.dodge_cooldown = 1.1
+
+        move_x = 0
+        if self.combat_phase == "dodge" and not self.attacking:
+            self.phase_timer -= dt
+            move_x = self.dodge_direction
+            if self.phase_timer <= 0:
+                self.combat_phase = "approach"
+        elif self.combat_phase == "retreat" and not self.attacking:
+            self.phase_timer -= dt
+            move_x = -1 if dx > 0 else 1
+            if self.phase_timer <= 0:
+                self.combat_phase = "approach"
+                self.flank_side *= -1
+        elif not self.attacking:
+            self.strafe_timer -= dt
+            if self.strafe_timer <= 0:
+                self.strafe_direction = random.choice((-1, 1))
+                self.strafe_timer = random.uniform(1.4, 2.8)
+
+            desired_x = target_x + self.flank_side * self.preferred_distance
+            approach_dx = desired_x - self.rect.centerx
+            if abs(approach_dx) > 35:
+                move_x = 1 if approach_dx > 0 else -1
+            elif distance_y > 95:
+                move_x = 1 if dx > 0 else -1
+            else:
+                move_x = self.strafe_direction
+
+        # Keep the group spread, but only nudge aside instead of changing direction every frame.
+        if self.combat_phase not in ("retreat", "dodge"):
+            for ally in self.allies:
+                if ally is self or ally.health <= 0:
+                    continue
+                ally_dx = self.rect.centerx - ally.rect.centerx
+                if abs(ally_dx) < 70 and abs(self.rect.centery - ally.rect.centery) < 75:
+                    if ally_dx == 0:
+                        ally_dx = self.flank_side
+                    move_x = 1 if ally_dx > 0 else -1
+                    break
+
+        if not self.attacking:
+            move_speed = self.speed + (1 if self.combat_phase == "retreat" else 0)
+            self.rect.x += move_x * move_speed
+        if dx:
+            self.direction = "right" if dx > 0 else "left"
+
+        self.jump_cooldown = max(0, self.jump_cooldown - dt)
+        should_jump = (
+            not self.attacking
+            and self.on_ground
+            and self.jump_cooldown <= 0
+            and (
+                ((attack_nearby or player_closing) and self.combat_phase == "dodge")
+                or target.rect.bottom < self.rect.top - 35
+            )
+        )
+        if should_jump:
+            self.velocity_y = self.jump_force
+            self.on_ground = False
+            self.jump_cooldown = random.uniform(2.8, 4.5)
+
+        self.aplicar_gravedad_y_suelo()
+        self.rect.x = max(0, min(width - self.rect.width, self.rect.x))
+        self.hurtbox.topleft = self.rect.topleft
+
+        if (
+            not self.attacking
+            and self.attack_cooldown <= 0
+            and self.combat_phase == "approach"
+            and distance_x <= self.attack_range
+            and distance_y <= 95
+        ):
+            self.attack()
 
     def attack(self):
         if self.attack_cooldown > 0:
             return
         self.attacking = True
-        self.attack_timer = 0.15
-        self.attack_cooldown = self.attack_cooldown_time
+        self.combat_phase = "attack"
+        self.attack_timer = 0.45
+        self.attack_cooldown = 1.25
         self.has_hit = False
 
-        if self.direction == "right":
-            self.hitbox = pygame.Rect(
-                self.rect.right, self.rect.y + 20, 50, 50
-            )
-        else:
-            self.hitbox = pygame.Rect(
-                self.rect.left - 50, self.rect.y + 20, 50, 50
-            )
+        hitbox_x = self.rect.right if self.direction == "right" else self.rect.left - 85
+        self.hitbox = pygame.Rect(hitbox_x, self.rect.centery - 50, 85, 100)
 
     def take_damage(self, damage):
         if self.health <= 0:
@@ -188,7 +291,7 @@ class OrcoRojo(Enemigo):
 
         self.estado_actual = "correr"
         self.frame_actual = 0.0
-        self.velocidad_animacion = 0.15
+        self.velocidad_animacion = 0.12
         self.image = self.animaciones["correr"][0]
 
         self.esta_rojo = False
@@ -235,7 +338,10 @@ class OrcoRojo(Enemigo):
         elif self.estado_actual in ("golpear", "dano"):
             if self.frame_actual >= len(frames):
                 self.esta_rojo = False
-                self.cambiar_estado("correr")
+                if self.estado_actual == "golpear" and self.attacking:
+                    self.frame_actual = len(frames) - 1
+                else:
+                    self.cambiar_estado("correr")
         elif self.estado_actual == "saltar":
             if self.frame_actual >= len(frames):
                 self.frame_actual = len(frames) - 1
@@ -243,7 +349,7 @@ class OrcoRojo(Enemigo):
             if self.frame_actual >= len(frames):
                 self.frame_actual = 0.0
 
-        imagen_frame = frames[int(self.frame_actual)]
+        imagen_frame = frames[max(0, min(len(frames) - 1, int(self.frame_actual)))]
 
         if self.direction == "left":
             imagen_frame = pygame.transform.flip(imagen_frame, True, False)
@@ -334,7 +440,7 @@ class Jokai(Enemigo):
 
         self.estado_actual = "correr"
         self.frame_actual = 0.0
-        self.velocidad_animacion = 0.15
+        self.velocidad_animacion = 0.12
         self.image = self.animaciones["correr"][0]
 
         self.esta_rojo = False
@@ -368,7 +474,10 @@ class Jokai(Enemigo):
         elif self.estado_actual in ("golpear", "dano"):
             if self.frame_actual >= len(frames):
                 self.esta_rojo = False
-                self.cambiar_estado("correr")
+                if self.estado_actual == "golpear" and self.attacking:
+                    self.frame_actual = len(frames) - 1
+                else:
+                    self.cambiar_estado("correr")
         elif self.estado_actual == "saltar":
             if self.frame_actual >= len(frames):
                 self.frame_actual = len(frames) - 1
@@ -376,7 +485,7 @@ class Jokai(Enemigo):
             if self.frame_actual >= len(frames):
                 self.frame_actual = 0.0
 
-        imagen_frame = frames[int(self.frame_actual)]
+        imagen_frame = obtener_frame_seguro(frames, self.frame_actual)
 
         if self.direction == "left":
             imagen_frame = pygame.transform.flip(imagen_frame, True, False)
@@ -448,12 +557,21 @@ class OjoVolador(Enemigo):
  
     class Proyectil:
  
-        def __init__(self, x, y, direccion, dano=10):
+        def __init__(self, x, y, direccion, dano=10, objetivo=None):
             self.direccion = direccion
             self.dano = dano
             self.velocidad = 350
+            if objetivo is None:
+                self.velocidad_x = -self.velocidad if direccion == "left" else self.velocidad
+                self.velocidad_y = 0
+            else:
+                dx = objetivo[0] - x
+                dy = objetivo[1] - y
+                distancia = max(1, math.hypot(dx, dy))
+                self.velocidad_x = self.velocidad * dx / distancia
+                self.velocidad_y = self.velocidad * dy / distancia
             self.frame_actual = 0.0
-            self.velocidad_anim = 0.2
+            self.velocidad_anim = 0.15
             self.destruido = False
             self.estado = "vuelo"
             self.x_inicial = x
@@ -480,14 +598,14 @@ class OjoVolador(Enemigo):
             frame_img = self.image
  
             if self.estado == "vuelo":
-                dir_mult = -1 if self.direccion == "left" else 1
-                self.rect.x += int(self.velocidad * dt * dir_mult)
+                self.rect.x += round(self.velocidad_x * dt)
+                self.rect.y += round(self.velocidad_y * dt)
  
                 self.frame_actual += self.velocidad_anim
                 if self.frame_actual >= len(self.frames_vuelo):
                     self.frame_actual = 0.0
  
-                frame_img = self.frames_vuelo[int(self.frame_actual)]
+                frame_img = obtener_frame_seguro(self.frames_vuelo, self.frame_actual)
  
                 if player:
                     # Hurtbox del jugador en coordenadas de MUNDO
@@ -510,7 +628,7 @@ class OjoVolador(Enemigo):
                     self.destruido = True
                     return
  
-                frame_img = self.frames_explosion[int(self.frame_actual)]
+                frame_img = obtener_frame_seguro(self.frames_explosion, self.frame_actual)
  
             if self.direccion == "left":
                 frame_img = pygame.transform.flip(frame_img, True, False)
@@ -559,7 +677,7 @@ class OjoVolador(Enemigo):
  
         self.estado_actual = "correr"
         self.frame_actual = 0.0
-        self.velocidad_animacion = 0.15
+        self.velocidad_animacion = 0.12
         self.image = self.animaciones["correr"][0]
  
         # Flota a ALTURA_VUELO px sobre el suelo
@@ -577,9 +695,17 @@ class OjoVolador(Enemigo):
         self.proyectiles = []
         self.disparado_en_este_ataque = False
         self.cooldown_ataque = 0.0
-        self.tiempo_cooldown = 2.0
-        self.distancia_disparo = 400
- 
+        self.tiempo_cooldown = 1.35
+        self.distancia_disparo = 350
+        self.objetivo_ataque = None
+        self.flank_side = 1
+        self.preferred_distance = random.randint(255, 285)
+        self.strafe_timer = 1.0
+        self.strafe_direction = 1
+        self.altura_orbita = random.randint(-50, 45)
+        self.velocidad_vuelo = 180
+        self.distancia_minima_vuelo = 170
+
         self.actualizar_hurtbox()
  
     def actualizar_hurtbox(self):
@@ -600,10 +726,14 @@ class OjoVolador(Enemigo):
             if nuevo_estado == "golpear":
                 self.disparado_en_este_ataque = False
  
-    def disparar(self):
+    def disparar(self, objetivo=None):
+        destino = None
+        if objetivo is not None:
+            destino_x = getattr(objetivo, "pos_x", objetivo.rect.centerx)
+            destino = (destino_x, objetivo.rect.centery)
         nuevo = self.Proyectil(
             self.rect.centerx, self.rect.centery,
-            self.direction, dano=self.DANO_PROYECTIL
+            self.direction, dano=self.DANO_PROYECTIL, objetivo=destino
         )
         self.proyectiles.append(nuevo)
  
@@ -613,7 +743,7 @@ class OjoVolador(Enemigo):
  
         if self.estado_actual == "golpear":
             if int(self.frame_actual) >= 2 and not self.disparado_en_este_ataque:
-                self.disparar()
+                self.disparar(self.objetivo_ataque)
                 self.disparado_en_este_ataque = True
  
             if self.frame_actual >= len(frames):
@@ -632,7 +762,7 @@ class OjoVolador(Enemigo):
             if self.frame_actual >= len(frames):
                 self.frame_actual = 0.0
  
-        imagen_frame = frames[int(self.frame_actual)]
+        imagen_frame = obtener_frame_seguro(frames, self.frame_actual)
  
         if self.direction == "left":
             imagen_frame = pygame.transform.flip(imagen_frame, True, False)
@@ -679,10 +809,9 @@ class OjoVolador(Enemigo):
  
         else:
             if self.cooldown_ataque > 0:
-                self.cooldown_ataque -= dt
+                self.cooldown_ataque = max(0, self.cooldown_ataque - dt)
  
             if player and self.estado_actual != "golpear":
-                # pos_x = posición en MUNDO del jugador
                 px = getattr(player, "pos_x", player.rect.centerx)
                 dx = px - self.rect.centerx
                 distancia = abs(dx)
@@ -692,21 +821,34 @@ class OjoVolador(Enemigo):
                 elif dx > 5:
                     self.direction = "right"
  
-                # Se acerca hasta quedar a stop_distance del jugador
-                if distancia > self.stop_distance:
-                    if self.direction == "right":
-                        self.rect.x += self.speed
-                    else:
-                        self.rect.x -= self.speed
+                jugador_real = getattr(player, "jugador", player)
+                desplazamiento_x = 0
+                if distancia < self.distancia_minima_vuelo:
+                    desplazamiento_x = -1 if dx > 0 else 1
+                elif distancia > self.preferred_distance + 25:
+                    desplazamiento_x = 1 if dx > 0 else -1
+                self.rect.x += round(desplazamiento_x * self.velocidad_vuelo * dt)
+
+                altura_objetivo = max(
+                    190,
+                    min(
+                        self.suelo_y - 65,
+                        jugador_real.rect.centery - 100 + self.altura_orbita,
+                    ),
+                )
+                delta_y = altura_objetivo - self.rect.centery
+                self.rect.centery += max(-3, min(3, delta_y))
  
-                if distancia <= self.distancia_disparo and self.cooldown_ataque <= 0:
+                if (
+                    self.distancia_minima_vuelo <= distancia <= self.distancia_disparo
+                    and self.cooldown_ataque <= 0
+                ):
+                    self.objetivo_ataque = jugador_real
                     self.cambiar_estado("golpear")
                     self.cooldown_ataque = self.tiempo_cooldown
  
         self.actualizar_animacion()
  
-        # Siempre flotando a la misma altura y dentro del mundo
-        self.rect.centery = self.suelo_y - self.ALTURA_VUELO
         self.rect.x = max(0, min(width - self.rect.width, self.rect.x))
         self.actualizar_hurtbox()
  
@@ -749,7 +891,7 @@ class Karasu_tengu(Enemigo):
 
         self.estado_actual = "correr"
         self.frame_actual = 0.0
-        self.velocidad_animacion = 0.15
+        self.velocidad_animacion = 0.12
         self.image = self.animaciones["correr"][0]
 
         self.esta_rojo = False
@@ -783,7 +925,10 @@ class Karasu_tengu(Enemigo):
         elif self.estado_actual in ("golpear", "dano"):
             if self.frame_actual >= len(frames):
                 self.esta_rojo = False
-                self.cambiar_estado("correr")
+                if self.estado_actual == "golpear" and self.attacking:
+                    self.frame_actual = len(frames) - 1
+                else:
+                    self.cambiar_estado("correr")
         elif self.estado_actual == "saltar":
             if self.frame_actual >= len(frames):
                 self.frame_actual = len(frames) - 1
@@ -791,7 +936,7 @@ class Karasu_tengu(Enemigo):
             if self.frame_actual >= len(frames):
                 self.frame_actual = 0.0
 
-        imagen_frame = frames[int(self.frame_actual)]
+        imagen_frame = obtener_frame_seguro(frames, self.frame_actual)
 
         if self.direction == "left":
             imagen_frame = pygame.transform.flip(imagen_frame, True, False)
@@ -882,7 +1027,7 @@ class HombreLoboRojo(Enemigo):
 
         self.estado_actual = "correr"
         self.frame_actual = 0.0
-        self.velocidad_animacion = 0.15
+        self.velocidad_animacion = 0.12
         self.image = self.animaciones["correr"][0]
 
         self.esta_rojo = False
@@ -916,7 +1061,10 @@ class HombreLoboRojo(Enemigo):
         elif self.estado_actual in ("golpear", "dano"):
             if self.frame_actual >= len(frames):
                 self.esta_rojo = False
-                self.cambiar_estado("correr")
+                if self.estado_actual == "golpear" and self.attacking:
+                    self.frame_actual = len(frames) - 1
+                else:
+                    self.cambiar_estado("correr")
         elif self.estado_actual == "saltar":
             if self.frame_actual >= len(frames):
                 self.frame_actual = len(frames) - 1
@@ -924,7 +1072,7 @@ class HombreLoboRojo(Enemigo):
             if self.frame_actual >= len(frames):
                 self.frame_actual = 0.0
 
-        imagen_frame = frames[int(self.frame_actual)]
+        imagen_frame = obtener_frame_seguro(frames, self.frame_actual)
 
         if self.direction == "left":
             imagen_frame = pygame.transform.flip(imagen_frame, True, False)
@@ -1015,7 +1163,7 @@ class HombreLoboNegro(Enemigo):
 
         self.estado_actual = "correr"
         self.frame_actual = 0.0
-        self.velocidad_animacion = 0.15
+        self.velocidad_animacion = 0.12
         self.image = self.animaciones["correr"][0]
 
         self.esta_rojo = False
@@ -1049,7 +1197,10 @@ class HombreLoboNegro(Enemigo):
         elif self.estado_actual in ("golpear", "dano"):
             if self.frame_actual >= len(frames):
                 self.esta_rojo = False
-                self.cambiar_estado("correr")
+                if self.estado_actual == "golpear" and self.attacking:
+                    self.frame_actual = len(frames) - 1
+                else:
+                    self.cambiar_estado("correr")
         elif self.estado_actual == "saltar":
             if self.frame_actual >= len(frames):
                 self.frame_actual = len(frames) - 1
@@ -1057,7 +1208,7 @@ class HombreLoboNegro(Enemigo):
             if self.frame_actual >= len(frames):
                 self.frame_actual = 0.0
 
-        imagen_frame = frames[int(self.frame_actual)]
+        imagen_frame = obtener_frame_seguro(frames, self.frame_actual)
 
         if self.direction == "left":
             imagen_frame = pygame.transform.flip(imagen_frame, True, False)
@@ -1151,7 +1302,7 @@ class Esqueleto_Guerrero(Enemigo):
 
         self.estado_actual = "correr"
         self.frame_actual = 0.0
-        self.velocidad_animacion = 0.15
+        self.velocidad_animacion = 0.12
         self.image = self.animaciones["correr"][0]
 
         self.esta_rojo = False
@@ -1198,7 +1349,10 @@ class Esqueleto_Guerrero(Enemigo):
         elif self.estado_actual in ("golpear", "dano"):
             if self.frame_actual >= len(frames):
                 self.esta_rojo = False
-                self.cambiar_estado("correr")
+                if self.estado_actual == "golpear" and self.attacking:
+                    self.frame_actual = len(frames) - 1
+                else:
+                    self.cambiar_estado("correr")
         elif self.estado_actual == "saltar":
             if self.frame_actual >= len(frames):
                 self.frame_actual = len(frames) - 1
@@ -1206,7 +1360,7 @@ class Esqueleto_Guerrero(Enemigo):
             if self.frame_actual >= len(frames):
                 self.frame_actual = 0.0
 
-        imagen_frame = frames[int(self.frame_actual)]
+        imagen_frame = obtener_frame_seguro(frames, self.frame_actual)
 
         if self.direction == "left":
             imagen_frame = pygame.transform.flip(imagen_frame, True, False)
