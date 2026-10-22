@@ -1,7 +1,7 @@
 import os
 import sys
 import random
-import subprocess
+import math
 import pygame
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -40,27 +40,31 @@ fuente_progreso = pygame.font.SysFont("Impact", 22)
 # CARGA DE IMÁGENES Y CÓMICS
 # ==============================================================================
 def cargar_imagen_comic(nombre_archivo):
+    nombres_archivo = [nombre_archivo]
+    if nombre_archivo.lower().endswith(".png"):
+        nombres_archivo.append(f"{nombre_archivo}.png")
+
+    carpetas = (
+        ("imagenes", "Nivel2"),
+        ("assets", "imagenes", "Nivel2"),
+    )
     rutas = [
-        os.path.join("imagenes", "Nivel1", nombre_archivo),
-        os.path.join("assets", "imagenes", "Nivel1", nombre_archivo)
+        os.path.join(BASE_DIR, *carpeta, nombre)
+        for nombre in nombres_archivo
+        for carpeta in carpetas
     ]
     for ruta in rutas:
-        if os.path.exists(ruta):
-            try:
-                img = pygame.image.load(ruta).convert()
-                return pygame.transform.scale(img, (ANCHO, ALTO))
-            except Exception as e:
-                print(f"Error al cargar {ruta}: {e}")
+        if os.path.isfile(ruta):
+            img = pygame.image.load(ruta).convert()
+            return pygame.transform.scale(img, (ANCHO, ALTO))
 
-    surf = pygame.Surface((ANCHO, ALTO))
-    surf.fill((15, 15, 20))
-    txt = fuente_boss_subtitle.render(f"[{nombre_archivo} no encontrado]", True, (255, 255, 255))
-    surf.blit(txt, txt.get_rect(center=(ANCHO // 2, ALTO // 2)))
-    return surf
+    raise FileNotFoundError(
+        f"No se encontró el cómic {nombre_archivo}. Rutas revisadas: {rutas}"
+    )
 
 
 def mostrar_comic_inicio(screen):
-    img_inicio = cargar_imagen_comic("comic_inicio.png")
+    img_inicio = cargar_imagen_comic("comic_inicio2.png")
     reloj = pygame.time.Clock()
     esperando = True
 
@@ -88,7 +92,7 @@ def mostrar_comic_inicio(screen):
 
 
 def mostrar_comic_final(screen):
-    img_final = cargar_imagen_comic("comic_final.png")
+    img_final = cargar_imagen_comic("comic_final2.png")
     reloj = pygame.time.Clock()
     esperando = True
 
@@ -141,6 +145,7 @@ def buscar_y_cargar_barra(nombre_archivo):
 
 IMG_SUN_SPIRIT = buscar_y_cargar_barra("sun_spirit.png")
 IMG_BARRA_JUGADOR = buscar_y_cargar_barra("Barra_de_vida_jugador.png")
+IMG_LEVIATHAN = buscar_y_cargar_barra("leviathan.png")
 
 # 2. Carga de fondos
 def cargar_fondo_nivel2(nombre_archivo):
@@ -162,7 +167,31 @@ fondos = [
     cargar_fondo_nivel2("Nivel2_imagen2.png"),
     cargar_fondo_nivel2("Nivel2_imagen4.png"),
 ]
+fondo_batalla = cargar_fondo_nivel2("Nivel2_imagen1.png")
 fondo_jefe = cargar_fondo_nivel2("Nivel2_imagen3.png")
+
+
+def dibujar_luna_roja_batalla(screen, tiempo):
+    x, y = 890, 140
+
+    for radio, alpha in ((110, 12), (95, 18), (80, 25)):
+        halo = pygame.Surface((radio * 2, radio * 2), pygame.SRCALPHA)
+        pygame.draw.circle(halo, (255, 0, 30, alpha), (radio, radio), radio)
+        screen.blit(halo, (x - radio, y - radio))
+
+    pygame.draw.circle(screen, (105, 0, 10), (x, y), 62)
+    pygame.draw.circle(screen, (210, 18, 28), (x, y), 53)
+    pygame.draw.circle(screen, (150, 5, 15), (x - 20, y - 12), 8)
+    pygame.draw.circle(screen, (145, 5, 15), (x + 17, y + 18), 11)
+    pygame.draw.circle(screen, (165, 8, 18), (x + 4, y - 25), 6)
+    pygame.draw.circle(screen, (130, 3, 12), (x - 25, y + 25), 5)
+    pygame.draw.circle(
+        screen,
+        (255, 50, 60),
+        (x, y),
+        63 + int(math.sin(tiempo * 4) * 4),
+        2,
+    )
 
 
 # 3. Clase para el Jugador (P_viento)
@@ -745,6 +774,362 @@ def ejecutar_batalla_carnicero(screen, player, fondo_img):
         pygame.display.flip()
 
 
+def ejecutar_batalla_werewolf(screen, player, fondo_img):
+    from Jefes_enemigos import WerewolfBoss
+
+    clock = pygame.time.Clock()
+    jefe = WerewolfBoss(x=920, y=POSICION_SUELO - 100)
+    jefe.max_health = 300
+    jefe.health = jefe.max_health
+    jefe.rect.bottom = POSICION_SUELO
+    jefe.hurtbox = jefe.rect.copy()
+
+    player.health = player.max_health
+    player.pos_x = 180.0
+    player.rect.centerx = 180
+    player.rect.bottom = POSICION_SUELO
+    player.scroll_x_actual = 0
+    player.plataformas = []
+    player.velocidad_x = 0
+    player.velocidad_y = 0
+    player.en_suelo = True
+    player.atacando = False
+    player.rodando = False
+    player.defendiendo = False
+    player.combo_siguiente = False
+    player.has_hit = False
+    player.enemigos_golpeados.clear()
+    player.estado = "idle"
+    player.frame_index = 0
+    player.actualizar_hitboxes()
+    player.animar()
+
+    fase = 1
+    fase2_activada = False
+    transicion_fase = False
+    transicion_timer = 0.0
+    demonios_activos = False
+    demonios_timer = 0.0
+    demonios_cooldown = 7.8
+    demonios = []
+    proyectiles_demonio = []
+    proyectiles_demonio_timer = 0.0
+    bolas_fuego = []
+    bola_fuego_timer = 0.0
+    timer_muerte_jefe = 0.0
+    en_batalla = True
+    fuente_legend = pygame.font.SysFont("Georgia", 64, bold=True)
+    fuente_nombre_jefe = pygame.font.SysFont("Georgia", 18, bold=True)
+
+    def crear_demonios():
+        return [
+            {"x": 250, "y": 210, "fase": 0},
+            {"x": ANCHO // 2, "y": 150, "fase": 2},
+            {"x": 1100, "y": 210, "fase": 4},
+        ]
+
+    def dibujar_demonio(demonio, tiempo):
+        x = int(demonio["x"])
+        y = int(demonio["y"] + math.sin(tiempo * 3 + demonio["fase"]) * 8)
+        aura = pygame.Surface((110, 110), pygame.SRCALPHA)
+        pygame.draw.circle(aura, (150, 30, 255, 35), (55, 55), 50)
+        pygame.draw.circle(aura, (210, 60, 255, 25), (55, 55), 40)
+        screen.blit(aura, (x - 55, y - 55))
+        pygame.draw.polygon(screen, (70, 20, 100), [(x - 18, y - 5), (x - 48, y - 25), (x - 38, y + 18), (x - 12, y + 12)])
+        pygame.draw.polygon(screen, (70, 20, 100), [(x + 18, y - 5), (x + 48, y - 25), (x + 38, y + 18), (x + 12, y + 12)])
+        pygame.draw.polygon(screen, (75, 15, 110), [(x, y - 30), (x - 25, y - 5), (x - 18, y + 30), (x, y + 42), (x + 18, y + 30), (x + 25, y - 5)])
+        pygame.draw.circle(screen, (105, 20, 145), (x, y - 12), 20)
+        pygame.draw.polygon(screen, (45, 10, 70), [(x - 13, y - 25), (x - 25, y - 45), (x - 8, y - 32)])
+        pygame.draw.polygon(screen, (45, 10, 70), [(x + 13, y - 25), (x + 25, y - 45), (x + 8, y - 32)])
+        pygame.draw.circle(screen, (255, 40, 70), (x - 8, y - 14), 4)
+        pygame.draw.circle(screen, (255, 40, 70), (x + 8, y - 14), 4)
+        pulso = int(math.sin(tiempo * 6) * 3)
+        pygame.draw.circle(screen, (190, 40, 255), (x, y + 10), 9 + pulso)
+        pygame.draw.circle(screen, (240, 150, 255), (x, y + 10), 4)
+
+    def dibujar_escudo(tiempo):
+        cx, cy = jefe.rect.center
+        radio_base = max(jefe.rect.width, jefe.rect.height) // 2 + 30
+        radio = int(radio_base + math.sin(tiempo * 6) * 6)
+        halo = pygame.Surface((radio_base * 4, radio_base * 4), pygame.SRCALPHA)
+        pygame.draw.circle(halo, (140, 20, 255, 45), (radio_base * 2, radio_base * 2), radio + 20)
+        pygame.draw.circle(halo, (200, 60, 255, 35), (radio_base * 2, radio_base * 2), radio + 10)
+        screen.blit(halo, (cx - radio_base * 2, cy - radio_base * 2))
+        for i in range(6):
+            angulo = tiempo * 2 + i * (2 * math.pi / 6)
+            punto = (int(cx + math.cos(angulo) * (radio + 5)), int(cy + math.sin(angulo) * (radio + 5)))
+            pygame.draw.circle(screen, (220, 130, 255), punto, 6)
+            pygame.draw.circle(screen, (255, 255, 255), punto, 3)
+        escudo = pygame.Surface((radio * 2 + 10, radio * 2 + 10), pygame.SRCALPHA)
+        pygame.draw.circle(escudo, (150, 30, 240, 80), (radio + 5, radio + 5), radio)
+        pygame.draw.circle(escudo, (220, 160, 255, 230), (radio + 5, radio + 5), radio, 3)
+        pygame.draw.circle(escudo, (255, 255, 255, 255), (radio + 5, radio + 5), radio - 4, 1)
+        screen.blit(escudo, (cx - radio - 5, cy - radio - 5))
+
+    while en_batalla:
+        dt = clock.tick(60) / 1000.0
+        tiempo = pygame.time.get_ticks() / 1000.0
+
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+            player.procesar_evento(event)
+
+        player.update(0, transicion_realizada=True, limite_max_x=ANCHO - 80)
+
+        if not transicion_fase and not jefe.muerto_definitivo:
+            if demonios_activos:
+                jefe.cambiar_estado("idle")
+                jefe.attacking = False
+                jefe.has_hit = False
+                jefe.hitbox = pygame.Rect(0, 0, 0, 0)
+                jefe.actualizar_animacion()
+                jefe.velocity_y = 0
+                jefe.on_ground = True
+                jefe.rect.bottom = POSICION_SUELO
+                jefe.hurtbox = jefe.rect.copy()
+            else:
+                jefe.update(player, dt, width=ANCHO)
+                jefe.rect.bottom = POSICION_SUELO
+                jefe.hurtbox = jefe.rect.copy()
+                jefe.rect.x = max(0, min(ANCHO - jefe.rect.width, jefe.rect.x))
+
+        if (
+            fase == 1
+            and jefe.health <= jefe.max_health * 0.5
+            and not fase2_activada
+        ):
+            fase = 2
+            fase2_activada = True
+            transicion_fase = True
+            transicion_timer = 3.0
+
+        if transicion_fase:
+            transicion_timer -= dt
+            if transicion_timer <= 0:
+                transicion_fase = False
+
+        if fase == 2 and not transicion_fase and not jefe.muerto_definitivo:
+            bola_fuego_timer -= dt
+            if bola_fuego_timer <= 0:
+                bola_fuego_timer = random.uniform(1.8, 3.0)
+                for _ in range(random.randint(2, 4)):
+                    bolas_fuego.append({
+                        "x": random.randint(80, ANCHO - 80),
+                        "y": -50,
+                        "speed": random.randint(380, 520),
+                        "aviso_timer": 0.7,
+                        "radio": random.randint(14, 20),
+                    })
+
+            for bola in bolas_fuego[:]:
+                if bola["aviso_timer"] > 0:
+                    bola["aviso_timer"] -= dt
+                    continue
+                bola["y"] += bola["speed"] * dt
+                bola_rect = pygame.Rect(
+                    bola["x"] - bola["radio"],
+                    bola["y"] - bola["radio"],
+                    bola["radio"] * 2,
+                    bola["radio"] * 2,
+                )
+                if bola_rect.colliderect(player.hurtbox):
+                    player.take_damage(12)
+                    bolas_fuego.remove(bola)
+                elif bola["y"] >= POSICION_SUELO:
+                    bolas_fuego.remove(bola)
+
+            if demonios_activos:
+                demonios_timer -= dt
+                proyectiles_demonio_timer -= dt
+                if proyectiles_demonio_timer <= 0:
+                    for demonio in demonios:
+                        dx = player.rect.centerx - demonio["x"]
+                        dy = player.rect.centery - demonio["y"]
+                        distancia = max(1, math.hypot(dx, dy))
+                        proyectiles_demonio.append({
+                            "x": demonio["x"],
+                            "y": demonio["y"],
+                            "vx": dx / distancia * 360,
+                            "vy": dy / distancia * 360,
+                            "rect": pygame.Rect(demonio["x"] - 8, demonio["y"] - 8, 16, 16),
+                        })
+                    proyectiles_demonio_timer = 1.6
+
+                for proyectil in proyectiles_demonio[:]:
+                    proyectil["x"] += proyectil["vx"] * dt
+                    proyectil["y"] += proyectil["vy"] * dt
+                    proyectil["rect"].center = (int(proyectil["x"]), int(proyectil["y"]))
+                    if proyectil["rect"].colliderect(player.hurtbox):
+                        player.take_damage(10)
+                        proyectiles_demonio.remove(proyectil)
+                    elif not screen.get_rect().inflate(100, 100).collidepoint(
+                        proyectil["rect"].center
+                    ):
+                        proyectiles_demonio.remove(proyectil)
+
+                if demonios_timer <= 0:
+                    demonios.clear()
+                    proyectiles_demonio.clear()
+                    demonios_activos = False
+                    demonios_cooldown = 7.8
+            else:
+                demonios_cooldown -= dt
+                if demonios_cooldown <= 0:
+                    demonios_activos = True
+                    demonios_timer = 6
+                    proyectiles_demonio_timer = 0.5
+                    demonios = crear_demonios()
+                    jefe.velocity_y = 0
+                    jefe.on_ground = True
+                    jefe.rect.bottom = POSICION_SUELO
+                    jefe.hurtbox = jefe.rect.copy()
+
+        if jefe.health > 0 and player.atacando and not demonios_activos:
+            if player.estado == "sp_atk":
+                num_imagen = int(player.frame_index) + 1
+                if num_imagen in (12, 18, 20) and not player.has_hit:
+                    if player.hitbox.colliderect(jefe.hurtbox):
+                        jefe.take_damage(18)
+                        player.has_hit = True
+                elif num_imagen not in (12, 18, 20):
+                    player.has_hit = False
+            elif not player.has_hit and player.hitbox.colliderect(jefe.hurtbox):
+                dano = 10
+                if player.estado == "2_atk":
+                    dano = 12
+                elif player.estado == "3_atk":
+                    dano = 16
+                elif player.estado == "air_atk":
+                    dano = 12
+                jefe.take_damage(dano)
+                player.has_hit = True
+
+        screen.blit(fondo_img, (0, 0))
+        if fase == 2:
+            overlay = pygame.Surface((ANCHO, ALTO), pygame.SRCALPHA)
+            overlay.fill((35, 0, 20, 90))
+            screen.blit(overlay, (0, 0))
+            dibujar_luna_roja_batalla(screen, tiempo)
+
+        jefe.draw(screen)
+        if demonios_activos and not jefe.muerto_definitivo:
+            dibujar_escudo(tiempo)
+            for demonio in demonios:
+                dibujar_demonio(demonio, tiempo)
+
+        for proyectil in proyectiles_demonio:
+            x, y = proyectil["rect"].center
+            pygame.draw.line(screen, (110, 20, 180), (x, y - 30), (x, y + 8), 8)
+            pygame.draw.circle(screen, (150, 30, 230), (x, y), 14)
+            pygame.draw.circle(screen, (210, 80, 255), (x, y), 8)
+            pygame.draw.circle(screen, (255, 190, 255), (x, y), 3)
+
+        for bola in bolas_fuego:
+            if bola["aviso_timer"] > 0:
+                aviso = pygame.Surface((50, 12), pygame.SRCALPHA)
+                aviso.fill((180, 40, 255, 140))
+                screen.blit(aviso, (bola["x"] - 25, POSICION_SUELO - 6))
+                pygame.draw.rect(
+                    screen,
+                    (230, 130, 255),
+                    (bola["x"] - 25, POSICION_SUELO - 6, 50, 12),
+                    2,
+                )
+            else:
+                for i in range(3):
+                    offset_y = (i + 1) * 12
+                    radio_estela = max(2, bola["radio"] - i * 4)
+                    pygame.draw.circle(
+                        screen,
+                        (140, 20, 220),
+                        (int(bola["x"]), int(bola["y"] - offset_y)),
+                        radio_estela,
+                    )
+                pygame.draw.circle(screen, (160, 30, 240), (int(bola["x"]), int(bola["y"])), bola["radio"])
+                pygame.draw.circle(screen, (220, 110, 255), (int(bola["x"]), int(bola["y"])), int(bola["radio"] * 0.65))
+                pygame.draw.circle(screen, (255, 230, 255), (int(bola["x"]), int(bola["y"])), int(bola["radio"] * 0.3))
+
+        screen.blit(player.image, player.rect)
+
+        if not jefe.muerto_definitivo:
+            porcentaje_vida = max(0.0, min(1.0, jefe.health / jefe.max_health))
+            if IMG_LEVIATHAN is not None:
+                ancho_barra = 650
+                alto_barra = int(IMG_LEVIATHAN.get_height() * ancho_barra / IMG_LEVIATHAN.get_width())
+                barra_sin_nombre = IMG_LEVIATHAN.copy()
+                barra_sin_nombre.fill(
+                    (0, 0, 0, 0),
+                    pygame.Rect(
+                        0,
+                        int(barra_sin_nombre.get_height() * 0.75),
+                        barra_sin_nombre.get_width(),
+                        barra_sin_nombre.get_height(),
+                    ),
+                )
+                barra = pygame.transform.scale(
+                    barra_sin_nombre,
+                    (ancho_barra, alto_barra),
+                )
+                x_barra = (ANCHO - ancho_barra) // 2
+                y_barra = 16
+                escala_barra = ancho_barra / IMG_LEVIATHAN.get_width()
+                x_relleno = x_barra + int(24 * escala_barra)
+                y_relleno = y_barra + int(12 * escala_barra)
+                ancho_relleno = int(179 * escala_barra)
+                alto_relleno = max(1, int(6 * escala_barra))
+                pygame.draw.rect(screen, (20, 5, 12), (x_relleno, y_relleno, ancho_relleno, alto_relleno))
+                if porcentaje_vida > 0:
+                    color_vida = (255, 210, 0) if porcentaje_vida <= 0.5 else (170, 20, 35)
+                    pygame.draw.rect(screen, color_vida, (x_relleno, y_relleno, int(ancho_relleno * porcentaje_vida), alto_relleno))
+                screen.blit(barra, (x_barra, y_barra))
+                nombre_jefe = fuente_nombre_jefe.render(
+                    "Abbadon: The Guardian of the Red Eclipse",
+                    True,
+                    (190, 100, 255),
+                )
+                nombre_sombra = fuente_nombre_jefe.render(
+                    "Abbadon: The Guardian of the Red Eclipse",
+                    True,
+                    (35, 10, 55),
+                )
+                rect_nombre = nombre_jefe.get_rect(
+                    center=(ANCHO // 2, y_barra + int(alto_barra * 0.85))
+                )
+                screen.blit(nombre_sombra, (rect_nombre.x + 1, rect_nombre.y + 1))
+                screen.blit(nombre_jefe, rect_nombre)
+
+        dibujar_barra_jugador(screen, player)
+        if transicion_fase:
+            texto = fuente_boss_title.render("FURIA NOCTURNA", True, (255, 50, 60))
+            screen.blit(texto, texto.get_rect(center=(ANCHO // 2, ALTO // 2)))
+
+        if jefe.muerto_definitivo:
+            timer_muerte_jefe += dt
+            progreso = min(1.0, timer_muerte_jefe / 1.8)
+            alpha_val = int(progreso * 255)
+            banda = pygame.Surface((ANCHO, 120), pygame.SRCALPHA)
+            banda.fill((0, 0, 0, int(progreso * 135)))
+            screen.blit(banda, (0, ALTO // 2 - 60))
+            texto = fuente_legend.render(
+                "LEGEND FALLEN", True, (235, 195, 75)
+            )
+            sombra = fuente_legend.render(
+                "LEGEND FALLEN", True, (25, 10, 5)
+            )
+            texto.set_alpha(alpha_val)
+            sombra.set_alpha(alpha_val)
+            rect_texto = texto.get_rect(center=(ANCHO // 2, ALTO // 2))
+            screen.blit(sombra, (rect_texto.x + 3, rect_texto.y + 3))
+            screen.blit(texto, rect_texto)
+            if timer_muerte_jefe >= 4.8:
+                mostrar_comic_final(screen)
+                en_batalla = False
+
+        pygame.display.flip()
+
+
 # ==============================================================================
 # GRUPOS DE ENEMIGOS ACTIVADOS POR DISTANCIA
 # ==============================================================================
@@ -1010,12 +1395,7 @@ while ejecutando:
             pygame.time.wait(2000)
 
             transicion_realizada = True
-            ruta_batalla = os.path.join(BASE_DIR, "Werewolf_jefe_batalla.py")
-            subprocess.run(
-                [sys.executable, ruta_batalla],
-                cwd=BASE_DIR,
-                check=True,
-            )
+            ejecutar_batalla_werewolf(pantalla, heroe, fondo_batalla)
             ejecutando = False
             break
 
