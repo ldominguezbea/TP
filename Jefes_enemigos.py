@@ -22,7 +22,7 @@ except ImportError:
             self.direction = "right"
 
 WIDTH = 1350
-SUELO_Y = 590
+SUELO_Y = 638
 
 def extraer_numero(nombre_archivo):
     numeros = re.findall(r'\d+', nombre_archivo)
@@ -308,7 +308,7 @@ class WerewolfBoss(Enemigo):
         self.has_hit = False
         self.dano_ataque = 15
 
-        self.cooldown_ataque = 0.0
+        self.cooldown_ataque = 1.0
 
         self.esta_rojo = False
         self.hit_timer = 0.0
@@ -328,15 +328,30 @@ class WerewolfBoss(Enemigo):
         return random.choice(disponibles) if disponibles else "idle"
 
     def actualizar_hitbox_ataque(self):
-        if self.attacking:
-            ancho_hitbox = 140
-            alto_hitbox = 135
-            if self.direction == "left":
-                self.hitbox = pygame.Rect(self.rect.left - ancho_hitbox, self.rect.y, ancho_hitbox, alto_hitbox)
-            else:
-                self.hitbox = pygame.Rect(self.rect.right, self.rect.y, ancho_hitbox, alto_hitbox)
-        else:
+        frames = self.animaciones.get(self.estado_actual, [])
+        progreso_ataque = (
+            self.frame_actual / max(1, len(frames) - 1)
+            if frames else 1
+        )
+        if not (
+            self.attacking
+            and self.estado_actual.startswith("attack")
+            and 0.35 <= progreso_ataque <= 0.85
+        ):
             self.hitbox = pygame.Rect(0, 0, 0, 0)
+            return
+
+        ancho_hitbox = 180
+        alto_hitbox = 155
+        if self.direction == "left":
+            self.hitbox = pygame.Rect(
+                self.rect.left - ancho_hitbox, self.rect.y,
+                ancho_hitbox, alto_hitbox,
+            )
+        else:
+            self.hitbox = pygame.Rect(
+                self.rect.right, self.rect.y, ancho_hitbox, alto_hitbox,
+            )
 
     def actualizar_animacion(self):
         frames = self.animaciones.get(self.estado_actual, [])
@@ -353,7 +368,7 @@ class WerewolfBoss(Enemigo):
                 self.attacking = False
                 self.has_hit = False
                 self.hitbox = pygame.Rect(0, 0, 0, 0)
-                self.cooldown_ataque = 1.0 
+                self.cooldown_ataque = 1.0
                 self.cambiar_estado("idle")
         else:
             if self.frame_actual >= len(frames):
@@ -390,7 +405,7 @@ class WerewolfBoss(Enemigo):
             return
 
         if self.cooldown_ataque > 0:
-            self.cooldown_ataque -= dt
+            self.cooldown_ataque = max(0, self.cooldown_ataque - dt)
 
         self.velocity_y += self.gravity
         self.rect.y += self.velocity_y
@@ -402,16 +417,12 @@ class WerewolfBoss(Enemigo):
 
         distancia = player.rect.centerx - self.rect.centerx
 
-        if abs(distancia) > 130:
+        if not self.attacking and abs(distancia) > 130:
             self.direction = "right" if distancia > 0 else "left"
             velocidad = 3.2
-            
-            if self.attacking:
-                self.rect.x += velocidad * 1.2 if self.direction == "right" else -velocidad * 1.2
-            else:
-                self.rect.x += velocidad if self.direction == "right" else -velocidad
-                if self.on_ground:
-                    self.cambiar_estado("correr")
+            self.rect.x += velocidad if self.direction == "right" else -velocidad
+            if self.on_ground:
+                self.cambiar_estado("correr")
         elif not self.attacking and self.cooldown_ataque <= 0:
             self.direction = "right" if distancia > 0 else "left"
             self.attacking = True
@@ -532,7 +543,16 @@ class CarniceroBoss(Enemigo):
         """
         Hitbox ajustada a la hojaza gris del machete en cada frame.
         """
-        if not (self.attacking and self.estado_actual.startswith("attack")):
+        frames = self.animaciones.get(self.estado_actual, [])
+        progreso_ataque = (
+            self.frame_actual / max(1, len(frames) - 1)
+            if frames else 1
+        )
+        if not (
+            self.attacking
+            and self.estado_actual.startswith("attack")
+            and 0.55 <= progreso_ataque <= 0.82
+        ):
             self.hitbox = pygame.Rect(0, 0, 0, 0)
             return
 

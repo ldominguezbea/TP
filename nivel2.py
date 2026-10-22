@@ -2,18 +2,25 @@ import os
 import sys
 import random
 import math
+from array import array
+from types import SimpleNamespace
 import pygame
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-from enemigos import HombreLoboNegro, HombreLoboRojo, Mushroom
+from enemigos import (
+    HombreLoboNegro,
+    HombreLoboRojo,
+    Mushroom,
+    cargar_spritesheet_jokai,
+)
 
 pygame.init()
 pygame.font.init()
 
 # 1. Configuración de pantalla y mundo
 ANCHO, ALTO = 1350, 700
-POSICION_SUELO = 620
+POSICION_SUELO = 638
 
 # Recorrido lateral continuo hasta la entrada del jefe.
 ANCHO_MUNDO = ANCHO * 7
@@ -34,6 +41,9 @@ fuente_boss_subtitle = pygame.font.SysFont("Georgia", 32, italic=True)
 fuente_jefe = pygame.font.SysFont("Georgia", 26, bold=True, italic=True)
 fuente_ui = pygame.font.SysFont("Arial", 16, bold=True)
 fuente_progreso = pygame.font.SysFont("Impact", 22)
+fuente_aviso_autobus = pygame.font.SysFont("Arial", 30, bold=True)
+fuente_dialogo_autobus = pygame.font.SysFont("Georgia", 40, bold=True)
+fuente_fin_autobus = pygame.font.SysFont("Arial", 24, bold=True)
 
 
 # ==============================================================================
@@ -169,6 +179,58 @@ fondos = [
 ]
 fondo_batalla = cargar_fondo_nivel2("Nivel2_imagen1.png")
 fondo_jefe = cargar_fondo_nivel2("Nivel2_imagen3.png")
+fondo_autobus = cargar_fondo_nivel2("Nivel2_imagen5.png.png")
+
+
+def crear_grito_autobus(frecuencia_base):
+    if not pygame.mixer.get_init():
+        try:
+            pygame.mixer.init()
+        except pygame.error as error:
+            print(f"No se pudieron iniciar los gritos del autobús: {error}")
+            return None
+
+    frecuencia_mixer, formato, canales = pygame.mixer.get_init()
+    if formato != -16:
+        print(
+            "No se pudieron generar los gritos del autobús: "
+            f"el mixer usa formato {formato}, se necesita -16."
+        )
+        return None
+
+    duracion = 0.38
+    cantidad_muestras = int(frecuencia_mixer * duracion)
+    muestras = array("h")
+    ruido = random.Random(frecuencia_base)
+
+    for indice in range(cantidad_muestras):
+        progreso = indice / cantidad_muestras
+        frecuencia = frecuencia_base * (1.0 + 0.35 * math.sin(progreso * 8))
+        fase = 2 * math.pi * frecuencia * indice / frecuencia_mixer
+        voz = (
+            math.sin(fase)
+            + 0.45 * math.sin(fase * 2.1)
+            + 0.22 * math.sin(fase * 3.7)
+        )
+        aire = ruido.uniform(-1.0, 1.0) * 0.12
+        envolvente = min(1.0, progreso * 12) * (1.0 - progreso) ** 1.5
+        muestra = int(4500 * envolvente * (voz + aire))
+        for _ in range(canales):
+            muestras.append(muestra)
+
+    grito = pygame.mixer.Sound(buffer=muestras.tobytes())
+    grito.set_volume(0.45)
+    return grito
+
+
+gritos_autobus = [
+    grito for grito in (
+        crear_grito_autobus(510),
+        crear_grito_autobus(670),
+        crear_grito_autobus(585),
+    )
+    if grito is not None
+]
 
 
 def dibujar_luna_roja_batalla(screen, tiempo):
@@ -230,6 +292,8 @@ class Jugador(pygame.sprite.Sprite):
         self.gravedad = 0.8
         self.plataformas = []
         self.scroll_x_actual = 0
+        self.plataforma_actual = None
+        self.plataforma_ignorada = None
 
         # Estados de acción
         self.mirando_derecha = True
@@ -273,7 +337,13 @@ class Jugador(pygame.sprite.Sprite):
 
     def procesar_evento(self, evento):
         if evento.type == pygame.KEYDOWN:
-            if evento.key == pygame.K_w and self.en_suelo and not (self.rodando or self.defendiendo):
+            if evento.key == pygame.K_s and self.plataforma_actual is not None:
+                self.plataforma_ignorada = self.plataforma_actual
+                self.plataforma_actual = None
+                self.en_suelo = False
+                self.velocidad_y = max(2, self.gravedad)
+
+            elif evento.key == pygame.K_w and self.en_suelo and not (self.rodando or self.defendiendo):
                 if self.atacando and self.estado != 'sp_atk':
                     self.atacando = False
                 self.velocidad_y = self.fuerza_salto
@@ -411,12 +481,18 @@ class Jugador(pygame.sprite.Sprite):
     def aplicar_gravedad(self):
         bottom_anterior = self.rect.bottom
         self.en_suelo = False
+        self.plataforma_actual = None
         self.velocidad_y += self.gravedad
         self.rect.y += self.velocidad_y
 
         if self.velocidad_y >= 0:
             for plataforma in self.plataformas:
                 plataforma_pantalla = plataforma.move(-self.scroll_x_actual, 0)
+                if self.plataforma_ignorada is plataforma:
+                    if self.rect.bottom >= plataforma_pantalla.bottom:
+                        self.plataforma_ignorada = None
+                    else:
+                        continue
                 zona_suelo = plataforma_pantalla.inflate(-20, 0)
                 pisa_plataforma = (
                     bottom_anterior <= zona_suelo.top
@@ -428,12 +504,14 @@ class Jugador(pygame.sprite.Sprite):
                     self.rect.bottom = zona_suelo.top
                     self.velocidad_y = 0
                     self.en_suelo = True
+                    self.plataforma_actual = plataforma
                     break
 
         if not self.en_suelo and self.rect.bottom >= POSICION_SUELO:
             self.rect.bottom = POSICION_SUELO
             self.velocidad_y = 0
             self.en_suelo = True
+            self.plataforma_actual = None
 
     def take_damage(self, damage):
         if self.rodando:
@@ -519,8 +597,8 @@ def dibujar_boton_demoniaco(pantalla):
     pygame.draw.rect(surf_pixel, (40, 40, 45), rect_piedra.inflate(-4, -4), 1)
 
     txt_str = "PRESS C TO INTERACT"
-    txt_sombra = fuente_lava_pixel.render(txt_str, False, (180, 30, 0))
-    txt_fuego = fuente_lava_pixel.render(txt_str, False, (255, 170, 0))
+    txt_sombra = fuente_lava_pixel.render(txt_str, False, (12, 55, 150))
+    txt_fuego = fuente_lava_pixel.render(txt_str, False, (105, 225, 255))
 
     rect_txt = txt_fuego.get_rect(center=(ANCHO_LOW // 2, ALTO_LOW // 2 + 1))
     surf_pixel.blit(txt_sombra, (rect_txt.x + 1, rect_txt.y + 1))
@@ -790,6 +868,8 @@ def ejecutar_batalla_werewolf(screen, player, fondo_img):
     player.rect.bottom = POSICION_SUELO
     player.scroll_x_actual = 0
     player.plataformas = []
+    player.plataforma_actual = None
+    player.plataforma_ignorada = None
     player.velocidad_x = 0
     player.velocidad_y = 0
     player.en_suelo = True
@@ -808,6 +888,7 @@ def ejecutar_batalla_werewolf(screen, player, fondo_img):
     fase2_activada = False
     transicion_fase = False
     transicion_timer = 0.0
+    tiempo_congelado_transicion = None
     demonios_activos = False
     demonios_timer = 0.0
     demonios_cooldown = 7.8
@@ -866,17 +947,42 @@ def ejecutar_batalla_werewolf(screen, player, fondo_img):
         pygame.draw.circle(escudo, (255, 255, 255, 255), (radio + 5, radio + 5), radio - 4, 1)
         screen.blit(escudo, (cx - radio - 5, cy - radio - 5))
 
+    def cancelar_fase_al_morir():
+        nonlocal fase2_activada, transicion_fase, transicion_timer
+        nonlocal demonios_activos, demonios_timer, demonios_cooldown
+        nonlocal demonios, proyectiles_demonio, proyectiles_demonio_timer
+        nonlocal bolas_fuego, bola_fuego_timer
+
+        fase2_activada = True
+        transicion_fase = False
+        transicion_timer = 0.0
+        demonios_activos = False
+        demonios_timer = 0.0
+        demonios_cooldown = 7.8
+        demonios.clear()
+        proyectiles_demonio.clear()
+        proyectiles_demonio_timer = 0.0
+        bolas_fuego.clear()
+        bola_fuego_timer = 0.0
+
     while en_batalla:
         dt = clock.tick(60) / 1000.0
         tiempo = pygame.time.get_ticks() / 1000.0
+        if transicion_fase and tiempo_congelado_transicion is not None:
+            tiempo = tiempo_congelado_transicion
 
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 pygame.quit()
                 sys.exit()
-            player.procesar_evento(event)
+            if not transicion_fase:
+                player.procesar_evento(event)
 
-        player.update(0, transicion_realizada=True, limite_max_x=ANCHO - 80)
+        if not transicion_fase:
+            player.update(0, transicion_realizada=True, limite_max_x=ANCHO - 80)
+
+        if jefe.health <= 0:
+            cancelar_fase_al_morir()
 
         if not transicion_fase and not jefe.muerto_definitivo:
             if demonios_activos:
@@ -897,6 +1003,7 @@ def ejecutar_batalla_werewolf(screen, player, fondo_img):
 
         if (
             fase == 1
+            and jefe.health > 0
             and jefe.health <= jefe.max_health * 0.5
             and not fase2_activada
         ):
@@ -904,17 +1011,24 @@ def ejecutar_batalla_werewolf(screen, player, fondo_img):
             fase2_activada = True
             transicion_fase = True
             transicion_timer = 3.0
+            tiempo_congelado_transicion = tiempo
 
         if transicion_fase:
             transicion_timer -= dt
             if transicion_timer <= 0:
                 transicion_fase = False
+                tiempo_congelado_transicion = None
 
-        if fase == 2 and not transicion_fase and not jefe.muerto_definitivo:
+        if (
+            fase == 2
+            and not transicion_fase
+            and not jefe.muerto_definitivo
+            and jefe.health > 0
+        ):
             bola_fuego_timer -= dt
             if bola_fuego_timer <= 0:
-                bola_fuego_timer = random.uniform(1.8, 3.0)
-                for _ in range(random.randint(2, 4)):
+                bola_fuego_timer = random.uniform(1.0, 1.7)
+                for _ in range(random.randint(4, 6)):
                     bolas_fuego.append({
                         "x": random.randint(80, ANCHO - 80),
                         "y": -50,
@@ -986,7 +1100,12 @@ def ejecutar_batalla_werewolf(screen, player, fondo_img):
                     jefe.rect.bottom = POSICION_SUELO
                     jefe.hurtbox = jefe.rect.copy()
 
-        if jefe.health > 0 and player.atacando and not demonios_activos:
+        if (
+            not transicion_fase
+            and jefe.health > 0
+            and player.atacando
+            and not demonios_activos
+        ):
             if player.estado == "sp_atk":
                 num_imagen = int(player.frame_index) + 1
                 if num_imagen in (12, 18, 20) and not player.has_hit:
@@ -1005,6 +1124,9 @@ def ejecutar_batalla_werewolf(screen, player, fondo_img):
                     dano = 12
                 jefe.take_damage(dano)
                 player.has_hit = True
+
+        if jefe.health <= 0:
+            cancelar_fase_al_morir()
 
         screen.blit(fondo_img, (0, 0))
         if fase == 2:
@@ -1138,40 +1260,73 @@ DISTANCIA_ENTRE_GRUPOS = 850
 PRIMER_GRUPO_X = 800
 ULTIMO_GRUPO_X = HUECO_INICIO - 1100
 PUNTOS_GRUPO = list(range(PRIMER_GRUPO_X, ULTIMO_GRUPO_X + 1, DISTANCIA_ENTRE_GRUPOS))
+BUS_EVENTO_X = int(PORTAL_X * 0.75)
+BUS_SCROLL_X = BUS_EVENTO_X - 250
+BUS_PUERTA_RECT = pygame.Rect(
+    BUS_SCROLL_X + 699, POSICION_SUELO - 90, 44, 90
+)
+BUS_PUERTA_X = BUS_PUERTA_RECT.centerx
+BUS_PUERTA_DESTINO_X = BUS_PUERTA_RECT.centerx
+BUS_SPAWN_DISTANCIA = 330
+BUS_CANTIDAD_ENEMIGOS = 7
+BUS_INTERVALO_ENEMIGOS = 2.0
+DISTANCIA_VISION_ENEMIGO = 270
+ANTICIPACION_APARICION_ENEMIGOS = 600
+CONFIGURACION_ANIMACION_IDLE = {
+    HombreLoboRojo: ("assets/enemigos/Lobo_rojo/Idle.png", 8),
+    HombreLoboNegro: ("assets/enemigos/Lobo_negro/Idle.png", 8),
+}
+ANIMACIONES_IDLE_ENEMIGOS = {}
 
 def generar_plataformas_nivel():
     plataformas = []
     x = 350
-    y = 520
+    y = 490
+    indice_plataforma = 0
+    inicios_escalera = {4, 13, 22}
 
     while x < HUECO_INICIO - 100:
+        if indice_plataforma in inicios_escalera:
+            altura_escalon = random.randint(36, 42)
+
+            for direccion in (-1, 1):
+                for _ in range(3):
+                    if x >= HUECO_INICIO - 100:
+                        break
+
+                    ancho = random.randint(195, 235)
+                    y = max(365, min(500, y + direccion * altura_escalon))
+                    plataformas.append(pygame.Rect(x, y, ancho, 18))
+                    x += ancho + random.randint(35, 65)
+                    indice_plataforma += 1
+
+            continue
+
         ancho = random.randint(190, 280)
         plataformas.append(pygame.Rect(x, y, ancho, 18))
 
-        # El hueco y el cambio de altura quedan dentro del alcance de un salto.
+        # Keep platforms within jump range and clearly above the ground.
         x += ancho + random.randint(35, 105)
-        y = max(325, min(560, y + random.randint(-75, 75)))
+        y = max(480, min(500, y + random.randint(-20, 20)))
+        indice_plataforma += 1
 
     return plataformas
 
 
 def generar_diseno_plataforma():
     return {
-        "madera": random.choice([
-            (91, 59, 37), (108, 72, 43), (78, 57, 40),
+        "tierra": random.choice([
+            (12, 8, 12), (17, 10, 12), (22, 13, 14),
+        ]),
+        "tierra_clara": random.choice([
+            (27, 15, 16), (34, 19, 18), (24, 16, 18),
         ]),
         "musgo": random.choice([
-            (30, 58, 25), (39, 68, 29), (26, 50, 22),
+            (25, 67, 53), (36, 82, 63), (44, 91, 68),
         ]),
-        "hojas": [
-            (random.random(), random.randint(5, 13), random.choice([
-                (37, 68, 29), (54, 79, 31), (28, 56, 29),
-            ]))
-            for _ in range(6)
-        ],
-        "nudos": [
-            (random.random(), random.randint(3, 6))
-            for _ in range(2)
+        "piedras": [
+            (random.uniform(0.12, 0.88), random.randint(14, 30))
+            for _ in range(4)
         ],
     }
 
@@ -1182,47 +1337,61 @@ def dibujar_plataformas(screen, scroll_x, plataformas, disenos):
         if rect.right < 0 or rect.left > ANCHO:
             continue
 
-        sombra = rect.move(0, 7)
-        pygame.draw.rect(screen, (32, 29, 22), sombra, border_radius=7)
-        pygame.draw.rect(screen, diseno["madera"], rect, border_radius=6)
-        pygame.draw.rect(
+        x, y, ancho = rect.x, rect.y, rect.width
+        suelo = [
+            (x, y + 4), (x + 9, y), (x + 19, y + 2),
+            (x + 31, y - 4), (x + ancho // 2, y - 2),
+            (x + ancho - 27, y - 3), (x + ancho - 12, y + 2),
+            (x + ancho, y + 5), (x + ancho - 5, y + 17),
+            (x + ancho - 18, y + 24), (x + ancho - 29, y + 34),
+            (x + ancho - 48, y + 39), (x + 42, y + 37),
+            (x + 27, y + 30), (x + 15, y + 22), (x + 4, y + 17),
+        ]
+        pygame.draw.polygon(
+            screen, (5, 4, 8), [(px, py + 5) for px, py in suelo]
+        )
+        pygame.draw.polygon(screen, diseno["tierra"], suelo)
+        pygame.draw.polygon(
             screen,
-            (121, 85, 54),
-            (rect.x + 3, rect.y + 7, max(1, rect.width - 6), rect.height - 9),
-            border_radius=4,
+            diseno["tierra_clara"],
+            [
+                (x + 9, y + 15), (x + 25, y + 22),
+                (x + 39, y + 23), (x + 34, y + 29),
+                (x + 20, y + 26),
+            ],
+        )
+        pygame.draw.polygon(
+            screen,
+            diseno["tierra_clara"],
+            [
+                (x + ancho - 57, y + 15), (x + ancho - 34, y + 16),
+                (x + ancho - 24, y + 21), (x + ancho - 43, y + 24),
+            ],
         )
 
-        copa_musgo = pygame.Rect(rect.x, rect.y - 2, rect.width, 9)
-        pygame.draw.rect(screen, diseno["musgo"], copa_musgo, border_radius=5)
+        pasto = [
+            (x, y + 4), (x + 9, y), (x + 19, y + 2),
+            (x + 31, y - 4), (x + 45, y - 1),
+            (x + 55, y - 3), (x + 71, y), (x + 85, y - 2),
+            (x + 102, y), (x + 118, y - 3),
+            (x + 133, y), (x + 151, y - 2),
+            (x + 169, y), (x + ancho - 27, y - 3),
+            (x + ancho - 12, y + 2), (x + ancho, y + 5),
+            (x + ancho - 5, y + 11), (x + ancho // 2, y + 9),
+            (x + 4, y + 12),
+        ]
+        pygame.draw.polygon(screen, diseno["musgo"], pasto)
         pygame.draw.line(
-            screen, (66, 83, 42),
-            (rect.x + 8, rect.y + 2), (rect.right - 8, rect.y + 2), 2,
+            screen, (71, 116, 86),
+            (x + 12, y + 3), (x + ancho - 18, y + 2), 2,
         )
 
-        for fraccion, radio, color in diseno["hojas"]:
-            hoja_x = rect.x + int(fraccion * max(1, rect.width - radio * 2))
-            pygame.draw.ellipse(
-                screen, color,
-                (hoja_x, rect.y - radio // 2, radio * 2, radio),
-            )
-
-        for fraccion, radio in diseno["nudos"]:
-            nudo_x = rect.x + int(fraccion * max(1, rect.width - radio * 2))
-            nudo_y = rect.y + rect.height // 2
-            pygame.draw.ellipse(
-                screen, (78, 51, 34),
-                (nudo_x, nudo_y, radio * 2, radio),
-            )
-            pygame.draw.ellipse(
-                screen, (155, 112, 67),
-                (nudo_x + 2, nudo_y + 1, max(1, radio - 1), max(1, radio - 2)),
-                1,
-            )
-
-        for raiz_x in (rect.x + 12, rect.right - 12):
-            pygame.draw.line(
-                screen, (79, 52, 35),
-                (raiz_x, rect.bottom - 2), (raiz_x - 4, rect.bottom + 7), 3,
+        for fraccion, offset_y in diseno["piedras"]:
+            piedra_x = x + int(fraccion * ancho)
+            piedra_y = y + offset_y
+            pygame.draw.rect(
+                screen, (8, 6, 10),
+                (piedra_x, piedra_y, 8, 3),
             )
 
 
@@ -1243,6 +1412,53 @@ def crear_enemigo(clase, x):
     return enemigo
 
 
+def obtener_animacion_idle(enemigo):
+    clase = type(enemigo)
+    if clase is Mushroom:
+        return enemigo.animaciones["saltar"]
+    if clase not in ANIMACIONES_IDLE_ENEMIGOS:
+        ruta, cantidad_frames = CONFIGURACION_ANIMACION_IDLE[clase]
+        ANIMACIONES_IDLE_ENEMIGOS[clase] = cargar_spritesheet_jokai(
+            ruta, 1, cantidad_frames
+        )
+    return ANIMACIONES_IDLE_ENEMIGOS[clase]
+
+
+def actualizar_animacion_idle(enemigo, dt):
+    frames = enemigo.animaciones["idle"]
+    enemigo.frame_idle = (
+        enemigo.frame_idle + dt * 6
+    ) % len(frames)
+    imagen = frames[int(enemigo.frame_idle)]
+    enemigo.image = (
+        pygame.transform.flip(imagen, True, False)
+        if enemigo.direction == "left"
+        else imagen
+    )
+
+
+def crear_enemigo_autobus(indice):
+    lado = 1 if indice % 2 == 0 else -1
+    posicion_salida = BUS_PUERTA_X + lado * BUS_SPAWN_DISTANCIA
+    enemigo = crear_enemigo(
+        TIPOS_ENEMIGO[indice % len(TIPOS_ENEMIGO)], posicion_salida
+    )
+    enemigo.rect.centerx = posicion_salida
+    enemigo.hurtbox.topleft = enemigo.rect.topleft
+    enemigo.health = 60
+    enemigo.max_health = 60
+    enemigo.dano_ataque = 7
+    enemigo.attack_range = 1
+    enemigo.preferred_distance = 0
+    enemigo.flank_side = 0
+    enemigo.ataque_coordinado = False
+    enemigo.can_jump = False
+    enemigo.plataformas = []
+    enemigo.enemigo_bus = True
+    enemigo.lado_entrada_bus = lado
+    return enemigo
+
+
 def generar_grupo_enemigos(posicion, indice_grupo=0):
     """Genera una tanda de dos enemigos y alterna los tipos entre tandas."""
     enemigos = []
@@ -1250,19 +1466,42 @@ def generar_grupo_enemigos(posicion, indice_grupo=0):
         TIPOS_ENEMIGO[indice_grupo % len(TIPOS_ENEMIGO)],
         TIPOS_ENEMIGO[(indice_grupo + 1) % len(TIPOS_ENEMIGO)],
     ]
+    posicion_suelo = posicion + 360
+    plataformas_cercanas = [
+        plataforma for plataforma in plataformas_nivel
+        if posicion + 360 <= plataforma.centerx <= posicion + 700
+    ]
+    plataforma_enemigo = min(
+        plataformas_cercanas or plataformas_nivel,
+        key=lambda plataforma: abs(plataforma.centerx - (posicion + 520)),
+    )
+
     for i, clase in enumerate(clases_grupo):
-        enemigo = crear_enemigo(clase, posicion)
+        enemigo = crear_enemigo(
+            clase, posicion_suelo if i == 0 else plataforma_enemigo.centerx
+        )
         enemigo.plataformas = plataformas_nivel
         enemigo.flank_side = -1 if i % 2 == 0 else 1
         enemigo.preferred_distance = 65
-        enemigo.attack_range = 215
+        enemigo.attack_range = DISTANCIA_VISION_ENEMIGO
         enemigo.ataque_coordinado = True
-        enemigo.rect.centerx = posicion + enemigo.flank_side * enemigo.preferred_distance
+        enemigo.rect.centerx = (
+            posicion_suelo if i == 0 else plataforma_enemigo.centerx
+        )
+        if i == 1:
+            enemigo.rect.bottom = plataforma_enemigo.top
+        enemigo.velocity_y = 0
+        enemigo.on_ground = True
         enemigo.hurtbox.topleft = enemigo.rect.topleft
         enemigo.strafe_timer = 0
         enemigo.strafe_direction = 0
         enemigo.jump_cooldown = random.uniform(0.4, 1.4)
         enemigo.speed = random.randint(3, 5)
+        enemigo.esperando_jugador = True
+        enemigo.distancia_vision = DISTANCIA_VISION_ENEMIGO
+        enemigo.animaciones["idle"] = obtener_animacion_idle(enemigo)
+        enemigo.frame_idle = 0.0
+        enemigo.direction = "left"
         enemigos.append(enemigo)
     for enemigo in enemigos:
         enemigo.allies = enemigos
@@ -1339,10 +1578,28 @@ disenos_plataformas = [
 heroe.plataformas = plataformas_nivel
 
 enemigos_nivel = []
+enemigos_autobus = []
 proximo_grupo = 0
 
 scroll_x = 0
 transicion_realizada = False
+autobus_iniciado = False
+autobus_completado = False
+autobus_activo = False
+autobus_dialogo = False
+autobus_perdido = False
+autobus_dialogo_timer = 0.0
+autobus_spawn_timer = 0.0
+autobus_enemigos_generados = 0
+gritos_pendientes = []
+grito_timer = 0.0
+objetivo_puerta_autobus = SimpleNamespace(
+    rect=pygame.Rect(BUS_PUERTA_DESTINO_X - 30, POSICION_SUELO - 90, 60, 90),
+    hurtbox=pygame.Rect(BUS_PUERTA_DESTINO_X - 30, POSICION_SUELO - 90, 60, 90),
+    pos_x=BUS_PUERTA_DESTINO_X,
+    atacando=False,
+    hitbox=pygame.Rect(0, 0, 0, 0),
+)
 
 ejecutando = True
 reloj = pygame.time.Clock()
@@ -1352,7 +1609,12 @@ while ejecutando:
 
     while (
         proximo_grupo < len(PUNTOS_GRUPO)
-        and heroe.pos_x >= PUNTOS_GRUPO[proximo_grupo]
+        and not autobus_activo
+        and not autobus_dialogo
+        and not autobus_perdido
+        and (autobus_completado or PUNTOS_GRUPO[proximo_grupo] < BUS_EVENTO_X)
+        and heroe.pos_x
+        >= PUNTOS_GRUPO[proximo_grupo] - ANTICIPACION_APARICION_ENEMIGOS
     ):
         enemigos_nivel.extend(
             generar_grupo_enemigos(
@@ -1365,6 +1627,21 @@ while ejecutando:
     enemigos_pendientes = [
         enemigo for enemigo in enemigos_nivel if not enemigo_derrotado(enemigo)
     ]
+
+    if (
+        not autobus_iniciado
+        and heroe.pos_x >= BUS_EVENTO_X
+    ):
+        autobus_iniciado = True
+        autobus_activo = True
+        scroll_x = BUS_SCROLL_X
+        autobus_spawn_timer = 0.35
+        gritos_pendientes = gritos_autobus.copy()
+        grito_timer = 0.0
+
+    if autobus_activo or autobus_dialogo or autobus_perdido:
+        scroll_x = BUS_SCROLL_X
+
     portal_liberado = todos_los_grupos_generados and not enemigos_pendientes
     limite_max_x = HUECO_FIN if portal_liberado else HUECO_INICIO - 40
 
@@ -1377,6 +1654,11 @@ while ejecutando:
     for evento in pygame.event.get():
         if evento.type == pygame.QUIT:
             ejecutando = False
+
+        if autobus_perdido:
+            if evento.type == pygame.KEYDOWN:
+                ejecutando = False
+            continue
 
         if evento.type == pygame.KEYDOWN and evento.key == pygame.K_c and en_zona_hueco:
             heroe.health = heroe.max_health
@@ -1399,30 +1681,95 @@ while ejecutando:
             ejecutando = False
             break
 
-        heroe.procesar_evento(evento)
+        if not autobus_dialogo:
+            heroe.procesar_evento(evento)
 
     if not ejecutando:
         break
 
-    todos_los_sprites.update(scroll_x, transicion_realizada, limite_max_x=limite_max_x)
-    scroll_x = max(0, min(heroe.pos_x - ANCHO * 0.4, ANCHO_MUNDO - ANCHO))
+    if not autobus_perdido and not autobus_dialogo:
+        if autobus_activo:
+            limite_max_x = BUS_PUERTA_X + BUS_SPAWN_DISTANCIA + 120
+        todos_los_sprites.update(
+            scroll_x, transicion_realizada, limite_max_x=limite_max_x
+        )
+    if not autobus_activo and not autobus_dialogo and not autobus_perdido:
+        scroll_x = max(0, min(heroe.pos_x - ANCHO * 0.4, ANCHO_MUNDO - ANCHO))
     heroe.rect.centerx = int(heroe.pos_x - scroll_x)
     heroe.actualizar_hitboxes()
     vista_heroe.sync(scroll_x)
 
+    if autobus_dialogo:
+        autobus_dialogo_timer -= dt
+        if autobus_dialogo_timer <= 0:
+            autobus_dialogo = False
+            autobus_completado = True
+
+    if autobus_activo and not autobus_perdido:
+        autobus_spawn_timer -= dt
+        if (
+            autobus_enemigos_generados < BUS_CANTIDAD_ENEMIGOS
+            and autobus_spawn_timer <= 0
+        ):
+            enemigo_autobus = crear_enemigo_autobus(autobus_enemigos_generados)
+            enemigos_autobus.append(enemigo_autobus)
+            autobus_enemigos_generados += 1
+            autobus_spawn_timer = BUS_INTERVALO_ENEMIGOS
+
+        if gritos_pendientes:
+            grito_timer -= dt
+            if grito_timer <= 0:
+                gritos_pendientes.pop(0).play()
+                grito_timer = 0.72
+
     # --- Enemigos y combate en mundo ---
-    for enemigo in enemigos_nivel:
+    enemigos_en_escena = (
+        enemigos_autobus if autobus_activo
+        else [] if autobus_dialogo or autobus_perdido
+        else enemigos_nivel
+    )
+    for enemigo in enemigos_en_escena:
         if enemigo.health <= 0 and not getattr(enemigo, "muerto_definitivo", False):
             enemigo.update(vista_heroe, dt, width=ANCHO_MUNDO)
 
-    for enemigo in enemigos_nivel:
+    for enemigo in enemigos_en_escena:
         if enemigo_derrotado(enemigo):
             continue
 
-        enemigo.allies = enemigos_nivel
+        if getattr(enemigo, "esperando_jugador", False):
+            distancia_horizontal = abs(
+                vista_heroe.pos_x - enemigo.rect.centerx
+            )
+            distancia_vertical = abs(
+                vista_heroe.hurtbox.centery - enemigo.rect.centery
+            )
+            if (
+                distancia_horizontal <= enemigo.distancia_vision
+                and distancia_vertical <= 300
+            ):
+                enemigo.esperando_jugador = False
+            else:
+                actualizar_animacion_idle(enemigo, dt)
+                continue
+
+        if getattr(enemigo, "enemigo_bus", False):
+            jugador_en_camino = (
+                min(BUS_PUERTA_X, enemigo.rect.centerx)
+                < vista_heroe.pos_x
+                < max(BUS_PUERTA_X, enemigo.rect.centerx)
+                and abs(enemigo.rect.centerx - vista_heroe.pos_x) <= 260
+            )
+            objetivo = vista_heroe if jugador_en_camino else objetivo_puerta_autobus
+            enemigo.attack_range = 190 if jugador_en_camino else 1
+            enemigo.allies = enemigos_autobus
+        else:
+            objetivo = vista_heroe
+            enemigo.allies = enemigos_nivel
+
         enemigo.suelo_y = POSICION_SUELO
-        enemigo.plataformas = plataformas_nivel
-        enemigo.update(vista_heroe, dt, width=ANCHO_MUNDO)
+        if not getattr(enemigo, "enemigo_bus", False):
+            enemigo.plataformas = plataformas_nivel
+        enemigo.update(objetivo, dt, width=ANCHO_MUNDO)
 
         if enemigo.health > 0:
             if (heroe.atacando and enemigo not in heroe.enemigos_golpeados
@@ -1438,9 +1785,28 @@ while ejecutando:
                     heroe.take_damage(getattr(enemigo, 'dano_ataque', 10))
                     enemigo.has_hit = True
 
+        if (
+            getattr(enemigo, "enemigo_bus", False)
+            and enemigo.health > 0
+            and enemigo.rect.colliderect(BUS_PUERTA_RECT)
+        ):
+            autobus_perdido = True
+            autobus_activo = False
+
+    if (
+        autobus_activo
+        and autobus_enemigos_generados == BUS_CANTIDAD_ENEMIGOS
+        and all(enemigo_derrotado(enemigo) for enemigo in enemigos_autobus)
+    ):
+        autobus_activo = False
+        autobus_dialogo = True
+        autobus_dialogo_timer = 2.8
+
     enemigos_cercanos = [
-        enemigo for enemigo in enemigos_nivel
+        enemigo for enemigo in enemigos_en_escena
         if enemigo.health > 0
+        and not getattr(enemigo, "esperando_jugador", False)
+        and not getattr(enemigo, "enemigo_bus", False)
         and not getattr(enemigo, "muerto_definitivo", False)
         and abs(enemigo.rect.centerx - vista_heroe.pos_x) <= 175
         and abs(enemigo.rect.centery - vista_heroe.hurtbox.centery) <= 95
@@ -1453,25 +1819,31 @@ while ejecutando:
         for enemigo in enemigos_cercanos:
             enemigo.attack()
 
-    separar_enemigos(enemigos_nivel, ANCHO_MUNDO)
+    if not autobus_activo and not autobus_dialogo:
+        separar_enemigos(enemigos_nivel, ANCHO_MUNDO)
 
-    # --- Fondo continuo: cada tramo da paso al siguiente escenario ---
-    for i in range(ANCHO_MUNDO // ANCHO):
-        pos_x_fondo = i * ANCHO - scroll_x
-        if -ANCHO < pos_x_fondo < ANCHO:
-            fondo_tramo = (
-                fondo_jefe if i == ANCHO_MUNDO // ANCHO - 1
-                else fondos[i % len(fondos)]
-            )
-            pantalla.blit(fondo_tramo, (pos_x_fondo, 0))
+    escena_autobus = autobus_activo or autobus_dialogo or autobus_perdido
+    if escena_autobus:
+        pantalla.blit(fondo_autobus, (0, 0))
+    else:
+        # --- Fondo continuo: cada tramo da paso al siguiente escenario ---
+        for i in range(ANCHO_MUNDO // ANCHO):
+            pos_x_fondo = i * ANCHO - scroll_x
+            if -ANCHO < pos_x_fondo < ANCHO:
+                fondo_tramo = (
+                    fondo_jefe if i == ANCHO_MUNDO // ANCHO - 1
+                    else fondos[i % len(fondos)]
+                )
+                pantalla.blit(fondo_tramo, (pos_x_fondo, 0))
 
-    dibujar_plataformas(
-        pantalla, scroll_x, plataformas_nivel, disenos_plataformas
-    )
+        dibujar_plataformas(
+            pantalla, scroll_x, plataformas_nivel, disenos_plataformas
+        )
+
     # Renderizado de héroe y enemigos
     todos_los_sprites.draw(pantalla)
 
-    for enemigo in enemigos_nivel:
+    for enemigo in enemigos_en_escena:
         if not getattr(enemigo, 'muerto_definitivo', False):
             pos_x_orig = enemigo.rect.x
             enemigo.rect.x -= scroll_x
@@ -1482,7 +1854,16 @@ while ejecutando:
     dibujar_barra_jugador(pantalla, heroe)
 
     progreso = min(100, int(heroe.pos_x * 100 / PORTAL_X))
-    if portal_liberado:
+    if autobus_activo:
+        str_progreso = (
+            f"PROTEGE EL AUTOBÚS: "
+            f"{autobus_enemigos_generados}/{BUS_CANTIDAD_ENEMIGOS}"
+        )
+        color_progreso = (255, 205, 80)
+    elif autobus_dialogo:
+        str_progreso = "PASAJEROS A SALVO"
+        color_progreso = (100, 235, 150)
+    elif portal_liberado:
         str_progreso = "CAMINO DESPEJADO: ACÉRCATE AL PORTAL"
         color_progreso = (90, 230, 130)
     elif enemigos_pendientes:
@@ -1498,6 +1879,81 @@ while ejecutando:
 
     pantalla.blit(txt_progreso_sombra, (rect_progreso.x + 2, rect_progreso.y + 2))
     pantalla.blit(txt_progreso, rect_progreso)
+
+    if autobus_activo:
+        caja_aviso = pygame.Rect(ANCHO // 2 - 470, 72, 940, 96)
+        pygame.draw.rect(pantalla, (20, 5, 8), caja_aviso, border_radius=10)
+        pygame.draw.rect(pantalla, (210, 45, 35), caja_aviso, 3, border_radius=10)
+        linea_uno = fuente_aviso_autobus.render(
+            "NO DEJES QUE ENTREN AL AUTOBUS", True, (255, 230, 190)
+        )
+        linea_dos = fuente_aviso_autobus.render(
+            "HAY GENTE DENTRO", True, (255, 115, 95)
+        )
+        pantalla.blit(linea_uno, linea_uno.get_rect(center=(ANCHO // 2, 105)))
+        pantalla.blit(linea_dos, linea_dos.get_rect(center=(ANCHO // 2, 145)))
+
+    if autobus_dialogo:
+        puerta_x_pantalla = BUS_PUERTA_RECT.centerx - scroll_x
+        panel_dialogo = pygame.Rect(puerta_x_pantalla - 250, 330, 500, 112)
+        punta_globo = [
+            (puerta_x_pantalla - 28, panel_dialogo.bottom - 10),
+            (puerta_x_pantalla, panel_dialogo.bottom + 42),
+            (puerta_x_pantalla + 28, panel_dialogo.bottom - 10),
+        ]
+        pygame.draw.polygon(
+            pantalla, (8, 8, 12), [(x + 3, y + 5) for x, y in punta_globo]
+        )
+        pygame.draw.ellipse(
+            pantalla, (8, 8, 12), panel_dialogo.move(3, 5)
+        )
+        pygame.draw.polygon(pantalla, (66, 54, 42), punta_globo)
+        pygame.draw.ellipse(pantalla, (66, 54, 42), panel_dialogo)
+        pygame.draw.polygon(
+            pantalla,
+            (247, 239, 215),
+            [
+                (puerta_x_pantalla - 20, panel_dialogo.bottom - 12),
+                (puerta_x_pantalla, panel_dialogo.bottom + 29),
+                (puerta_x_pantalla + 20, panel_dialogo.bottom - 12),
+            ],
+        )
+        pygame.draw.ellipse(
+            pantalla, (247, 239, 215), panel_dialogo.inflate(-6, -6)
+        )
+        pygame.draw.ellipse(
+            pantalla, (189, 151, 99), panel_dialogo.inflate(-18, -18), 2
+        )
+        dialogo = fuente_dialogo_autobus.render(
+            "Gracias por salvarnos", True, (35, 42, 37)
+        )
+        pantalla.blit(dialogo, dialogo.get_rect(center=panel_dialogo.center))
+
+    if autobus_perdido:
+        overlay_derrota = pygame.Surface((ANCHO, ALTO), pygame.SRCALPHA)
+        overlay_derrota.fill((12, 0, 5, 205))
+        pantalla.blit(overlay_derrota, (0, 0))
+        mensaje_derrota = fuente_boss_title.render(
+            "LOS ENEMIGOS ENTRARON AL AUTOBUS", True, (230, 55, 45)
+        )
+        mensaje_autobus = fuente_aviso_autobus.render(
+            "LA GENTE NO PUDO ESCAPAR", True, (255, 225, 210)
+        )
+        mensaje_continuar = fuente_fin_autobus.render(
+            "Presiona cualquier tecla para salir", True, (210, 210, 210)
+        )
+        pantalla.blit(
+            mensaje_derrota,
+            mensaje_derrota.get_rect(center=(ANCHO // 2, ALTO // 2 - 55)),
+        )
+        pantalla.blit(
+            mensaje_autobus,
+            mensaje_autobus.get_rect(center=(ANCHO // 2, ALTO // 2 + 20)),
+        )
+        pantalla.blit(
+            mensaje_continuar,
+            mensaje_continuar.get_rect(center=(ANCHO // 2, ALTO // 2 + 85)),
+        )
 
     if en_zona_hueco:
         dibujar_boton_demoniaco(pantalla)

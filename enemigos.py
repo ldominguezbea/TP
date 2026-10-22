@@ -1,9 +1,119 @@
 import os
 import random
 import math
+from array import array
 import pygame
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+_sonidos_accion = {}
+_audio_disponible = None
+_perfiles_sonido = {
+    "Lobo_rojo": (115, 0),
+    "Lobo_negro": (82, 1),
+    "Mushroom": (310, 2),
+}
+
+
+def _crear_sonido_accion(nombre, accion):
+    global _audio_disponible
+
+    if _audio_disponible is False:
+        return None
+
+    if not pygame.mixer.get_init():
+        try:
+            pygame.mixer.init()
+        except pygame.error as error:
+            print(f"No se pudo iniciar el audio de los enemigos: {error}")
+            _audio_disponible = False
+            return None
+
+    frecuencia_mixer, formato, canales = pygame.mixer.get_init()
+    if formato != -16:
+        print(
+            "No se pueden reproducir los sonidos de enemigos: "
+            f"el mixer usa formato {formato}, se necesita -16."
+        )
+        _audio_disponible = False
+        return None
+
+    perfil = _perfiles_sonido.get(nombre)
+    if perfil is None:
+        semilla = sum((indice + 1) * ord(letra) for indice, letra in enumerate(nombre))
+        perfil = (90 + semilla % 220, semilla % 3)
+
+    frecuencia_base, forma_onda = perfil
+    duraciones = {
+        "ataque": 0.20,
+        "danio": 0.13,
+        "muerte": 0.32,
+        "salto": 0.10,
+        "esquive": 0.09,
+        "paso": 0.08,
+    }
+    duracion = duraciones[accion]
+    cantidad_muestras = int(frecuencia_mixer * duracion)
+    muestras = array("h")
+    ruido = random.Random(f"{nombre}-{accion}")
+
+    for indice in range(cantidad_muestras):
+        progreso = indice / cantidad_muestras
+        muestra_ruido = ruido.uniform(-1.0, 1.0)
+        if accion == "paso":
+            fase = 2 * math.pi * frecuencia_base * indice / frecuencia_mixer
+            envolvente = (1.0 - progreso) ** 5
+            onda = 0.28 * muestra_ruido + 0.18 * math.sin(fase)
+        elif accion == "ataque":
+            golpe = math.exp(-((progreso - 0.18) / 0.055) ** 2)
+            resonancia = math.exp(-progreso * 11)
+            fase = (
+                2 * math.pi * frecuencia_base * (1 - progreso * 0.35)
+                * indice / frecuencia_mixer
+            )
+            envolvente = 0.08 + golpe * 0.85 + resonancia * 0.25
+            onda = muestra_ruido * (0.85 if golpe > 0.3 else 0.12)
+            onda += math.sin(fase) * 0.45 * resonancia
+        elif accion in ("salto", "esquive"):
+            envolvente = math.sin(math.pi * progreso) ** 1.5
+            onda = muestra_ruido * 0.6 + math.sin(
+                2 * math.pi * frecuencia_base * (2 + progreso) * indice
+                / frecuencia_mixer
+            ) * 0.2
+        elif accion == "danio":
+            fase = 2 * math.pi * frecuencia_base * 0.8 * indice / frecuencia_mixer
+            envolvente = (1.0 - progreso) ** 6
+            onda = muestra_ruido * 0.65 + math.sin(fase) * 0.55
+        else:
+            frecuencia = frecuencia_base * (1.0 - progreso * 0.65)
+            fase = 2 * math.pi * frecuencia * indice / frecuencia_mixer
+            if forma_onda == 1:
+                onda = 0.6 * math.sin(fase) + 0.4 * (
+                    1 if math.sin(fase) >= 0 else -1
+                )
+            elif forma_onda == 2:
+                onda = 2 * math.asin(math.sin(fase)) / math.pi
+            else:
+                onda = math.sin(fase)
+            envolvente = (1.0 - progreso) ** 1.2
+
+        volumen = 3500 if accion == "paso" else 12000
+        muestra = int(volumen * envolvente * onda)
+        for _ in range(canales):
+            muestras.append(muestra)
+
+    sonido = pygame.mixer.Sound(buffer=muestras.tobytes())
+    _sonidos_accion[(nombre, accion)] = sonido
+    return sonido
+
+
+def _reproducir_sonido_accion(nombre, accion):
+    clave = (nombre, accion)
+    sonido = _sonidos_accion.get(clave)
+    if sonido is None:
+        sonido = _crear_sonido_accion(nombre, accion)
+    if sonido is not None:
+        sonido.play()
 
 
 def cargar_spritesheet_jokai(ruta_relativa, filas, columnas):
@@ -73,6 +183,7 @@ class Enemigo:
         self.phase_timer = 0.0
         self.dodge_direction = 1
         self.dodge_cooldown = 0.0
+        self.footstep_timer = 0.0
 
         # Distancia mínima para detenerse antes de empujar o traspasar al jugador
         self.stop_distance = 35
@@ -104,6 +215,7 @@ class Enemigo:
             self.on_ground = True
 
     def update(self, player, dt, width=WIDTH):
+        self.footstep_timer = max(0, self.footstep_timer - dt)
         if self.attack_cooldown > 0:
             self.attack_cooldown = max(0, self.attack_cooldown - dt)
 
@@ -149,6 +261,7 @@ class Enemigo:
             self.phase_timer = 0.24
             self.dodge_direction = -1 if dx > 0 else 1
             self.dodge_cooldown = 1.6
+            _reproducir_sonido_accion(self.name, "esquive")
 
         desired_x = target_x + self.flank_side * self.preferred_distance
         approach_dx = desired_x - self.rect.centerx
@@ -167,6 +280,7 @@ class Enemigo:
             if abs(approach_dx) > 18:
                 move_x = 1 if approach_dx > 0 else -1
 
+        x_anterior = self.rect.x
         if not self.attacking:
             move_speed = self.speed * 60 * dt
             if self.combat_phase == "retreat":
@@ -175,6 +289,14 @@ class Enemigo:
                 distance_to_slot = abs(approach_dx)
                 move_speed = min(move_speed, max(0, distance_to_slot))
             self.rect.x += round(move_x * move_speed)
+        if (
+            self.rect.x != x_anterior
+            and move_x
+            and self.on_ground
+            and self.footstep_timer <= 0
+        ):
+            _reproducir_sonido_accion(self.name, "paso")
+            self.footstep_timer = 0.48
         if dx:
             self.direction = "right" if dx > 0 else "left"
 
@@ -193,6 +315,7 @@ class Enemigo:
             self.velocity_y = self.jump_force
             self.on_ground = False
             self.jump_cooldown = random.uniform(2.8, 4.5)
+            _reproducir_sonido_accion(self.name, "salto")
 
         self.aplicar_gravedad_y_suelo()
         self.rect.x = max(0, min(width - self.rect.width, self.rect.x))
@@ -219,6 +342,7 @@ class Enemigo:
         self.attack_cooldown = self.attack_cooldown_time
         self.has_hit = False
         self.hitbox = pygame.Rect(0, 0, 0, 0)
+        _reproducir_sonido_accion(self.name, "ataque")
 
     def crear_hitbox_ataque(self):
         hitbox_x = (
@@ -232,6 +356,8 @@ class Enemigo:
         if self.health <= 0:
             return
         self.health = max(0, self.health - damage)
+        accion = "muerte" if self.health <= 0 else "danio"
+        _reproducir_sonido_accion(self.name, accion)
         print(
             f"{self.name} recibió {damage} de daño. Vida restante: {self.health}"
         )
