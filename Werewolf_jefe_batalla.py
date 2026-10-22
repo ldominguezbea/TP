@@ -9,17 +9,24 @@ HEIGHT = 700
 SUELO_Y = 590
 
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
-pygame.display.set_caption("Prueba de Jefe 2 - Werewolf")
+pygame.display.set_caption("Batalla de Jefe - Abbadon")
 
 clock = pygame.time.Clock()
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-ruta_fondo = os.path.join(BASE_DIR, "assets", "fondos", "fondo_mvp.png")
+rutas_fondo = (
+    os.path.join(BASE_DIR, "imagenes", "Nivel2", "Nivel2_imagen3.png"),
+    os.path.join(BASE_DIR, "assets", "imagenes", "Nivel2", "Nivel2_imagen3.png"),
+)
 
-if os.path.exists(ruta_fondo):
-    fondo = pygame.image.load(ruta_fondo).convert()
-    fondo = pygame.transform.scale(fondo, (WIDTH, HEIGHT))
-else:
+fondo = None
+for ruta_fondo in rutas_fondo:
+    if os.path.exists(ruta_fondo):
+        imagen_fondo = pygame.image.load(ruta_fondo).convert()
+        fondo = pygame.transform.scale(imagen_fondo, (WIDTH, HEIGHT))
+        break
+
+if fondo is None:
     fondo = pygame.Surface((WIDTH, HEIGHT))
     fondo.fill((30, 30, 40))
 
@@ -130,7 +137,7 @@ def dibujar_barras_vida(screen, player, enemy):
     pygame.draw.rect(screen, (180, 0, 0), (WIDTH - 320, 20, int(300 * pct_e), 20))
     pygame.draw.rect(screen, (255, 255, 255), (WIDTH - 320, 20, 300, 20), 2)
     screen.blit(
-        fuente.render(f"Werewolf Boss: {e_health}", True, (255, 255, 255)),
+        fuente.render(f"Abbadon: {e_health}", True, (255, 255, 255)),
         (WIDTH - 320, 45),
     )
 

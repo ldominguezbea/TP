@@ -49,8 +49,11 @@ class Enemigo:
         self.attacking = False
         self.attack_timer = 0
         self.attack_cooldown = 0
-        self.attack_cooldown_time = 0.8
+        self.attack_cooldown_time = 1.15
         self.has_hit = False
+        self.ataque_coordinado = False
+        self.attack_windup = 0.22
+        self.attack_active_time = 0.30
 
         self.velocity_y = 0
         self.gravity = 0.5
@@ -101,27 +104,29 @@ class Enemigo:
             self.on_ground = True
 
     def update(self, player, dt, width=WIDTH):
-        if self.combat_phase == "attack" and not self.attacking:
-            self.combat_phase = "retreat"
-            self.phase_timer = 0.55
-
         if self.attack_cooldown > 0:
             self.attack_cooldown = max(0, self.attack_cooldown - dt)
 
         if self.attacking:
             self.attack_timer -= dt
-            if self.attack_timer <= 0:
+            if self.combat_phase == "windup" and self.attack_timer <= 0:
+                self.combat_phase = "attack"
+                self.attack_timer = self.attack_active_time
+                self.hitbox = self.crear_hitbox_ataque()
+            elif self.combat_phase == "attack" and self.attack_timer <= 0:
                 self.attacking = False
-                self.has_hit = False
                 self.hitbox = pygame.Rect(0, 0, 0, 0)
-                self.combat_phase = "retreat"
-                self.phase_timer = 0.55
+                self.combat_phase = "approach"
+                self.phase_timer = 0
 
         target = getattr(player, "jugador", player)
         target_x = getattr(player, "pos_x", target.rect.centerx)
+        target_hurtbox = getattr(
+            player, "hurtbox", getattr(target, "hurtbox", target.rect)
+        )
         dx = target_x - self.rect.centerx
         distance_x = abs(dx)
-        distance_y = abs(target.rect.centery - self.rect.centery)
+        distance_y = abs(target_hurtbox.centery - self.rect.centery)
         target_attacking = getattr(target, "atacando", False)
         self.dodge_cooldown = max(0, self.dodge_cooldown - dt)
 
@@ -134,21 +139,19 @@ class Enemigo:
                 or distance_x < 165
             )
         )
-        player_closing = (
-            distance_x < 260
-            and getattr(target, "velocidad_x", 0) * dx < 0
-        )
         if (
-            (attack_nearby or player_closing)
+            attack_nearby
             and self.dodge_cooldown <= 0
             and not self.attacking
             and self.combat_phase != "dodge"
         ):
             self.combat_phase = "dodge"
-            self.phase_timer = 0.38
+            self.phase_timer = 0.24
             self.dodge_direction = -1 if dx > 0 else 1
-            self.dodge_cooldown = 1.1
+            self.dodge_cooldown = 1.6
 
+        desired_x = target_x + self.flank_side * self.preferred_distance
+        approach_dx = desired_x - self.rect.centerx
         move_x = 0
         if self.combat_phase == "dodge" and not self.attacking:
             self.phase_timer -= dt
@@ -160,48 +163,30 @@ class Enemigo:
             move_x = -1 if dx > 0 else 1
             if self.phase_timer <= 0:
                 self.combat_phase = "approach"
-                self.flank_side *= -1
         elif not self.attacking:
-            self.strafe_timer -= dt
-            if self.strafe_timer <= 0:
-                self.strafe_direction = random.choice((-1, 1))
-                self.strafe_timer = random.uniform(1.4, 2.8)
-
-            desired_x = target_x + self.flank_side * self.preferred_distance
-            approach_dx = desired_x - self.rect.centerx
-            if abs(approach_dx) > 35:
+            if abs(approach_dx) > 18:
                 move_x = 1 if approach_dx > 0 else -1
-            elif distance_y > 95:
-                move_x = 1 if dx > 0 else -1
-            else:
-                move_x = self.strafe_direction
-
-        # Keep the group spread, but only nudge aside instead of changing direction every frame.
-        if self.combat_phase not in ("retreat", "dodge"):
-            for ally in self.allies:
-                if ally is self or ally.health <= 0:
-                    continue
-                ally_dx = self.rect.centerx - ally.rect.centerx
-                if abs(ally_dx) < 70 and abs(self.rect.centery - ally.rect.centery) < 75:
-                    if ally_dx == 0:
-                        ally_dx = self.flank_side
-                    move_x = 1 if ally_dx > 0 else -1
-                    break
 
         if not self.attacking:
-            move_speed = self.speed + (1 if self.combat_phase == "retreat" else 0)
-            self.rect.x += move_x * move_speed
+            move_speed = self.speed * 60 * dt
+            if self.combat_phase == "retreat":
+                move_speed += 60 * dt
+            if self.combat_phase == "approach":
+                distance_to_slot = abs(approach_dx)
+                move_speed = min(move_speed, max(0, distance_to_slot))
+            self.rect.x += round(move_x * move_speed)
         if dx:
             self.direction = "right" if dx > 0 else "left"
 
         self.jump_cooldown = max(0, self.jump_cooldown - dt)
         should_jump = (
-            not self.attacking
+            getattr(self, "can_jump", True)
+            and not self.attacking
             and self.on_ground
             and self.jump_cooldown <= 0
             and (
-                ((attack_nearby or player_closing) and self.combat_phase == "dodge")
-                or target.rect.bottom < self.rect.top - 35
+                attack_nearby and self.combat_phase == "dodge"
+                or target_hurtbox.bottom < self.rect.top - 35
             )
         )
         if should_jump:
@@ -212,9 +197,12 @@ class Enemigo:
         self.aplicar_gravedad_y_suelo()
         self.rect.x = max(0, min(width - self.rect.width, self.rect.x))
         self.hurtbox.topleft = self.rect.topleft
+        distance_x = abs(target_x - self.rect.centerx)
+        distance_y = abs(target_hurtbox.centery - self.rect.centery)
 
         if (
-            not self.attacking
+            not self.ataque_coordinado
+            and not self.attacking
             and self.attack_cooldown <= 0
             and self.combat_phase == "approach"
             and distance_x <= self.attack_range
@@ -226,13 +214,19 @@ class Enemigo:
         if self.attack_cooldown > 0:
             return
         self.attacking = True
-        self.combat_phase = "attack"
-        self.attack_timer = 0.45
-        self.attack_cooldown = 1.25
+        self.combat_phase = "windup"
+        self.attack_timer = self.attack_windup
+        self.attack_cooldown = self.attack_cooldown_time
         self.has_hit = False
+        self.hitbox = pygame.Rect(0, 0, 0, 0)
 
-        hitbox_x = self.rect.right if self.direction == "right" else self.rect.left - 85
-        self.hitbox = pygame.Rect(hitbox_x, self.rect.centery - 50, 85, 100)
+    def crear_hitbox_ataque(self):
+        hitbox_x = (
+            self.rect.right
+            if self.direction == "right"
+            else self.rect.left - 140
+        )
+        return pygame.Rect(hitbox_x, self.rect.centery - 55, 140, 110)
 
     def take_damage(self, damage):
         if self.health <= 0:
@@ -1270,6 +1264,151 @@ class HombreLoboNegro(Enemigo):
             pos_x = self.rect.centerx - self.image.get_width() // 2
             pos_y = self.rect.bottom - self.image.get_height()
             screen.blit(self.image, (pos_x, pos_y))
+
+
+class Mushroom(Enemigo):
+
+    def __init__(self, x=550, y=500):
+        super().__init__("Mushroom", 2, x, y)
+
+        self.animaciones = {
+            "correr": cargar_spritesheet_jokai(
+                "assets/enemigos/Mushroom/Run.png", 1, 8
+            ),
+            "golpear": cargar_spritesheet_jokai(
+                "assets/enemigos/Mushroom/Attack.png", 1, 8
+            ),
+            "dano": cargar_spritesheet_jokai(
+                "assets/enemigos/Mushroom/Take Hit.png", 1, 4
+            ),
+            "muerte": cargar_spritesheet_jokai(
+                "assets/enemigos/Mushroom/Death.png", 1, 4
+            ),
+            "saltar": cargar_spritesheet_jokai(
+                "assets/enemigos/Mushroom/Idle.png", 1, 4
+            ),
+        }
+        bounds = [
+            frame.get_bounding_rect()
+            for frames in self.animaciones.values()
+            for frame in frames
+        ]
+        frame_width = max(bound.width for bound in bounds)
+        frame_height = max(bound.height for bound in bounds)
+        for estado, frames in self.animaciones.items():
+            frames_ajustados = []
+            for frame in frames:
+                visible = frame.get_bounding_rect()
+                recortado = frame.subsurface(visible).copy()
+                ajustado = pygame.Surface(
+                    (frame_width, frame_height), pygame.SRCALPHA
+                )
+                ajustado.blit(
+                    recortado,
+                    (
+                        (frame_width - visible.width) // 2,
+                        frame_height - visible.height,
+                    ),
+                )
+                frames_ajustados.append(
+                    pygame.transform.scale(
+                        ajustado,
+                        (int(frame_width * 2.2), int(frame_height * 2.2)),
+                    )
+                )
+            self.animaciones[estado] = frames_ajustados
+        self.rect.inflate_ip(10, 10)
+        self.hurtbox = self.rect.copy()
+        self.can_jump = False
+
+        self.estado_actual = "correr"
+        self.frame_actual = 0.0
+        self.velocidad_animacion = 0.12
+        self.image = self.animaciones["correr"][0]
+        self.esta_rojo = False
+        self.desaparecer_timer = 3.0
+        self.muerto_definitivo = False
+
+    def cambiar_estado(self, nuevo_estado):
+        if self.estado_actual != nuevo_estado:
+            self.estado_actual = nuevo_estado
+            self.frame_actual = 0.0
+
+    def actualizar_animacion(self):
+        frames = self.animaciones[self.estado_actual]
+        self.frame_actual += self.velocidad_animacion
+
+        if self.estado_actual == "muerte":
+            self.frame_actual = min(self.frame_actual, len(frames) - 1)
+        elif self.estado_actual in ("golpear", "dano"):
+            if self.frame_actual >= len(frames):
+                self.esta_rojo = False
+                if self.estado_actual == "golpear" and self.attacking:
+                    self.frame_actual = len(frames) - 1
+                else:
+                    self.cambiar_estado("correr")
+        elif self.estado_actual == "saltar":
+            self.frame_actual = min(self.frame_actual, len(frames) - 1)
+        elif self.frame_actual >= len(frames):
+            self.frame_actual = 0.0
+
+        imagen_frame = obtener_frame_seguro(frames, self.frame_actual)
+        if self.direction == "left":
+            imagen_frame = pygame.transform.flip(imagen_frame, True, False)
+        if self.esta_rojo:
+            imagen_frame = imagen_frame.copy()
+            imagen_frame.fill(
+                (255, 50, 50), special_flags=pygame.BLEND_RGB_MULT
+            )
+        self.image = imagen_frame
+
+    def take_damage(self, damage):
+        if self.health <= 0:
+            return
+
+        super().take_damage(damage)
+        self.esta_rojo = True
+        self.attacking = False
+        self.hitbox = pygame.Rect(0, 0, 0, 0)
+
+        if self.health <= 0:
+            self.cambiar_estado("muerte")
+        else:
+            self.cambiar_estado("dano")
+
+    def update(self, player, dt, width=WIDTH):
+        if self.muerto_definitivo:
+            return
+
+        if self.estado_actual == "muerte":
+            self.aplicar_gravedad_y_suelo()
+            self.hurtbox = pygame.Rect(0, 0, 0, 0)
+            self.desaparecer_timer -= dt
+            if self.desaparecer_timer <= 0:
+                self.muerto_definitivo = True
+        elif self.estado_actual == "dano":
+            self.aplicar_gravedad_y_suelo()
+            self.hurtbox.topleft = self.rect.topleft
+        else:
+            super().update(player, dt, width)
+            if not self.on_ground:
+                self.cambiar_estado("saltar")
+            elif self.attacking:
+                self.cambiar_estado("golpear")
+            else:
+                self.cambiar_estado("correr")
+
+        self.actualizar_animacion()
+
+    def draw(self, screen):
+        if self.muerto_definitivo:
+            return
+
+        if self.image:
+            pos_x = self.rect.centerx - self.image.get_width() // 2
+            pos_y = self.rect.bottom - self.image.get_height()
+            screen.blit(self.image, (pos_x, pos_y))
+
 
 class Esqueleto_Guerrero(Enemigo):
 
