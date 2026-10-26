@@ -210,7 +210,7 @@ class p_viento(pygame.sprite.Sprite):
         # ATAQUE 1
         # ----------------------------------------------------
 
-        for i in range(1, 9):
+        for i in range(1, 6):
 
             img = pygame.image.load(
                 os.path.join(
@@ -231,7 +231,7 @@ class p_viento(pygame.sprite.Sprite):
         # ATAQUE 2
         # ----------------------------------------------------
 
-        for i in range(1, 19):
+        for i in range(5, 14):
 
             img = pygame.image.load(
                 os.path.join(

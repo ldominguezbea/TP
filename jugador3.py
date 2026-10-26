@@ -234,7 +234,7 @@ class p_fuego(pygame.sprite.Sprite):
         # ATAQUE 2
         # ----------------------------------------------------
 
-        for i in range(1, 20):
+        for i in range(9, 20):
 
             img = pygame.image.load(
                 os.path.join(

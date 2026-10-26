@@ -235,7 +235,7 @@ class p_tierra(pygame.sprite.Sprite):
         # ATAQUE 2
         # ----------------------------------------------------
 
-        for i in range(1, 13):
+        for i in range(6, 13):
 
             img = pygame.image.load(
                 os.path.join(
