@@ -1,7 +1,7 @@
-import pygame, random
+import random
 
 
-class Enemigo():
+class Enemigo:
     def __init__(self, nombre, vida):
         self.nombre = nombre
         self.vida = vida
@@ -18,18 +18,14 @@ class esqueletoNegro(Enemigo):
 
 
 orco = OrcoRojo()
-esqueleto_negro= esqueletoNegro()
-
+esqueleto_negro = esqueletoNegro()
 enemigos = [OrcoRojo, esqueletoNegro]
 
+
 def crear_enemigos():
-    enemigo = random.choice(enemigos)
-    v_ataque = 5
-    while enemigo.vida != 0:
-        pygame.time.set_timer()
-        pass
-crear_enemigos()
+    """Crea y devuelve una instancia aleatoria de enemigo."""
+    return random.choice(enemigos)()
+
 
 def hola():
     print("Hola")
-    
