@@ -1,31 +1,36 @@
 import pygame
-from pathlib import Path
 from config import BASE_DIR, SCREEN_WIDTH, SCREEN_HEIGHT
 
+
 def prologue():
-    """Carga y devuelve la imagen del prólogo adaptada a la pantalla completa."""
-    rutas_posibles = [
-        BASE_DIR / "fondo_escuela.jpg",
-        BASE_DIR / "assets" / "fondo_escuela.jpg",
-        BASE_DIR / "imagenes" / "fondo_escuela.jpg",
-        BASE_DIR / "assets" / "sprites" / "fondo_escuela.jpg"
-    ]
-    
-    imagen_cargada = None
-    for ruta in rutas_posibles:
+    """Carga las páginas narrativas del prólogo en su orden de lectura."""
+    carpeta = BASE_DIR / "assets" / "sprites" / "Prologo"
+    nombres_imagenes = (
+        "1.png",
+        "2.png",
+        "3.png",
+        "4.png",
+        "5.png",
+        "Pag_6.png",
+    )
+    imagenes = []
+
+    for nombre in nombres_imagenes:
+        ruta = carpeta / nombre
         if ruta.exists():
             try:
-                imagen_cargada = pygame.image.load(str(ruta)).convert()
-                break
+                imagen = pygame.image.load(str(ruta)).convert()
+                imagenes.append(
+                    pygame.transform.scale(imagen, (SCREEN_WIDTH, SCREEN_HEIGHT))
+                )
             except pygame.error as e:
                 print(f"[PROLOGO] Error al cargar la imagen {ruta}: {e}")
+        else:
+            print(f"[PROLOGO] No se encontró la imagen {ruta}.")
 
-    if imagen_cargada:
-        # Escala la imagen directamente a la pantalla de alta resolución
-        school_bg = pygame.transform.scale(imagen_cargada, (SCREEN_WIDTH, SCREEN_HEIGHT))
-    else:
-        print("[PROLOGO] No se encontró fondo_escuela.jpg. Generando fondo de respaldo.")
-        school_bg = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
-        school_bg.fill((35, 35, 45))
+    if not imagenes:
+        fondo_respaldo = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
+        fondo_respaldo.fill((35, 35, 45))
+        imagenes.append(fondo_respaldo)
 
-    return school_bg
+    return imagenes

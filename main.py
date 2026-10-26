@@ -66,7 +66,8 @@ archivos_imagenes = {
 imagenes_chars = {}
 archivos_ya_abiertos = set()
 
-prologue_bg_surface = None
+prologue_images = []
+prologue_image_index = 0
 
 
 def buscar_imagen(nombre_archivo):
@@ -166,21 +167,7 @@ def render_menu(time_counter):
 
 
 def render_prologue():
-    global prologue_bg_surface
-    screen.fill((10, 10, 15))
-
-    if prologue_bg_surface is None:
-        prologue_bg_surface = prologue()
-
-    canvas.blit(prologue_bg_surface, (0, 0))
-    scaled_surface = pygame.transform.scale(canvas, (SCREEN_WIDTH, SCREEN_HEIGHT))
-    screen.blit(scaled_surface, (0, 0))
-
-    title_surf = font_title.render("PRÓLOGO", True, (255, 255, 255))
-    screen.blit(title_surf, (SCREEN_WIDTH // 2 - title_surf.get_width() // 2, 80))
-
-    help_surf = font_ui_help.render("Presiona [ENTER] o [ESPACIO] para continuar...", True, (235, 185, 40))
-    screen.blit(help_surf, (SCREEN_WIDTH // 2 - help_surf.get_width() // 2, SCREEN_HEIGHT - 80))
+    screen.blit(prologue_images[prologue_image_index], (0, 0))
 
 
 def render_character_select_high_res(time_counter):
@@ -235,6 +222,7 @@ def render_character_select_high_res(time_counter):
 
 def main():
     global selected_option, game_state, selected_char_index, chosen_char_name
+    global prologue_images, prologue_image_index
     time_counter = 0
     running = True
 
@@ -254,13 +242,18 @@ def main():
                     elif event.key == pygame.K_RETURN:
                         option = menu_options[selected_option]
                         if option == "NEW GAME":
+                            prologue_images = prologue()
+                            prologue_image_index = 0
                             game_state = "PROLOGUE"
                         elif option == "EXIT":
                             running = False
 
                 elif game_state == "PROLOGUE":
                     if event.key in (pygame.K_RETURN, pygame.K_SPACE):
-                        game_state = "CHARACTER_SELECT"
+                        if prologue_image_index < len(prologue_images) - 1:
+                            prologue_image_index += 1
+                        else:
+                            game_state = "CHARACTER_SELECT"
                     elif event.key == pygame.K_ESCAPE:
                         game_state = "MENU"
 
