@@ -1,1071 +1,1077 @@
 import pygame
-
-pygame.init()
-
-WIDTH = 1350
-HEIGHT = 700
-
-screen = pygame.display.set_mode((WIDTH, HEIGHT))
-pygame.display.set_caption("Plataformero")
-
-clock = pygame.time.Clock()
-
-fondo = pygame.image.load("assets/fondos/fondo_mvp.png")
-fondo = pygame.transform.scale(fondo, (WIDTH, HEIGHT))
+import os
+# ============================================================
+# RUTAS DE RECURSOS
+# ============================================================
 
 
-class Player:
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-    def __init__(self, x, y):
 
-        self.rect = pygame.Rect(
-            x,
-            y,
-            60,
-            90
+BASE_PLANTA = os.path.join(
+    BASE_DIR,
+    "assets",
+    "Heroes",
+    "P_planta"
+)
+
+
+BASE_EFECTOS = os.path.join(
+    BASE_PLANTA,
+    "projectiles_and_effects"
+)
+
+
+
+
+# ============================================================
+# FLECHA AEREA: IMPACTA EN EL SUELO DEL JUGADOR
+# ============================================================
+
+
+class FlechaAerea(pygame.sprite.Sprite):
+
+
+    def __init__(self, x, y, posicion_suelo, mirando_derecha):
+        super().__init__()
+
+
+        # Es la coordenada Y del suelo donde se apoya el jugador.
+        self.posicion_suelo = int(posicion_suelo)
+        self.mirando_derecha = mirando_derecha
+
+
+        self.pos_x = float(x)
+        self.pos_y = float(y)
+        self.velocidad_x = 7 if mirando_derecha else -7
+        self.velocidad_y = 4
+        self.gravedad = 0.35
+
+
+        self.estado = "flecha"
+        self.frame_index = 0
+        self.velocidad_animacion = 0.25
+
+
+        ruta_flecha = os.path.join(
+            BASE_EFECTOS, "arrow", "arrow_.png"
+        )
+        ruta_hit = os.path.join(
+            BASE_EFECTOS, "diagonal_arrow_hit"
         )
 
-        self.speed = 5
-        self.velocity_y = 0
-        self.gravity = 0.5
-        self.jump_force = -12
-        self.on_ground = False
 
-        self.health = 150
-        self.max_health = 150
+        self.image = pygame.image.load(ruta_flecha).convert_alpha()
+        self.image = pygame.transform.scale(self.image, (120, 120))
 
-        self.direction = "right"
 
-        self.animacion_correr = []
+        if not mirando_derecha:
+            self.image = pygame.transform.flip(self.image, True, False)
 
-        for i in range(1, 9):
 
-            imagen = pygame.image.load(
-                f"assets/Heroes/p_viento/run/run_{i}.png"
-            ).convert_alpha()
+        self.rect = self.image.get_rect(center=(x, y))
 
-            imagen = pygame.transform.scale(
-                imagen,
-                (600, 300)
-            )
 
-            self.animacion_correr.append(imagen)
-
-        self.frame_correr = 0
-        self.timer_correr = 0
-        self.velocidad_animacion = 0.08
-
-        self.animacion_idle = []
-
-        for i in range(1, 9):
-
-            imagen = pygame.image.load(
-                f"assets/Heroes/p_viento/idle/idle_{i}.png"
-            ).convert_alpha()
-
-            imagen = pygame.transform.scale(
-                imagen,
-                (600, 300)
-            )
-
-            self.animacion_idle.append(imagen)
-
-        self.frame_idle = 0
-        self.timer_idle = 0
-        self.velocidad_idle = 0.1
-
-        self.animacion_salto = []
-
-        for i in range(1, 4):
-
-            imagen = pygame.image.load(
-                f"assets/Heroes/p_viento/j_up/j_up_{i}.png"
-            ).convert_alpha()
-
-            imagen = pygame.transform.scale(
-                imagen,
-                (600, 300)
-            )
-
-            self.animacion_salto.append(imagen)
-
-        self.frame_salto = 0
-        self.timer_salto = 0
-        self.velocidad_salto = 0.1
-
-        self.animacion_caer = []
-
-        for i in range(1, 4):
-
-            imagen = pygame.image.load(
-                f"assets/Heroes/p_viento/j_down/j_down_{i}.png"
-            ).convert_alpha()
-
-            imagen = pygame.transform.scale(
-                imagen,
-                (600, 300)
-            )
-
-            self.animacion_caer.append(imagen)
-
-        self.frame_caer = 0
-        self.timer_caer = 0
-        self.velocidad_caer = 0.1
-
-        self.animacion_hurt = []
-
+        self.animacion_hit = []
         for i in range(1, 7):
+            ruta = os.path.join(ruta_hit, f"diagonal_arrow_hit_{i}.png")
+            imagen = pygame.image.load(ruta).convert_alpha()
+            imagen = pygame.transform.scale(imagen, (180, 180))
+            self.animacion_hit.append(imagen)
 
-            imagen = pygame.image.load(
-                f"assets/Heroes/p_viento/take_hit/take_hit_{i}.png"
-            ).convert_alpha()
 
-            imagen = pygame.transform.scale(
-                imagen,
-                (600, 300)
-            )
+    def colocar_animacion_apoyada(self, centro_x_pantalla):
+        # Alinear el último píxel VISIBLE con el suelo. Algunas imágenes
+        # tienen margen transparente abajo, así que midbottom por sí solo
+        # puede dejar el efecto visual flotando.
+        limites_visibles = self.image.get_bounding_rect(min_alpha=1)
+        self.rect = self.image.get_rect()
+        self.rect.centerx = int(centro_x_pantalla)
+        self.rect.top = self.posicion_suelo - limites_visibles.bottom
 
-            self.animacion_hurt.append(imagen)
 
-        self.frame_hurt = 0
-        self.timer_hurt = 0
-        self.velocidad_hurt = 0.08
+    def iniciar_impacto_suelo(self, scroll_x=0):
+        # Conservar la X del punto donde la flecha llegó al suelo y apoyar
+        # el contenido visible de la animación sobre el suelo del jugador.
+        self.estado = "hit"
+        self.frame_index = 0
+        self.image = self.animacion_hit[0]
+        centro_x_pantalla = int(self.pos_x - scroll_x)
+        self.colocar_animacion_apoyada(centro_x_pantalla)
 
-        self.recibiendo_golpe = False
 
-        self.animacion_muerte = []
+    def update(self, scroll_x=0):
+        if self.estado == "flecha":
+            self.pos_x += self.velocidad_x
+            self.pos_y += self.velocidad_y
+            self.velocidad_y += self.gravedad
 
-        for i in range(1, 20):
 
-            imagen = pygame.image.load(
-                f"assets/Heroes/p_viento/death/death_{i}.png"
-            ).convert_alpha()
+            self.rect.centerx = int(self.pos_x - scroll_x)
+            self.rect.centery = int(self.pos_y)
 
-            imagen = pygame.transform.scale(
-                imagen,
-                (600, 300)
-            )
 
-            self.animacion_muerte.append(imagen)
+            # No usar rect.bottom aquí: la imagen de la flecha tiene
+            # transparencia y su rectángulo puede tocar el suelo antes
+            # de que la flecha visualmente llegue a él. Esperar a que su
+            # trayectoria alcance la altura real del suelo.
+            if self.pos_y >= self.posicion_suelo:
+                self.pos_y = float(self.posicion_suelo)
+                self.iniciar_impacto_suelo(scroll_x)
 
-        self.frame_muerte = 0
-        self.timer_muerte = 0
-        self.velocidad_muerte = 0.10
 
-        self.muerto = False
-        self.muerte_terminada = False
+        elif self.estado == "hit":
+            self.frame_index += self.velocidad_animacion
 
-        self.animacion_defensa = []
 
-        for i in range(1, 9):
+            if self.frame_index >= len(self.animacion_hit):
+                self.kill()
+                return
 
-            imagen = pygame.image.load(
-                f"assets/Heroes/p_viento/defend/defend_{i}.png"
-            ).convert_alpha()
 
-            imagen = pygame.transform.scale(
-                imagen,
-                (600, 300)
-            )
+            self.image = self.animacion_hit[int(self.frame_index)]
+            centro_x_pantalla = int(self.pos_x - scroll_x)
 
-            self.animacion_defensa.append(imagen)
 
-        self.frame_defensa = 0
-        self.timer_defensa = 0
-        self.velocidad_defensa = 0.08
+            # Recolocar cada fotograma usando sus píxeles visibles, para
+            # que ninguno quede flotando por el margen transparente inferior.
+            self.colocar_animacion_apoyada(centro_x_pantalla)
 
-        self.defendiendo = False
-        self.defensa_terminada = False
 
-        self.animacion_rodar = []
 
-        for i in range(1, 7):
 
-            imagen = pygame.image.load(
-                f"assets/Heroes/p_viento/roll/roll_{i}.png"
-            ).convert_alpha()
+# ============================================================
+# FLECHA HORIZONTAL: IMPACTA CONTRA LA PARED
+# ============================================================
 
-            imagen = pygame.transform.scale(
-                imagen,
-                (600, 300)
-            )
 
-            self.animacion_rodar.append(imagen)
+class FlechaHorizontal(pygame.sprite.Sprite):
 
-        self.frame_rodar = 0
-        self.timer_rodar = 0
-        self.velocidad_rodar = 0.08
 
-        self.rodando = False
-        self.velocidad_rodar_movimiento = 14
+    def __init__(
+        self,
+        x,
+        y,
+        mirando_derecha,
+        ancho_mundo
+    ):
 
-        self.animacion_ataque = []
 
-        for i in range(1, 9):
+        super().__init__()
 
-            imagen = pygame.image.load(
-                f"assets/Heroes/p_viento/1_atk/1_atk_{i}.png"
-            ).convert_alpha()
 
-            imagen = pygame.transform.scale(
-                imagen,
-                (600, 300)
-            )
+        self.mirando_derecha = mirando_derecha
+        self.ancho_mundo = ancho_mundo
 
-            self.animacion_ataque.append(imagen)
 
-        self.frame_ataque = 0
-        self.timer_ataque = 0
-        self.velocidad_ataque = 0.08
+        self.pos_x = float(x)
+        self.pos_y = float(y)
 
-        self.imagen = self.animacion_idle[0]
 
-        self.attacking = False
+        self.velocidad_x = 12 if mirando_derecha else -12
 
-        self.attack_timer = 0
-        self.attack_cooldown = 0
-        self.attack_cooldown_time = 0.3
 
-        self.has_hit = False
+        self.estado = "flecha"
+        self.frame_index = 0
+        self.velocidad_animacion = 0.25
 
-        self.hurtbox = pygame.Rect(
-            x,
-            y,
-            30,
-            80
+
+        ruta_flecha = os.path.join(
+            BASE_EFECTOS,
+            "arrow",
+            "arrow_.png"
         )
 
-        self.hitbox = pygame.Rect(
-            0,
-            0,
-            0,
-            0
+
+        ruta_hit = os.path.join(
+            BASE_EFECTOS,
+            "arrow_hit"
         )
 
-    def update(self, dt):
 
-        if self.muerto:
+        self.image = pygame.image.load(
+            ruta_flecha
+        ).convert_alpha()
 
-            if not self.muerte_terminada:
 
-                self.timer_muerte += dt
-
-                if self.timer_muerte >= self.velocidad_muerte:
-
-                    self.frame_muerte += 1
-                    self.timer_muerte = 0
-
-                    if self.frame_muerte >= len(self.animacion_muerte):
-
-                        self.frame_muerte = len(self.animacion_muerte) - 1
-                        self.muerte_terminada = True
-
-                self.imagen = self.animacion_muerte[
-                    self.frame_muerte
-                ]
-
-                self.velocity_y = 0
-                self.attacking = False
-
-                self.hitbox = pygame.Rect(
-                    0,
-                    0,
-                    0,
-                    0
-                )
-
-            else:
-
-                self.imagen = self.animacion_muerte[-1]
-
-                self.velocity_y = 0
-                self.attacking = False
-
-                self.hitbox = pygame.Rect(
-                    0,
-                    0,
-                    0,
-                    0
-                )
-
-            self.hurtbox.topleft = self.rect.topleft
-
-            return
-
-        if self.rodando:
-
-            if self.direction == "right":
-                self.rect.x += self.velocidad_rodar_movimiento
-            else:
-                self.rect.x -= self.velocidad_rodar_movimiento
-
-            self.timer_rodar += dt
-
-            if self.timer_rodar >= self.velocidad_rodar:
-
-                self.frame_rodar += 1
-                self.timer_rodar = 0
-
-                if self.frame_rodar >= len(self.animacion_rodar):
-
-                    self.frame_rodar = len(self.animacion_rodar) - 1
-                    self.rodando = False
-
-            self.imagen = self.animacion_rodar[
-                self.frame_rodar
-            ]
-
-            self.velocity_y = 0
-            self.attacking = False
-            self.has_hit = False
-
-            self.hitbox = pygame.Rect(
-                0,
-                0,
-                0,
-                0
-            )
-
-            self.hurtbox.topleft = self.rect.topleft
-
-            self.rect.x = max(
-                0,
-                min(
-                    WIDTH - self.rect.width,
-                    self.rect.x
-                )
-            )
-
-            self.hurtbox.topleft = self.rect.topleft
-
-            return
-
-        if self.defendiendo:
-
-            self.timer_defensa += dt
-
-            if self.timer_defensa >= self.velocidad_defensa:
-
-                self.frame_defensa += 1
-                self.timer_defensa = 0
-
-                if self.frame_defensa >= len(self.animacion_defensa):
-
-                    self.frame_defensa = len(self.animacion_defensa) - 1
-
-                    self.defendiendo = False
-                    self.defensa_terminada = True
-
-            self.imagen = self.animacion_defensa[
-                self.frame_defensa
-            ]
-
-            self.velocity_y = 0
-            self.attacking = False
-            self.has_hit = False
-
-            self.hitbox = pygame.Rect(
-                0,
-                0,
-                0,
-                0
-            )
-
-            self.hurtbox.topleft = self.rect.topleft
-
-            return
-
-        keys = pygame.key.get_pressed()
-
-        moviendo = False
-
-        if keys[pygame.K_a]:
-
-            self.rect.x -= self.speed
-            self.direction = "left"
-            moviendo = True
-
-        if keys[pygame.K_d]:
-
-            self.rect.x += self.speed
-            self.direction = "right"
-            moviendo = True
-
-        if keys[pygame.K_w] and self.on_ground:
-
-            self.velocity_y = self.jump_force
-            self.on_ground = False
-
-            self.frame_salto = 0
-            self.timer_salto = 0
-
-        self.velocity_y += self.gravity
-        self.rect.y += self.velocity_y
-
-        suelo_y = 590
-
-        if self.rect.bottom >= suelo_y:
-
-            self.rect.bottom = suelo_y
-
-            self.velocity_y = 0
-            self.on_ground = True
-
-            self.frame_caer = 0
-            self.timer_caer = 0
-
-        if self.recibiendo_golpe:
-
-            self.timer_hurt += dt
-
-            if self.timer_hurt >= self.velocidad_hurt:
-
-                self.frame_hurt += 1
-                self.timer_hurt = 0
-
-                if self.frame_hurt >= len(self.animacion_hurt):
-
-                    self.frame_hurt = 0
-                    self.recibiendo_golpe = False
-
-            self.imagen = self.animacion_hurt[
-                self.frame_hurt
-            ]
-
-        elif self.attacking:
-
-            self.timer_ataque += dt
-
-            if self.timer_ataque >= self.velocidad_ataque:
-
-                self.frame_ataque += 1
-                self.timer_ataque = 0
-
-                if self.frame_ataque >= len(self.animacion_ataque):
-
-                    self.frame_ataque = len(self.animacion_ataque) - 1
-
-                    self.attacking = False
-                    self.has_hit = False
-
-                    self.hitbox = pygame.Rect(
-                        0,
-                        0,
-                        0,
-                        0
-                    )
-
-            if self.attacking:
-
-                self.imagen = self.animacion_ataque[
-                    self.frame_ataque
-                ]
-
-        else:
-
-            if not self.on_ground:
-
-                if self.velocity_y < 0:
-
-                    self.timer_salto += dt
-
-                    if self.timer_salto >= self.velocidad_salto:
-
-                        self.frame_salto += 1
-
-                        if self.frame_salto >= len(self.animacion_salto):
-
-                            self.frame_salto = len(self.animacion_salto) - 1
-
-                        self.timer_salto = 0
-
-                    self.imagen = self.animacion_salto[
-                        self.frame_salto
-                    ]
-
-                else:
-
-                    self.timer_caer += dt
-
-                    if self.timer_caer >= self.velocidad_caer:
-
-                        self.frame_caer += 1
-
-                        if self.frame_caer >= len(self.animacion_caer):
-
-                            self.frame_caer = len(self.animacion_caer) - 1
-
-                        self.timer_caer = 0
-
-                    self.imagen = self.animacion_caer[
-                        self.frame_caer
-                    ]
-
-            else:
-
-                if moviendo:
-
-                    self.timer_correr += dt
-
-                    if self.timer_correr >= self.velocidad_animacion:
-
-                        self.frame_correr += 1
-
-                        if self.frame_correr >= len(self.animacion_correr):
-
-                            self.frame_correr = 0
-
-                        self.timer_correr = 0
-
-                    self.imagen = self.animacion_correr[
-                        self.frame_correr
-                    ]
-
-                else:
-
-                    self.timer_idle += dt
-
-                    if self.timer_idle >= self.velocidad_idle:
-
-                        self.frame_idle += 1
-
-                        if self.frame_idle >= len(self.animacion_idle):
-
-                            self.frame_idle = 0
-
-                        self.timer_idle = 0
-
-                    self.imagen = self.animacion_idle[
-                        self.frame_idle
-                    ]
-
-        self.rect.x = max(
-            0,
-            min(
-                WIDTH - self.rect.width,
-                self.rect.x
-            )
+        self.image = pygame.transform.scale(
+            self.image,
+            (120, 120)
         )
 
-        self.hurtbox.topleft = self.rect.topleft
 
-        if self.attack_cooldown > 0:
-
-            self.attack_cooldown -= dt
-
-        if self.attacking:
-
-            if self.direction == "right":
-
-                self.hitbox = pygame.Rect(
-                    self.rect.right,
-                    self.rect.y + 20,
-                    50,
-                    50
-                )
-
-            else:
-
-                self.hitbox = pygame.Rect(
-                    self.rect.left - 50,
-                    self.rect.y + 20,
-                    50,
-                    50
-                )
-
-    def rodar(self):
-
-        if self.muerto:
-            return
-
-        if self.recibiendo_golpe:
-            return
-
-        if self.defendiendo:
-            return
-
-        if self.attacking:
-            return
-
-        if self.rodando:
-            return
-
-        self.rodando = True
-
-        self.frame_rodar = 0
-        self.timer_rodar = 0
-
-        self.velocity_y = 0
-
-        self.attacking = False
-        self.has_hit = False
-
-        self.hitbox = pygame.Rect(
-            0,
-            0,
-            0,
-            0
-        )
-
-    def defender(self):
-
-        if self.muerto:
-            return
-
-        if self.recibiendo_golpe:
-            return
-
-        if self.attacking:
-            return
-
-        if self.defendiendo:
-            return
-
-        if self.rodando:
-            return
-
-        self.defendiendo = True
-        self.defensa_terminada = False
-
-        self.frame_defensa = 0
-        self.timer_defensa = 0
-
-        self.velocity_y = 0
-
-        self.attacking = False
-
-        self.hitbox = pygame.Rect(
-            0,
-            0,
-            0,
-            0
-        )
-
-    def attack(self):
-
-        if self.muerto:
-            return
-
-        if self.defendiendo:
-            return
-
-        if self.rodando:
-            return
-
-        if self.attack_cooldown > 0:
-            return
-
-        if self.attacking:
-            return
-
-        self.attacking = True
-
-        self.frame_ataque = 0
-        self.timer_ataque = 0
-
-        self.attack_timer = 0.88
-
-        self.attack_cooldown = self.attack_cooldown_time
-
-        self.has_hit = False
-
-        if self.direction == "right":
-
-            self.hitbox = pygame.Rect(
-                self.rect.right,
-                self.rect.y + 20,
-                50,
-                50
-            )
-
-        else:
-
-            self.hitbox = pygame.Rect(
-                self.rect.left - 50,
-                self.rect.y + 20,
-                50,
-                50
-            )
-
-    def take_damage(self, damage):
-
-        if self.rodando:
-
-            print("El jugador esquivó el ataque rodando")
-            return
-
-        if self.defendiendo:
-
-            print("El jugador bloqueó el ataque")
-            return
-
-        if self.muerto:
-            return
-
-        self.health -= damage
-
-        print(
-            "Jugador recibió",
-            damage,
-            "de daño"
-        )
-
-        print(
-            "Vida del jugador:",
-            self.health
-        )
-
-        if self.health <= 0:
-
-            self.health = 0
-
-            self.muerto = True
-
-            self.muerte_terminada = False
-
-            self.frame_muerte = 0
-            self.timer_muerte = 0
-
-            self.recibiendo_golpe = False
-            self.defendiendo = False
-            self.rodando = False
-            self.attacking = False
-            self.has_hit = False
-
-            self.hitbox = pygame.Rect(
-                0,
-                0,
-                0,
-                0
-            )
-
-            self.velocity_y = 0
-
-        else:
-
-            self.recibiendo_golpe = True
-
-            self.frame_hurt = 0
-            self.timer_hurt = 0
-
-    def draw(self):
-
-        imagen_rect = self.imagen.get_rect()
-
-        imagen_rect.midbottom = self.hurtbox.midbottom
-
-        if self.direction == "left":
-
-            imagen_dibujar = pygame.transform.flip(
-                self.imagen,
+        if not mirando_derecha:
+            self.image = pygame.transform.flip(
+                self.image,
                 True,
                 False
             )
 
-        else:
 
-            imagen_dibujar = self.imagen
-
-        screen.blit(
-            imagen_dibujar,
-            imagen_rect
+        self.rect = self.image.get_rect(
+            center=(x, y)
         )
 
-        pygame.draw.rect(
-            screen,
-            (0, 255, 0),
-            self.hurtbox,
-            2
-        )
 
-        if self.attacking:
+        self.animacion_hit = []
 
-            pygame.draw.rect(
-                screen,
-                (255, 255, 0),
-                self.hitbox,
-                2
+
+        for i in range(1, 7):
+
+
+            ruta = os.path.join(
+                ruta_hit,
+                f"arrow_hit_{i}.png"
             )
 
 
-class Enemy:
+            imagen = pygame.image.load(
+                ruta
+            ).convert_alpha()
 
-    def __init__(self, x, y):
 
-        self.rect = pygame.Rect(
-            x,
-            y,
-            60,
-            90
-        )
+            imagen = pygame.transform.scale(
+                imagen,
+                (180, 180)
+            )
 
-        self.speed = 2
-        self.direction = "left"
 
-        self.health = 100
-        self.max_health = 100
+            self.animacion_hit.append(imagen)
 
-        self.hurtbox = pygame.Rect(
-            x,
-            y,
-            60,
-            90
-        )
 
-        self.attacking = False
+    def update(self, scroll_x=0):
 
-        self.attack_timer = 0
-        self.attack_cooldown = 0
-        self.attack_cooldown_time = 0.8
 
-        self.attack_damage = 12
-        self.has_hit = False
+        if self.estado == "flecha":
 
-        self.hitbox = pygame.Rect(
-            0,
-            0,
-            0,
-            0
-        )
 
-    def update(self, player, dt):
+            # Movimiento horizontal sin gravedad.
 
-        if self.attack_cooldown > 0:
 
-            self.attack_cooldown -= dt
+            self.pos_x += self.velocidad_x
 
-        distancia_x = abs(
-            self.rect.centerx -
-            player.rect.centerx
-        )
 
-        distancia_y = abs(
-            self.rect.centery -
-            player.rect.centery
-        )
+            self.rect.centerx = int(
+                self.pos_x - scroll_x
+            )
 
-        if not self.attacking:
 
-            if distancia_x > 100:
+            self.rect.centery = int(self.pos_y)
 
-                if self.rect.centerx < player.rect.centerx:
 
-                    self.rect.x += self.speed
-                    self.direction = "right"
+            # Pared derecha del mundo.
 
-                elif self.rect.centerx > player.rect.centerx:
 
-                    self.rect.x -= self.speed
-                    self.direction = "left"
+            if self.mirando_derecha:
 
-            elif distancia_x <= 100 and distancia_y < 80:
 
-                self.attack()
+                if self.pos_x + self.rect.width / 2 >= self.ancho_mundo:
 
-        if self.attacking:
 
-            if self.direction == "right":
+                    self.pos_x = (
+                        self.ancho_mundo
+                        - self.rect.width / 2
+                    )
 
-                self.hitbox.topleft = (
-                    self.rect.right,
-                    self.rect.y + 20
-                )
+
+                    self.iniciar_impacto(scroll_x)
+
+
+            # Pared izquierda del mundo.
+
 
             else:
 
-                self.hitbox.topleft = (
-                    self.rect.left - 50,
-                    self.rect.y + 20
+
+                if self.pos_x - self.rect.width / 2 <= 0:
+
+
+                    self.pos_x = self.rect.width / 2
+
+
+                    self.iniciar_impacto(scroll_x)
+
+
+        elif self.estado == "hit":
+
+
+            self.frame_index += self.velocidad_animacion
+
+
+            if self.frame_index >= len(self.animacion_hit):
+                self.kill()
+                return
+
+
+            centro_x = self.rect.centerx
+            centro_y = self.rect.centery
+
+
+            self.image = self.animacion_hit[
+                int(self.frame_index)
+            ]
+
+
+            self.rect = self.image.get_rect(
+                center=(centro_x, centro_y)
+            )
+
+
+    def iniciar_impacto(self, scroll_x=0):
+
+
+        self.estado = "hit"
+        self.frame_index = 0
+
+
+        centro_x = int(self.pos_x - scroll_x)
+        centro_y = int(self.pos_y)
+
+
+        self.image = self.animacion_hit[0]
+
+
+        self.rect = self.image.get_rect(
+            center=(centro_x, centro_y)
+        )
+
+
+
+
+# ============================================================
+# RÁFAGA DEL TERCER ATAQUE
+# UNA SOLA ANIMACIÓN DE SEIS FOTOGRAMAS
+# ============================================================
+
+
+class RafagaFlechas(pygame.sprite.Sprite):
+
+
+    def __init__(
+        self,
+        x,
+        posicion_suelo,
+        mirando_derecha
+    ):
+
+
+        super().__init__()
+
+
+        self.pos_x = float(x)
+        self.posicion_suelo = posicion_suelo
+        self.mirando_derecha = mirando_derecha
+
+
+        self.frame_index = 0
+        self.velocidad_animacion = 0.25
+
+
+        # ----------------------------------------------------
+        # CARGAR LOS SEIS FOTOGRAMAS
+        # ----------------------------------------------------
+
+
+        ruta_animacion = os.path.join(
+            BASE_EFECTOS,
+            "arrow_shower_effect"
+        )
+
+
+        self.animacion = []
+
+
+        for i in range(1, 7):
+
+
+            ruta = os.path.join(
+                ruta_animacion,
+                f"arrow_shower_effect_{i}.png"
+            )
+
+
+            imagen = pygame.image.load(
+                ruta
+            ).convert_alpha()
+
+
+            imagen = pygame.transform.scale(
+                imagen,
+                (300, 220)
+            )
+
+
+            if not mirando_derecha:
+
+
+                imagen = pygame.transform.flip(
+                    imagen,
+                    True,
+                    False
                 )
 
-            self.attack_timer -= dt
 
-            if self.attack_timer <= 0:
+            self.animacion.append(imagen)
 
-                self.attacking = False
-                self.has_hit = False
 
-                self.hitbox = pygame.Rect(
-                    0,
-                    0,
-                    0,
-                    0
-                )
+        self.image = self.animacion[0]
 
-        self.hurtbox.topleft = self.rect.topleft
 
-        self.rect.x = max(
-            0,
-            min(
-                WIDTH - self.rect.width,
-                self.rect.x
+        # El borde inferior queda sobre el suelo.
+
+
+        self.rect = self.image.get_rect(
+            midbottom=(
+                int(self.pos_x),
+                self.posicion_suelo
             )
         )
 
-    def attack(self):
 
-        if self.attack_cooldown > 0:
+    def update(self, scroll_x=0):
+
+
+        self.frame_index += self.velocidad_animacion
+
+
+        # La animación se reproduce una sola vez.
+
+
+        if self.frame_index >= len(self.animacion):
+
+
+            self.kill()
             return
 
-        if self.attacking:
-            return
 
-        self.attacking = True
+        centro_x = int(self.pos_x - scroll_x)
 
-        self.attack_timer = 0.15
 
-        self.attack_cooldown = self.attack_cooldown_time
+        self.image = self.animacion[
+            int(self.frame_index)
+        ]
 
-        self.has_hit = False
 
-        if self.direction == "right":
+        # Mantener todos los fotogramas apoyados en el suelo.
 
-            self.hitbox = pygame.Rect(
-                self.rect.right,
-                self.rect.y + 20,
-                50,
-                50
+
+        self.rect = self.image.get_rect(
+            midbottom=(
+                centro_x,
+                self.posicion_suelo
             )
+        )
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+class p_planta(pygame.sprite.Sprite):
+
+
+    def __init__(self, x, y, posicion_suelo):
+        super().__init__()
+
+
+        # ====================================================
+        # CONFIGURACION
+        # ====================================================
+
+
+        self.ancho_heroe = 600
+        self.alto_heroe = 240
+        self.posicion_suelo = posicion_suelo
+
+
+        # ====================================================
+        # ANIMACIONES
+        # ====================================================
+
+
+        self.animaciones = {
+            "idle": [],
+            "run": [],
+            "roll": [],
+            "j_up": [],
+            "defend": [],
+            "1_atk": [],
+            "2_atk": [],
+            "3_atk": [],
+            "air_atk": [],
+            "sp_atk": []
+        }
+
+
+        self.cargar_animaciones()
+
+
+        # ====================================================
+        # ESTADO
+        # ====================================================
+
+
+        self.estado = "idle"
+        self.frame_index = 0
+        self.velocidad_animacion = 0.22
+
+
+        self.image = self.animaciones["idle"][0]
+        self.rect = self.image.get_rect(midbottom=(x, y))
+
+
+        self.pos_x = float(x)
+
+
+        # ====================================================
+        # FISICA
+        # ====================================================
+
+
+        self.velocidad_x = 0
+        self.velocidad_y = 0
+
+
+        self.velocidad_movimiento = 7
+        self.fuerza_salto = -16
+        self.gravedad = 0.8
+
+
+        # ====================================================
+        # ESTADOS DEL PERSONAJE
+        # ====================================================
+
+
+        self.mirando_derecha = True
+        self.en_suelo = True
+        self.rodando = False
+        self.defendiendo = False
+        self.atacando = False
+        self.combo_siguiente = False
+
+
+        # ====================================================
+        # RAFAGA DEL TERCER ATAQUE
+        # ====================================================
+
+
+        self.frame_rafaga = 8
+        self.rafaga_creada = False
+
+
+        # ====================================================
+        # NUEVO: FLECHA HORIZONTAL DEL SEGUNDO ATAQUE
+        # ====================================================
+
+
+        self.frame_flecha_horizontal = 8
+        self.flecha_horizontal_creada = False
+        self.ancho_mundo = 0
+
+
+        # ====================================================
+        # PROYECTILES
+        # ====================================================
+
+
+        self.proyectiles = pygame.sprite.Group()
+
+
+    # ========================================================
+    # CARGAR ANIMACIONES
+    # ========================================================
+
+
+    def cargar_animaciones(self):
+
+
+        escala = (self.ancho_heroe, self.alto_heroe)
+
+
+        base_path = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)),
+            "assets",
+            "Heroes",
+            "P_planta"
+        )
+
+
+        configuracion = {
+            "idle": ("idle", "idle", 12),
+            "run": ("run", "run", 10),
+            "roll": ("roll", "roll", 8),
+            "j_up": ("j_up", "jump_up", 3),
+            "defend": ("defend", "defend", 19),
+            "1_atk": ("1_atk", "1_atk", 10),
+            "2_atk": ("2_atk", "2_atk", 15),
+            "3_atk": ("3_atk", "3_atk", 12),
+            "air_atk": ("air_atk", "air_atk", 10),
+            "sp_atk": ("sp_atk", "sp_atk", 17)
+        }
+
+
+        for estado, (carpeta, prefijo, cantidad) in configuracion.items():
+
+
+            for i in range(1, cantidad + 1):
+
+
+                ruta = os.path.join(
+                    base_path,
+                    carpeta,
+                    f"{prefijo}_{i}.png"
+                )
+
+
+                imagen = pygame.image.load(ruta).convert_alpha()
+                imagen = pygame.transform.scale(imagen, escala)
+
+
+                self.animaciones[estado].append(imagen)
+
+
+    # ========================================================
+    # PROCESAR EVENTOS
+    # ========================================================
+
+
+    def procesar_evento(self, evento):
+
+
+        if evento.type not in (
+            pygame.KEYDOWN,
+            pygame.MOUSEBUTTONDOWN
+        ):
+            return
+
+
+        # SALTO: W
+        if (
+            evento.type == pygame.KEYDOWN
+            and evento.key == pygame.K_w
+            and self.en_suelo
+            and not (
+                self.atacando
+                or self.rodando
+                or self.defendiendo
+            )
+        ):
+            self.velocidad_y = self.fuerza_salto
+            self.en_suelo = False
+
+
+        # RODAR: Q
+        elif (
+            evento.type == pygame.KEYDOWN
+            and evento.key == pygame.K_q
+            and self.en_suelo
+            and not (
+                self.rodando
+                or self.atacando
+                or self.defendiendo
+            )
+        ):
+            self.rodando = True
+            self.frame_index = 0
+
+
+        # DEFENSA: CLIC DERECHO
+        elif (
+            evento.type == pygame.MOUSEBUTTONDOWN
+            and evento.button == pygame.BUTTON_RIGHT
+            and self.en_suelo
+            and not (
+                self.rodando
+                or self.atacando
+                or self.defendiendo
+            )
+        ):
+            self.defendiendo = True
+            self.frame_index = 0
+
+
+        # ATAQUE ESPECIAL: E
+        elif (
+            evento.type == pygame.KEYDOWN
+            and evento.key == pygame.K_e
+            and self.en_suelo
+            and not (
+                self.rodando
+                or self.atacando
+                or self.defendiendo
+            )
+        ):
+            self.atacando = True
+            self.estado = "sp_atk"
+            self.frame_index = 0
+
+
+        # ATAQUES: CLIC IZQUIERDO
+        elif (
+            evento.type == pygame.MOUSEBUTTONDOWN
+            and evento.button == pygame.BUTTON_LEFT
+        ):
+
+
+            # ATAQUE AEREO
+            if not self.en_suelo and not self.atacando:
+
+
+                self.atacando = True
+                self.estado = "air_atk"
+                self.frame_index = 0
+
+
+                flecha = FlechaAerea(
+                    self.pos_x,
+                    self.rect.centery,
+                    self.posicion_suelo,
+                    self.mirando_derecha
+                )
+
+
+                self.proyectiles.add(flecha)
+
+
+            # ATAQUE TERRESTRE Y COMBOS
+            elif (
+                self.en_suelo
+                and not (self.rodando or self.defendiendo)
+            ):
+
+
+                if not self.atacando:
+
+
+                    self.atacando = True
+                    self.estado = "1_atk"
+                    self.frame_index = 0
+                    self.combo_siguiente = False
+
+
+                elif self.estado in ("1_atk", "2_atk"):
+
+
+                    self.combo_siguiente = True
+
+
+    # ========================================================
+    # MOVIMIENTO CONTINUO
+    # ========================================================
+
+
+    def manejar_movimiento_continuo(self):
+
+
+        teclas = pygame.key.get_pressed()
+
+
+        if (
+            self.rodando
+            or self.defendiendo
+            or (self.atacando and self.en_suelo)
+        ):
+            self.velocidad_x = 0
+            return
+
+
+        self.velocidad_x = 0
+
+
+        if teclas[pygame.K_a]:
+            self.velocidad_x = -self.velocidad_movimiento
+            self.mirando_derecha = False
+
+
+        if teclas[pygame.K_d]:
+            self.velocidad_x = self.velocidad_movimiento
+            self.mirando_derecha = True
+
+
+    # ========================================================
+    # ACTUALIZAR ESTADO
+    # ========================================================
+
+
+    def actualizar_estado(self):
+
+
+        if self.rodando:
+            self.estado = "roll"
+
+
+        elif self.defendiendo:
+            self.estado = "defend"
+
+
+        elif self.atacando:
+            pass
+
+
+        elif not self.en_suelo:
+            self.estado = "j_up"
+
+
+        elif self.velocidad_x != 0:
+            self.estado = "run"
+
 
         else:
+            self.estado = "idle"
 
-            self.hitbox = pygame.Rect(
-                self.rect.left - 50,
-                self.rect.y + 20,
-                50,
-                50
-            )
 
-    def take_damage(self, damage):
+    # ========================================================
+    # ANIMAR Y GENERAR PROYECTILES
+    # ========================================================
 
-        self.health -= damage
 
-        print(
-            "Enemigo recibió",
-            damage,
-            "de daño"
-        )
+    def animar(self):
 
-        print(
-            "Vida del enemigo:",
-            self.health
-        )
 
-    def draw(self):
+        anim = self.animaciones[self.estado]
 
-        pygame.draw.rect(
-            screen,
-            (255, 50, 50),
-            self.rect
-        )
 
-        pygame.draw.rect(
-            screen,
-            (0, 255, 0),
-            self.hurtbox,
-            2
-        )
+        # ----------------------------------------------------
+        # RAFAGA DEL TERCER ATAQUE: ORIGINAL
+        # ----------------------------------------------------
 
-        if self.attacking:
 
-            pygame.draw.rect(
-                screen,
-                (255, 255, 0),
-                self.hitbox,
-                2
+        if (
+            self.estado == "3_atk"
+            and int(self.frame_index) + 1 >= self.frame_rafaga
+            and not self.rafaga_creada
+        ):
+
+
+            self.rafaga_creada = True
+
+
+            distancia = 300
+
+
+            x_rafaga = (
+                self.pos_x + distancia
+                if self.mirando_derecha
+                else self.pos_x - distancia
             )
 
 
-player = Player(
-    200,
-    500
-)
+            rafaga = RafagaFlechas(
+                x_rafaga,
+                self.posicion_suelo,
+                self.mirando_derecha
+            )
 
-enemy = Enemy(
-    550,
-    500
-)
 
-player_damage = 20
+            self.proyectiles.add(rafaga)
 
-running = True
 
-while running:
+        # ----------------------------------------------------
+        # NUEVO: FLECHA HORIZONTAL DEL SEGUNDO ATAQUE
+        # ----------------------------------------------------
 
-    dt = clock.tick(60) / 1000
 
-    for event in pygame.event.get():
+       
+        # ----------------------------------------------------
+        # FLECHA HORIZONTAL DEL SEGUNDO ATAQUE
+        # ----------------------------------------------------
 
-        if event.type == pygame.QUIT:
 
-            running = False
+        if (
+            self.estado == "2_atk"
+            and int(self.frame_index) + 1
+            >= self.frame_flecha_horizontal
+            and not self.flecha_horizontal_creada
+        ):
 
-        if event.type == pygame.KEYDOWN:
 
-            if event.key == pygame.K_f:
+            self.flecha_horizontal_creada = True
 
-                player.attack()
 
-            if event.key == pygame.K_r:
+            distancia = 100
 
-                player.defender()
 
-            if event.key == pygame.K_q:
+            x_flecha = (
+                self.pos_x + distancia
+                if self.mirando_derecha
+                else self.pos_x - distancia
+            )
 
-                player.rodar()
 
-    player.update(dt)
+            # Aparece delante del héroe, a la altura del torso.
+            y_flecha = self.rect.bottom - 80
 
-    enemy.update(
-        player,
-        dt
-    )
 
-    if player.attacking:
+            flecha = FlechaHorizontal(
+                x_flecha,
+                y_flecha,
+                self.mirando_derecha,
+                self.ancho_mundo
+            )
 
-        if not player.has_hit:
 
-            if player.hitbox.colliderect(
-                enemy.hurtbox
-            ):
+            self.proyectiles.add(flecha)
 
-                enemy.take_damage(
-                    player_damage
-                )
 
-                player.has_hit = True
 
-    if enemy.attacking:
 
-        if not enemy.has_hit:
+        # ----------------------------------------------------
+        # AVANZAR ANIMACION
+        # ----------------------------------------------------
 
-            if enemy.hitbox.colliderect(
-                player.hurtbox
-            ):
 
-                player.take_damage(
-                    enemy.attack_damage
-                )
+        self.frame_index += self.velocidad_animacion
 
-                enemy.has_hit = True
 
-    screen.blit(
-        fondo,
-        (0, 0)
-    )
+        if self.frame_index >= len(anim):
 
-    pygame.draw.line(
-        screen,
-        (100, 100, 100),
-        (0, 590),
-        (WIDTH, 590),
-        5
-    )
 
-    player.draw()
+            # ROLL
+            if self.rodando:
+                self.rodando = False
 
-    enemy.draw()
 
-    pygame.display.flip()
+            # DEFENSA
+            elif self.defendiendo:
+                self.defendiendo = False
 
-pygame.quit()
+
+            # ATAQUES QUE TERMINAN
+            elif self.estado in ("air_atk", "sp_atk", "3_atk"):
+                self.atacando = False
+
+
+            # ATAQUE 1
+            elif self.estado == "1_atk":
+
+
+                if self.combo_siguiente:
+                    self.estado = "2_atk"
+                    self.combo_siguiente = False
+
+
+                    # NUEVO: permitir disparar en el segundo ataque
+                    self.flecha_horizontal_creada = False
+
+
+                else:
+                    self.atacando = False
+
+
+            # ATAQUE 2
+            elif self.estado == "2_atk":
+
+
+                if self.combo_siguiente:
+                    self.estado = "3_atk"
+                    self.frame_index = 0
+                    self.rafaga_creada = False
+                    self.combo_siguiente = False
+
+
+                else:
+                    self.atacando = False
+
+
+            self.frame_index = 0
+            anim = self.animaciones[self.estado]
+
+
+        # ----------------------------------------------------
+        # MOSTRAR FRAME ACTUAL
+        # ----------------------------------------------------
+
+
+        frame_actual = anim[int(self.frame_index)]
+
+
+        if not self.mirando_derecha:
+            self.image = pygame.transform.flip(
+                frame_actual,
+                True,
+                False
+            )
+        else:
+            self.image = frame_actual
+
+
+    # ========================================================
+    # APLICAR GRAVEDAD
+    # ========================================================
+
+
+    def aplicar_gravedad(self):
+
+
+        self.velocidad_y += self.gravedad
+        self.rect.y += self.velocidad_y
+
+
+        if self.rect.bottom >= self.posicion_suelo:
+
+
+            self.rect.bottom = self.posicion_suelo
+            self.velocidad_y = 0
+            self.en_suelo = True
+
+
+        else:
+            self.en_suelo = False
+
+
+    # ========================================================
+    # ACTUALIZAR JUGADOR
+    # ========================================================
+
+
+    def update(self, scroll_x, ancho_mundo):
+
+
+        # NUEVO: guardar el ancho del mapa para la flecha.
+        self.ancho_mundo = ancho_mundo
+
+
+        self.manejar_movimiento_continuo()
+
+
+        if self.rodando:
+            self.velocidad_x = (
+                self.velocidad_movimiento + 3
+            ) * (1 if self.mirando_derecha else -1)
+
+
+        self.pos_x += self.velocidad_x
+
+
+        limite_izquierdo = scroll_x + 80
+
+
+        self.pos_x = max(
+            limite_izquierdo,
+            min(self.pos_x, ancho_mundo - 80)
+        )
+
+
+        self.rect.centerx = int(self.pos_x - scroll_x)
+
+
+        self.aplicar_gravedad()
+        self.actualizar_estado()
+        self.animar()
+
+
+        # Actualizar proyectiles originales y nuevos.
+        self.proyectiles.update(scroll_x)
+

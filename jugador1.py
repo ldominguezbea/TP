@@ -1,1058 +1,878 @@
-
 import pygame
-
-pygame.init()
-
-WIDTH = 1350
-HEIGHT = 700
-
-screen = pygame.display.set_mode((WIDTH, HEIGHT))
-pygame.display.set_caption("Plataformero")
-
-clock = pygame.time.Clock()
-
-fondo = pygame.image.load("assets/fondos/fondo_mvp.png")
-fondo = pygame.transform.scale(fondo, (WIDTH, HEIGHT))
+import os
+class p_viento(pygame.sprite.Sprite):
 
 
-class Player:
+    def __init__(
+        self,
+        x,
+        y,
+        posicion_suelo
+    ):
 
-    def __init__(self, x, y):
 
-        self.rect = pygame.Rect(
-            x,
-            y,
-            60,
-            90
+        super().__init__()
+
+
+        # ====================================================
+        # CONFIGURACIÓN DEL PERSONAJE
+        # ====================================================
+
+
+        self.ancho_heroe = 600
+        self.alto_heroe = 240
+
+
+        self.posicion_suelo = posicion_suelo
+
+
+        # ====================================================
+        # ANIMACIONES
+        # ====================================================
+
+
+        self.animaciones = {
+            "idle": [],
+            "run": [],
+            "roll": [],
+            "j_up": [],
+            "defend": [],
+            "1_atk": [],
+            "2_atk": [],
+            "3_atk": [],
+            "air_atk": [],
+            "sp_atk": []
+        }
+
+
+        self.cargar_animaciones()
+
+
+        # ====================================================
+        # ESTADO
+        # ====================================================
+
+
+        self.estado = "idle"
+
+
+        self.frame_index = 0
+        self.velocidad_animacion = 0.22
+
+
+        self.image = self.animaciones[
+            self.estado
+        ][0]
+
+
+        self.rect = self.image.get_rect(
+            midbottom=(x, y)
         )
 
-        self.speed = 5
-        self.velocity_y = 0
-        self.gravity = 0.5
-        self.jump_force = -12
-        self.on_ground = False
-        self.health = 150
-        self.max_health = 150
-        self.direction = "right"
 
-        self.animacion_correr = []
+        # Posición real dentro del mundo
+        self.pos_x = float(x)
+
+
+        # ====================================================
+        # FÍSICA
+        # ====================================================
+
+
+        self.velocidad_x = 0
+        self.velocidad_y = 0
+
+
+        self.velocidad_movimiento = 7
+        self.fuerza_salto = -16
+        self.gravedad = 0.8
+
+
+        # ====================================================
+        # ESTADOS
+        # ====================================================
+
+
+        self.mirando_derecha = True
+
+
+        self.en_suelo = True
+
+
+        self.rodando = False
+        self.defendiendo = False
+        self.atacando = False
+
+
+        self.combo_siguiente = False
+
+
+    # ========================================================
+    # CARGAR ANIMACIONES
+    # ========================================================
+
+
+    def cargar_animaciones(self):
+
+
+        escala = (
+            self.ancho_heroe,
+            self.alto_heroe
+        )
+
+
+        base_path = os.path.join(
+            "assets",
+            "Heroes",
+            "P_viento"
+        )
+
+
+        # ----------------------------------------------------
+        # IDLE
+        # ----------------------------------------------------
+
 
         for i in range(1, 9):
 
-            imagen = pygame.image.load(
-                f"assets/Heroes/p_fuego/fire_knight/02_run/run_{i}.png"
+
+            img = pygame.image.load(
+                os.path.join(
+                    base_path,
+                    "idle",
+                    f"idle_{i}.png"
+                )
             ).convert_alpha()
 
-            imagen = pygame.transform.scale(
-                imagen,
-                (600, 300)
+
+            img = pygame.transform.scale(
+                img,
+                escala
             )
 
-            self.animacion_correr.append(imagen)
 
-        self.frame_correr = 0
-        self.timer_correr = 0
-        self.velocidad_animacion = 0.08
+            self.animaciones["idle"].append(img)
 
-        self.animacion_idle = []
+
+        # ----------------------------------------------------
+        # RUN
+        # ----------------------------------------------------
+
 
         for i in range(1, 9):
 
-            imagen = pygame.image.load(
-                f"assets/Heroes/p_fuego/fire_knight/01_idle/idle_{i}.png"
+
+            img = pygame.image.load(
+                os.path.join(
+                    base_path,
+                    "run",
+                    f"run_{i}.png"
+                )
             ).convert_alpha()
 
-            imagen = pygame.transform.scale(
-                imagen,
-                (600, 300)
+
+            img = pygame.transform.scale(
+                img,
+                escala
             )
 
-            self.animacion_idle.append(imagen)
 
-        self.frame_idle = 0
-        self.timer_idle = 0
-        self.velocidad_idle = 0.1
+            self.animaciones["run"].append(img)
 
-        self.animacion_salto = []
 
-        for i in range(1, 4):
+        # ----------------------------------------------------
+        # ROLL
+        # ----------------------------------------------------
 
-            imagen = pygame.image.load(
-                f"assets/Heroes/p_fuego/fire_knight/03_jump_up/jump_up_{i}.png"
-            ).convert_alpha()
-
-            imagen = pygame.transform.scale(
-                imagen,
-                (600, 300)
-            )
-
-            self.animacion_salto.append(imagen)
-
-        self.frame_salto = 0
-        self.timer_salto = 0
-        self.velocidad_salto = 0.1
-
-        self.animacion_caer = []
-
-        for i in range(1, 4):
-
-            imagen = pygame.image.load(
-                f"assets/Heroes/p_fuego/fire_knight/03_jump_down/jump_down_{i}.png"
-            ).convert_alpha()
-
-            imagen = pygame.transform.scale(
-                imagen,
-                (600, 300)
-            )
-
-            self.animacion_caer.append(imagen)
-
-        self.frame_caer = 0
-        self.timer_caer = 0
-        self.velocidad_caer = 0.1
-
-        self.animacion_hurt = []
 
         for i in range(1, 7):
 
-            imagen = pygame.image.load(
-                f"assets/Heroes/p_fuego/fire_knight/10_take_hit/take_hit_{i}.png"
+
+            img = pygame.image.load(
+                os.path.join(
+                    base_path,
+                    "roll",
+                    f"roll_{i}.png"
+                )
             ).convert_alpha()
 
-            imagen = pygame.transform.scale(
-                imagen,
-                (600, 300)
+
+            img = pygame.transform.scale(
+                img,
+                escala
             )
 
-            self.animacion_hurt.append(imagen)
 
-        self.frame_hurt = 0
-        self.timer_hurt = 0
-        self.velocidad_hurt = 0.08
+            self.animaciones["roll"].append(img)
 
-        self.recibiendo_golpe = False
 
-        self.animacion_muerte = []
+        # ----------------------------------------------------
+        # SALTO
+        # ----------------------------------------------------
 
-        for i in range(1, 14):
 
-            imagen = pygame.image.load(
-                f"assets/Heroes/p_fuego/fire_knight/11_death/death_{i}.png"
+        for i in range(1, 4):
+
+
+            img = pygame.image.load(
+                os.path.join(
+                    base_path,
+                    "j_up",
+                    f"j_up_{i}.png"
+                )
             ).convert_alpha()
 
-            imagen = pygame.transform.scale(
-                imagen,
-                (600, 300)
+
+            img = pygame.transform.scale(
+                img,
+                escala
             )
 
-            self.animacion_muerte.append(imagen)
 
-        self.frame_muerte = 0
-        self.timer_muerte = 0
-        self.velocidad_muerte = 0.10
+            self.animaciones["j_up"].append(img)
 
-        self.muerto = False
-        self.muerte_terminada = False
 
-        self.animacion_defensa = []
+        # ----------------------------------------------------
+        # DEFENSA
+        # ----------------------------------------------------
 
-        for i in range(1, 11):
-
-            imagen = pygame.image.load(
-                f"assets/Heroes/p_fuego/fire_knight/09_defend/defend_{i}.png"
-            ).convert_alpha()
-
-            imagen = pygame.transform.scale(
-                imagen,
-                (600, 300)
-            )
-
-            self.animacion_defensa.append(imagen)
-
-        self.frame_defensa = 0
-        self.timer_defensa = 0
-        self.velocidad_defensa = 0.08
-
-        self.defendiendo = False
-        self.defensa_terminada = False
-
-        self.animacion_rodar = []
 
         for i in range(1, 9):
 
-            imagen = pygame.image.load(
-                f"assets/Heroes/p_fuego/fire_knight/04_roll/roll_{i}.png"
+
+            img = pygame.image.load(
+                os.path.join(
+                    base_path,
+                    "defend",
+                    f"defend_{i}.png"
+                )
             ).convert_alpha()
 
-            imagen = pygame.transform.scale(
-                imagen,
-                (600, 300)
+
+            img = pygame.transform.scale(
+                img,
+                escala
             )
 
-            self.animacion_rodar.append(imagen)
 
-        self.frame_rodar = 0
-        self.timer_rodar = 0
-        self.velocidad_rodar = 0.08
-        self.rodando = False
-        self.velocidad_rodar_movimiento = 14
+            self.animaciones["defend"].append(img)
 
-        self.animacion_ataque = []
 
-        for i in range(1, 12):
+        # ----------------------------------------------------
+        # ATAQUE 1
+        # ----------------------------------------------------
 
-            imagen = pygame.image.load(
-                f"assets/Heroes/p_fuego/fire_knight/05_1_atk/1_atk_{i}.png"
+
+        for i in range(1, 9):
+
+
+            img = pygame.image.load(
+                os.path.join(
+                    base_path,
+                    "1_atk",
+                    f"1_atk_{i}.png"
+                )
             ).convert_alpha()
 
-            imagen = pygame.transform.scale(
-                imagen,
-                (600, 300)
+
+            img = pygame.transform.scale(
+                img,
+                escala
             )
 
-            self.animacion_ataque.append(imagen)
 
-        self.frame_ataque = 0
-        self.timer_ataque = 0
-        self.velocidad_ataque = 0.08
+            self.animaciones["1_atk"].append(img)
 
-        self.imagen = self.animacion_idle[0]
 
-        self.attacking = False
-        self.attack_timer = 0
-        self.attack_cooldown = 0
-        self.attack_cooldown_time = 0.3
-        self.has_hit = False
+        # ----------------------------------------------------
+        # ATAQUE 2
+        # ----------------------------------------------------
 
-        self.hurtbox = pygame.Rect(
-            x,
-            y,
-            30,
-            80
-        )
 
-        self.hitbox = pygame.Rect(
-            0,
-            0,
-            0,
-            0
-        )
+        for i in range(1, 19):
 
-    def update(self, dt):
 
-        if self.muerto:
-
-            if not self.muerte_terminada:
-
-                self.timer_muerte += dt
-
-                if self.timer_muerte >= self.velocidad_muerte:
-
-                    self.frame_muerte += 1
-
-                    self.timer_muerte = 0
-
-                    if self.frame_muerte >= 13:
-
-                        self.frame_muerte = 12
-                        self.muerte_terminada = True
-
-                self.imagen = self.animacion_muerte[
-                    self.frame_muerte
-                ]
-
-                self.velocity_y = 0
-                self.attacking = False
-
-                self.hitbox = pygame.Rect(
-                    0,
-                    0,
-                    0,
-                    0
+            img = pygame.image.load(
+                os.path.join(
+                    base_path,
+                    "2_atk",
+                    f"2_atk_{i}.png"
                 )
+            ).convert_alpha()
 
-            else:
 
-                self.imagen = self.animacion_muerte[12]
+            img = pygame.transform.scale(
+                img,
+                escala
+            )
 
-                self.velocity_y = 0
-                self.attacking = False
 
-                self.hitbox = pygame.Rect(
-                    0,
-                    0,
-                    0,
-                    0
+            self.animaciones["2_atk"].append(img)
+
+
+        # ----------------------------------------------------
+        # ATAQUE AÉREO
+        # ----------------------------------------------------
+
+
+        for i in range(1, 8):
+
+
+            img = pygame.image.load(
+                os.path.join(
+                    base_path,
+                    "air_atk",
+                    f"air_atk_{i}.png"
                 )
+            ).convert_alpha()
 
-            self.hurtbox.topleft = self.rect.topleft
 
+            img = pygame.transform.scale(
+                img,
+                escala
+            )
+
+
+            self.animaciones["air_atk"].append(img)
+
+
+        # ----------------------------------------------------
+        # ATAQUE ESPECIAL
+        # ----------------------------------------------------
+
+
+        for i in range(1, 31):
+
+
+            img = pygame.image.load(
+                os.path.join(
+                    base_path,
+                    "sp_atk",
+                    f"sp_atk_{i}.png"
+                )
+            ).convert_alpha()
+
+
+            img = pygame.transform.scale(
+                img,
+                escala
+            )
+
+
+            self.animaciones["sp_atk"].append(img)
+
+
+        # ----------------------------------------------------
+        # ATAQUE 3
+        # ----------------------------------------------------
+
+
+        for i in range(12, 27):
+
+
+            img = pygame.image.load(
+                os.path.join(
+                    base_path,
+                    "3_atk",
+                    f"3_atk_{i}.png"
+                )
+            ).convert_alpha()
+
+
+            img = pygame.transform.scale(
+                img,
+                escala
+            )
+
+
+            self.animaciones["3_atk"].append(img)
+
+
+    # ========================================================
+    # EVENTOS DEL JUGADOR
+    # ========================================================
+
+
+    def procesar_evento(self, evento):
+
+
+        # Aceptar teclado y mouse
+        if evento.type not in (
+            pygame.KEYDOWN,
+            pygame.MOUSEBUTTONDOWN
+        ):
             return
+
+
+        # ====================================================
+        # SALTO - W
+        # ====================================================
+
+
+        if (
+            evento.type == pygame.KEYDOWN
+            and evento.key == pygame.K_w
+            and self.en_suelo
+            and not (
+                self.atacando
+                or self.rodando
+                or self.defendiendo
+            )
+        ):
+
+
+            self.velocidad_y = self.fuerza_salto
+            self.en_suelo = False
+
+
+        # ====================================================
+        # RODAR - Q
+        # ====================================================
+
+
+        elif (
+            evento.type == pygame.KEYDOWN
+            and evento.key == pygame.K_q
+            and self.en_suelo
+            and not (
+                self.rodando
+                or self.atacando
+                or self.defendiendo
+            )
+        ):
+
+
+            self.rodando = True
+            self.frame_index = 0
+
+
+        # ====================================================
+        # DEFENDER - CLICK DERECHO
+        # ====================================================
+
+
+        elif (
+            evento.type == pygame.MOUSEBUTTONDOWN
+            and evento.button == pygame.BUTTON_RIGHT
+            and self.en_suelo
+            and not (
+                self.rodando
+                or self.atacando
+                or self.defendiendo
+            )
+        ):
+
+
+            self.defendiendo = True
+            self.frame_index = 0
+
+
+        # ====================================================
+        # ATAQUE ESPECIAL - E
+        # ====================================================
+
+
+        elif (
+            evento.type == pygame.KEYDOWN
+            and evento.key == pygame.K_e
+            and self.en_suelo
+            and not (
+                self.rodando
+                or self.atacando
+                or self.defendiendo
+            )
+        ):
+
+
+            self.atacando = True
+            self.estado = "sp_atk"
+            self.frame_index = 0
+
+
+        # ====================================================
+        # ATAQUE - CLICK IZQUIERDO
+        # ====================================================
+
+
+        elif (
+            evento.type == pygame.MOUSEBUTTONDOWN
+            and evento.button == pygame.BUTTON_LEFT
+        ):
+
+
+            # ------------------------------------------------
+            # ATAQUE AÉREO
+            # ------------------------------------------------
+
+
+            if (
+                not self.en_suelo
+                and not self.atacando
+            ):
+
+
+                self.atacando = True
+                self.estado = "air_atk"
+                self.frame_index = 0
+
+
+            # ------------------------------------------------
+            # ATAQUE TERRESTRE
+            # ------------------------------------------------
+
+
+            elif (
+                self.en_suelo
+                and not (
+                    self.rodando
+                    or self.defendiendo
+                )
+            ):
+
+
+                if not self.atacando:
+
+
+                    self.atacando = True
+                    self.estado = "1_atk"
+                    self.frame_index = 0
+                    self.combo_siguiente = False
+
+
+                elif self.estado in [
+                    "1_atk",
+                    "2_atk"
+                ]:
+
+
+                    self.combo_siguiente = True
+
+
+    # ========================================================
+    # MOVIMIENTO CONTINUO
+    # ========================================================
+
+
+    def manejar_movimiento_continuo(self):
+
+
+        teclas = pygame.key.get_pressed()
+
+
+        # Bloquear movimiento durante acciones
+        if (
+            self.rodando
+            or self.defendiendo
+            or (
+                self.atacando
+                and self.en_suelo
+            )
+        ):
+
+
+            self.velocidad_x = 0
+            return
+
+
+        self.velocidad_x = 0
+
+
+        # ----------------------------------------------------
+        # IZQUIERDA - A
+        # ----------------------------------------------------
+
+
+        if teclas[pygame.K_a]:
+
+
+            self.velocidad_x = -self.velocidad_movimiento
+            self.mirando_derecha = False
+
+
+        # ----------------------------------------------------
+        # DERECHA - D
+        # ----------------------------------------------------
+
+
+        if teclas[pygame.K_d]:
+
+
+            self.velocidad_x = self.velocidad_movimiento
+            self.mirando_derecha = True
+
+
+    # ========================================================
+    # ACTUALIZAR ESTADO
+    # ========================================================
+
+
+    def actualizar_estado(self):
+
 
         if self.rodando:
 
-            if self.direction == "right":
-                self.rect.x += self.velocidad_rodar_movimiento
-            else:
-                self.rect.x -= self.velocidad_rodar_movimiento
 
-            self.timer_rodar += dt
+            self.estado = "roll"
 
-            if self.timer_rodar >= self.velocidad_rodar:
 
-                self.frame_rodar += 1
-                self.timer_rodar = 0
+        elif self.defendiendo:
 
-                if self.frame_rodar >= 8:
 
-                    self.frame_rodar = 7
-                    self.rodando = False
+            self.estado = "defend"
 
-            self.imagen = self.animacion_rodar[
-                self.frame_rodar
-            ]
 
-            self.velocity_y = 0
-            self.attacking = False
-            self.has_hit = False
+        elif self.atacando:
 
-            self.hitbox = pygame.Rect(
-                0,
-                0,
-                0,
-                0
-            )
 
-            self.hurtbox.topleft = self.rect.topleft
+            pass
 
-            self.rect.x = max(
-                0,
-                min(
-                    WIDTH - self.rect.width,
-                    self.rect.x
-                )
-            )
 
-            self.hurtbox.topleft = self.rect.topleft
+        elif not self.en_suelo:
 
-            return
 
-        if self.defendiendo:
+            self.estado = "j_up"
 
-            self.timer_defensa += dt
 
-            if self.timer_defensa >= self.velocidad_defensa:
+        elif self.velocidad_x != 0:
 
-                self.frame_defensa += 1
-                self.timer_defensa = 0
 
-                if self.frame_defensa >= 10:
+            self.estado = "run"
 
-                    self.frame_defensa = 9
-                    self.defendiendo = False
-                    self.defensa_terminada = True
-
-            self.imagen = self.animacion_defensa[
-                self.frame_defensa
-            ]
-
-            self.velocity_y = 0
-            self.attacking = False
-            self.has_hit = False
-
-            self.hitbox = pygame.Rect(
-                0,
-                0,
-                0,
-                0
-            )
-
-            self.hurtbox.topleft = self.rect.topleft
-
-            return
-
-        keys = pygame.key.get_pressed()
-
-        moviendo = False
-
-        if keys[pygame.K_a]:
-
-            self.rect.x -= self.speed
-            self.direction = "left"
-            moviendo = True
-
-        if keys[pygame.K_d]:
-
-            self.rect.x += self.speed
-            self.direction = "right"
-            moviendo = True
-
-        if keys[pygame.K_w] and self.on_ground:
-
-            self.velocity_y = self.jump_force
-            self.on_ground = False
-
-            self.frame_salto = 0
-            self.timer_salto = 0
-
-        self.velocity_y += self.gravity
-        self.rect.y += self.velocity_y
-
-        suelo_y = 590
-
-        if self.rect.bottom >= suelo_y:
-
-            self.rect.bottom = suelo_y
-            self.velocity_y = 0
-            self.on_ground = True
-
-            self.frame_caer = 0
-            self.timer_caer = 0
-
-        if self.recibiendo_golpe:
-
-            self.timer_hurt += dt
-
-            if self.timer_hurt >= self.velocidad_hurt:
-
-                self.frame_hurt += 1
-                self.timer_hurt = 0
-
-                if self.frame_hurt >= 6:
-
-                    self.frame_hurt = 0
-                    self.recibiendo_golpe = False
-
-            self.imagen = self.animacion_hurt[
-                self.frame_hurt
-            ]
-
-        elif self.attacking:
-
-            self.timer_ataque += dt
-
-            if self.timer_ataque >= self.velocidad_ataque:
-
-                self.frame_ataque += 1
-                self.timer_ataque = 0
-
-                if self.frame_ataque >= 11:
-
-                    self.frame_ataque = 10
-                    self.attacking = False
-                    self.has_hit = False
-
-                    self.hitbox = pygame.Rect(
-                        0,
-                        0,
-                        0,
-                        0
-                    )
-
-            if self.attacking:
-
-                self.imagen = self.animacion_ataque[
-                    self.frame_ataque
-                ]
 
         else:
 
-            if not self.on_ground:
 
-                if self.velocity_y < 0:
+            self.estado = "idle"
 
-                    self.timer_salto += dt
 
-                    if self.timer_salto >= self.velocidad_salto:
+    # ========================================================
+    # ANIMAR
+    # ========================================================
 
-                        self.frame_salto += 1
 
-                        if self.frame_salto >= 3:
-                            self.frame_salto = 2
+    def animar(self):
 
-                        self.timer_salto = 0
 
-                    self.imagen = self.animacion_salto[
-                        self.frame_salto
-                    ]
+        anim = self.animaciones[self.estado]
+
+
+        self.frame_index += self.velocidad_animacion
+
+
+        # ----------------------------------------------------
+        # FINAL DE ANIMACIÓN
+        # ----------------------------------------------------
+
+
+        if self.frame_index >= len(anim):
+
+
+            self.frame_index = 0
+
+
+            # Roll
+            if self.rodando:
+
+
+                self.rodando = False
+
+
+            # Defensa
+            elif self.defendiendo:
+
+
+                self.defendiendo = False
+
+
+            # Ataques que terminan
+            elif self.estado in [
+                "air_atk",
+                "sp_atk",
+                "3_atk"
+            ]:
+
+
+                self.atacando = False
+
+
+            # Ataque 1
+            elif self.estado == "1_atk":
+
+
+                if self.combo_siguiente:
+
+
+                    self.estado = "2_atk"
+                    self.combo_siguiente = False
+
 
                 else:
 
-                    self.timer_caer += dt
 
-                    if self.timer_caer >= self.velocidad_caer:
+                    self.atacando = False
 
-                        self.frame_caer += 1
 
-                        if self.frame_caer >= 3:
-                            self.frame_caer = 2
+            # Ataque 2
+            elif self.estado == "2_atk":
 
-                        self.timer_caer = 0
 
-                    self.imagen = self.animacion_caer[
-                        self.frame_caer
-                    ]
+                if self.combo_siguiente:
 
-            else:
 
-                if moviendo:
+                    self.estado = "3_atk"
+                    self.combo_siguiente = False
 
-                    self.timer_correr += dt
-
-                    if self.timer_correr >= self.velocidad_animacion:
-
-                        self.frame_correr += 1
-
-                        if self.frame_correr >= 8:
-                            self.frame_correr = 0
-
-                        self.timer_correr = 0
-
-                    self.imagen = self.animacion_correr[
-                        self.frame_correr
-                    ]
 
                 else:
 
-                    self.timer_idle += dt
 
-                    if self.timer_idle >= self.velocidad_idle:
+                    self.atacando = False
 
-                        self.frame_idle += 1
 
-                        if self.frame_idle >= 8:
-                            self.frame_idle = 0
+        # ----------------------------------------------------
+        # FRAME ACTUAL
+        # ----------------------------------------------------
 
-                        self.timer_idle = 0
 
-                    self.imagen = self.animacion_idle[
-                        self.frame_idle
-                    ]
+        frame_actual = anim[
+            int(self.frame_index)
+        ]
 
-        self.rect.x = max(
-            0,
-            min(
-                WIDTH - self.rect.width,
-                self.rect.x
-            )
-        )
 
-        self.hurtbox.topleft = self.rect.topleft
+        # Girar personaje
+        if not self.mirando_derecha:
 
-        if self.attack_cooldown > 0:
-            self.attack_cooldown -= dt
 
-        if self.attacking:
-
-            if self.direction == "right":
-
-                self.hitbox = pygame.Rect(
-                    self.rect.right,
-                    self.rect.y + 20,
-                    50,
-                    50
-                )
-
-            else:
-
-                self.hitbox = pygame.Rect(
-                    self.rect.left - 50,
-                    self.rect.y + 20,
-                    50,
-                    50
-                )
-
-    def rodar(self):
-
-        if self.muerto:
-            return
-
-        if self.recibiendo_golpe:
-            return
-
-        if self.defendiendo:
-            return
-
-        if self.attacking:
-            return
-
-        if self.rodando:
-            return
-
-        self.rodando = True
-
-        self.frame_rodar = 0
-        self.timer_rodar = 0
-
-        self.velocity_y = 0
-
-        self.attacking = False
-        self.has_hit = False
-
-        self.hitbox = pygame.Rect(
-            0,
-            0,
-            0,
-            0
-        )
-
-    def defender(self):
-
-        if self.muerto:
-            return
-
-        if self.recibiendo_golpe:
-            return
-
-        if self.attacking:
-            return
-
-        if self.defendiendo:
-            return
-
-        if self.rodando:
-            return
-
-        self.defendiendo = True
-        self.defensa_terminada = False
-
-        self.frame_defensa = 0
-        self.timer_defensa = 0
-
-        self.velocity_y = 0
-
-        self.attacking = False
-
-        self.hitbox = pygame.Rect(
-            0,
-            0,
-            0,
-            0
-        )
-
-    def attack(self):
-
-        if self.muerto:
-            return
-
-        if self.defendiendo:
-            return
-
-        if self.rodando:
-            return
-
-        if self.attack_cooldown > 0:
-            return
-
-        if self.attacking:
-            return
-
-        self.attacking = True
-
-        self.frame_ataque = 0
-        self.timer_ataque = 0
-
-        self.attack_timer = 0.88
-
-        self.attack_cooldown = self.attack_cooldown_time
-
-        self.has_hit = False
-
-        if self.direction == "right":
-
-            self.hitbox = pygame.Rect(
-                self.rect.right,
-                self.rect.y + 20,
-                50,
-                50
-            )
-
-        else:
-
-            self.hitbox = pygame.Rect(
-                self.rect.left - 50,
-                self.rect.y + 20,
-                50,
-                50
-            )
-
-    def take_damage(self, damage):
-
-        if self.rodando:
-
-            print("El jugador esquivó el ataque rodando")
-            return
-
-        if self.defendiendo:
-
-            print("El jugador bloqueó el ataque")
-            return
-
-        if self.muerto:
-            return
-
-        self.health -= damage
-
-        print(
-            "Jugador recibió",
-            damage,
-            "de daño"
-        )
-
-        print(
-            "Vida del jugador:",
-            self.health
-        )
-
-        if self.health <= 0:
-
-            self.health = 0
-
-            self.muerto = True
-
-            self.muerte_terminada = False
-
-            self.frame_muerte = 0
-            self.timer_muerte = 0
-
-            self.recibiendo_golpe = False
-            self.defendiendo = False
-            self.rodando = False
-            self.attacking = False
-            self.has_hit = False
-
-            self.hitbox = pygame.Rect(
-                0,
-                0,
-                0,
-                0
-            )
-
-            self.velocity_y = 0
-
-        else:
-
-            self.recibiendo_golpe = True
-
-            self.frame_hurt = 0
-            self.timer_hurt = 0
-
-    def draw(self):
-
-        imagen_rect = self.imagen.get_rect()
-
-        imagen_rect.midbottom = self.hurtbox.midbottom
-
-        if self.direction == "left":
-
-            imagen_dibujar = pygame.transform.flip(
-                self.imagen,
+            self.image = pygame.transform.flip(
+                frame_actual,
                 True,
                 False
             )
 
+
         else:
 
-            imagen_dibujar = self.imagen
 
-        screen.blit(
-            imagen_dibujar,
-            imagen_rect
-        )
+            self.image = frame_actual
 
-        pygame.draw.rect(
-            screen,
-            (0, 255, 0),
-            self.hurtbox,
-            2
-        )
 
-        if self.attacking:
+    # ========================================================
+    # GRAVEDAD
+    # ========================================================
 
-            pygame.draw.rect(
-                screen,
-                (255, 255, 0),
-                self.hitbox,
-                2
+
+    def aplicar_gravedad(self):
+
+
+        self.velocidad_y += self.gravedad
+
+
+        self.rect.y += self.velocidad_y
+
+
+        # ----------------------------------------------------
+        # SUELO
+        # ----------------------------------------------------
+
+
+        if self.rect.bottom >= self.posicion_suelo:
+
+
+            self.rect.bottom = self.posicion_suelo
+
+
+            self.velocidad_y = 0
+            self.en_suelo = True
+
+
+    # ========================================================
+    # ACTUALIZAR JUGADOR
+    # ========================================================
+
+
+    def update(
+        self,
+        scroll_x,
+        ancho_mundo
+    ):
+
+
+        self.manejar_movimiento_continuo()
+
+
+        # ----------------------------------------------------
+        # VELOCIDAD AL RODAR
+        # ----------------------------------------------------
+
+
+        if self.rodando:
+
+
+            self.velocidad_x = (
+                self.velocidad_movimiento + 3
+            ) * (
+                1
+                if self.mirando_derecha
+                else -1
             )
 
 
-class Enemy:
+        # ----------------------------------------------------
+        # POSICIÓN GLOBAL
+        # ----------------------------------------------------
 
-    def __init__(self, x, y):
 
-        self.rect = pygame.Rect(
-            x,
-            y,
-            60,
-            90
-        )
+        self.pos_x += self.velocidad_x
 
-        self.speed = 2
-        self.direction = "left"
 
-        self.health = 100
-        self.max_health = 100
+        # ----------------------------------------------------
+        # LÍMITES DEL MUNDO
+        # ----------------------------------------------------
 
-        self.hurtbox = pygame.Rect(
-            x,
-            y,
-            60,
-            90
-        )
 
-        self.attacking = False
+        limite_izquierdo = scroll_x + 80
 
-        self.attack_timer = 0
-        self.attack_cooldown = 0
-        self.attack_cooldown_time = 0.8
 
-        self.attack_damage = 12
-        self.has_hit = False
-
-        self.hitbox = pygame.Rect(
-            0,
-            0,
-            0,
-            0
-        )
-
-    def update(self, player, dt):
-
-        if self.attack_cooldown > 0:
-            self.attack_cooldown -= dt
-
-        distancia_x = abs(
-            self.rect.centerx -
-            player.rect.centerx
-        )
-
-        distancia_y = abs(
-            self.rect.centery -
-            player.rect.centery
-        )
-
-        if not self.attacking:
-
-            if distancia_x > 100:
-
-                if self.rect.centerx < player.rect.centerx:
-
-                    self.rect.x += self.speed
-                    self.direction = "right"
-
-                elif self.rect.centerx > player.rect.centerx:
-
-                    self.rect.x -= self.speed
-                    self.direction = "left"
-
-            elif distancia_x <= 100 and distancia_y < 80:
-
-                self.attack()
-
-        if self.attacking:
-
-            if self.direction == "right":
-
-                self.hitbox.topleft = (
-                    self.rect.right,
-                    self.rect.y + 20
-                )
-
-            else:
-
-                self.hitbox.topleft = (
-                    self.rect.left - 50,
-                    self.rect.y + 20
-                )
-
-            self.attack_timer -= dt
-
-            if self.attack_timer <= 0:
-
-                self.attacking = False
-                self.has_hit = False
-
-                self.hitbox = pygame.Rect(
-                    0,
-                    0,
-                    0,
-                    0
-                )
-
-        self.hurtbox.topleft = self.rect.topleft
-
-        self.rect.x = max(
-            0,
+        self.pos_x = max(
+            limite_izquierdo,
             min(
-                WIDTH - self.rect.width,
-                self.rect.x
+                self.pos_x,
+                ancho_mundo - 80
             )
         )
 
-    def attack(self):
 
-        if self.attack_cooldown > 0:
-            return
+        # ----------------------------------------------------
+        # POSICIÓN EN PANTALLA
+        # ----------------------------------------------------
 
-        if self.attacking:
-            return
 
-        self.attacking = True
-
-        self.attack_timer = 0.15
-        self.attack_cooldown = self.attack_cooldown_time
-
-        self.has_hit = False
-
-        if self.direction == "right":
-
-            self.hitbox = pygame.Rect(
-                self.rect.right,
-                self.rect.y + 20,
-                50,
-                50
-            )
-
-        else:
-
-            self.hitbox = pygame.Rect(
-                self.rect.left - 50,
-                self.rect.y + 20,
-                50,
-                50
-            )
-
-    def take_damage(self, damage):
-
-        self.health -= damage
-
-        print(
-            "Enemigo recibió",
-            damage,
-            "de daño"
+        self.rect.centerx = int(
+            self.pos_x - scroll_x
         )
 
-        print(
-            "Vida del enemigo:",
-            self.health
-        )
 
-    def draw(self):
-
-        pygame.draw.rect(
-            screen,
-            (255, 50, 50),
-            self.rect
-        )
-
-        pygame.draw.rect(
-            screen,
-            (0, 255, 0),
-            self.hurtbox,
-            2
-        )
-
-        if self.attacking:
-
-            pygame.draw.rect(
-                screen,
-                (255, 255, 0),
-                self.hitbox,
-                2
-            )
+        # ----------------------------------------------------
+        # FÍSICA
+        # ----------------------------------------------------
 
 
-player = Player(
-    200,
-    500
-)
+        self.aplicar_gravedad()
 
-enemy = Enemy(
-    550,
-    500
-)
 
-player_damage = 20
+        # ----------------------------------------------------
+        # ESTADO
+        # ----------------------------------------------------
 
-running = True
 
-while running:
+        self.actualizar_estado()
 
-    dt = clock.tick(60) / 1000
 
-    for event in pygame.event.get():
+        # ----------------------------------------------------
+        # ANIMACIÓN
+        # ----------------------------------------------------
 
-        if event.type == pygame.QUIT:
 
-            running = False
+        self.animar()
 
-        if event.type == pygame.KEYDOWN:
 
-            if event.key == pygame.K_f:
-
-                player.attack()
-
-            if event.key == pygame.K_r:
-
-                player.defender()
-
-            if event.key == pygame.K_q:
-
-                player.rodar()
-
-    player.update(dt)
-
-    enemy.update(
-        player,
-        dt
-    )
-
-    if player.attacking:
-
-        if not player.has_hit:
-
-            if player.hitbox.colliderect(
-                enemy.hurtbox
-            ):
-
-                enemy.take_damage(
-                    player_damage
-                )
-
-                player.has_hit = True
-
-    if enemy.attacking:
-
-        if not enemy.has_hit:
-
-            if enemy.hitbox.colliderect(
-                player.hurtbox
-            ):
-
-                player.take_damage(
-                    enemy.attack_damage
-                )
-
-                enemy.has_hit = True
-
-    screen.blit(
-        fondo,
-        (0, 0)
-    )
-
-    pygame.draw.line(
-        screen,
-        (100, 100, 100),
-        (0, 590),
-        (WIDTH, 590),
-        5
-    )
-
-    player.draw()
-
-    enemy.draw()
-
-    pygame.display.flip()
-
-pygame.quit()
