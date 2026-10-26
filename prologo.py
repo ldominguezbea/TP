@@ -1,59 +1,36 @@
 import pygame
-import os
-import sys
+from config import BASE_DIR, SCREEN_WIDTH, SCREEN_HEIGHT
 
-pygame.init()
 
-# Configuración de pantalla
-ANCHO = 1350
-ALTO = 700
-ventana = pygame.display.set_mode((ANCHO, ALTO))
-pygame.display.set_caption("Prólogo")
+def prologue():
+    """Carga las páginas narrativas del prólogo en su orden de lectura."""
+    carpeta = BASE_DIR / "assets" / "sprites" / "Prologo"
+    nombres_imagenes = (
+        "1.png",
+        "2.png",
+        "3.png",
+        "4.png",
+        "5.png",
+        "Pag_6.png",
+    )
+    imagenes = []
 
-# 1. Rutas exactas basadas en la estructura de tu proyecto
-rutas_imagenes = [
-    os.path.join("assets", "Prologo", "Pag_1.png"),
-    os.path.join("assets", "Prologo", "Pag_2.png"),
-    os.path.join("assets", "Prologo", "Pag_3.png"),
-    os.path.join("assets", "Prologo", "Pag_4.png"),
-    os.path.join("assets", "Prologo", "Pag_5.png"),
-    os.path.join("assets", "Prologo", "Pag_6.png")
-]
+    for nombre in nombres_imagenes:
+        ruta = carpeta / nombre
+        if ruta.exists():
+            try:
+                imagen = pygame.image.load(str(ruta)).convert()
+                imagenes.append(
+                    pygame.transform.scale(imagen, (SCREEN_WIDTH, SCREEN_HEIGHT))
+                )
+            except pygame.error as e:
+                print(f"[PROLOGO] Error al cargar la imagen {ruta}: {e}")
+        else:
+            print(f"[PROLOGO] No se encontró la imagen {ruta}.")
 
-# 2. Cargar y escalar todas las páginas
-imagenes = []
-for ruta in rutas_imagenes:
-    try:
-        img_original = pygame.image.load(ruta).convert()
-        img_escalada = pygame.transform.scale(img_original, (ANCHO, ALTO))
-        imagenes.append(img_escalada)
-    except pygame.error as e:
-        print(f"Error al cargar la imagen {ruta}: {e}")
+    if not imagenes:
+        fondo_respaldo = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
+        fondo_respaldo.fill((35, 35, 45))
+        imagenes.append(fondo_respaldo)
 
-indice_imagen = 0
-
-ejecutando = True
-while ejecutando:
-    for evento in pygame.event.get():
-        if evento.type == pygame.QUIT:
-            ejecutando = False
-
-        # Avanzar página al presionar Enter
-        elif evento.type == pygame.KEYDOWN:
-            if evento.key == pygame.K_RETURN:
-                indice_imagen += 1
-                
-                # Al pasar la última página (Pag_6.png), cierra el prólogo
-                if indice_imagen >= len(imagenes):
-                    ejecutando = False
-
-    ventana.fill((0, 0, 0))
-
-    # Dibujar la página actual SOLO si el índice está dentro del rango
-    if imagenes and indice_imagen < len(imagenes):
-        ventana.blit(imagenes[indice_imagen], (0, 0))
-
-    pygame.display.flip()
-
-pygame.quit()
-sys.exit()
+    return imagenes
