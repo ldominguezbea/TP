@@ -227,6 +227,200 @@ def mostrar_athros():
 
 
 # ============================================================
+# CLASE ENEMIGO
+# ============================================================
+
+class Enemigo(pygame.sprite.Sprite):
+
+    def __init__(self, x, posicion_suelo):
+        super().__init__()
+
+        self.ancho = 40
+        self.alto = 100
+        self.velocidad = 2
+        self.velocidad_salto = -12
+        self.gravedad = 0.6
+
+        self.posicion_suelo = posicion_suelo
+
+        # Posición del enemigo en el mundo.
+        self.pos_x = float(x)
+        self.pos_y = float(posicion_suelo - self.alto)
+
+        # Cuerpo rectangular azul.
+        self.image = pygame.Surface(
+            (self.ancho, self.alto)
+        )
+        self.image.fill((0, 0, 255))
+
+        self.rect = self.image.get_rect()
+
+        # Hurtbox invisible.
+        self.hurtbox = pygame.Rect(
+            0, 0, self.ancho, self.alto
+        )
+
+        # Hitbox roja que aparece durante el ataque.
+        self.hitbox = pygame.Rect(0, 0, 0, 0)
+
+        self.hitbox_activa = False
+        self.duracion_ataque = 250
+        self.tiempo_ataque = 0
+        self.cooldown_ataque = 1000
+        self.ultimo_ataque = -self.cooldown_ataque
+
+        self.direccion = -1
+        self.atacando = False
+
+        # Salto.
+        self.velocidad_vertical = 0
+        self.en_suelo = True
+        self.proximo_salto = pygame.time.get_ticks() + 2000
+
+    def actualizar_rectangulos(self, scroll_x):
+
+        # Rectángulos en coordenadas de pantalla.
+        self.rect.topleft = (
+            int(self.pos_x - scroll_x),
+            int(self.pos_y)
+        )
+
+        self.hurtbox.topleft = self.rect.topleft
+
+        # Actualizar la hitbox roja según la dirección.
+        if self.hitbox_activa:
+
+            if self.direccion == 1:
+                self.hitbox = pygame.Rect(
+                    self.rect.right,
+                    self.rect.top + 20,
+                    45,
+                    50
+                )
+
+            else:
+                self.hitbox = pygame.Rect(
+                    self.rect.left - 45,
+                    self.rect.top + 20,
+                    45,
+                    50
+                )
+
+    def iniciar_ataque(self, ahora):
+
+        self.atacando = True
+        self.hitbox_activa = True
+        self.tiempo_ataque = ahora
+        self.ultimo_ataque = ahora
+
+    def update(self, jugador, scroll_x, ancho_mundo):
+
+        ahora = pygame.time.get_ticks()
+
+        # Actualizar posición visual y hurtbox.
+        self.actualizar_rectangulos(scroll_x)
+
+        if jugador is None:
+            self.hitbox_activa = False
+            self.atacando = False
+            return
+
+        # Posición del jugador en el mundo.
+        jugador_x = jugador.pos_x
+
+        diferencia_x = jugador_x - self.pos_x
+
+        # Determinar hacia dónde mira el enemigo.
+        if diferencia_x > 0:
+            self.direccion = 1
+
+        elif diferencia_x < 0:
+            self.direccion = -1
+
+        # Terminar el ataque después de su duración.
+        if self.atacando:
+
+            if ahora - self.tiempo_ataque >= self.duracion_ataque:
+                self.atacando = False
+                self.hitbox_activa = False
+
+        # Si está atacando, permanece quieto.
+        if not self.atacando:
+
+            # Atacar cuando el jugador está cerca.
+            if (
+                abs(diferencia_x) <= 100
+                and ahora - self.ultimo_ataque
+                >= self.cooldown_ataque
+            ):
+                self.iniciar_ataque(ahora)
+
+            else:
+
+                # Perseguir al jugador.
+                if abs(diferencia_x) > 5:
+                    self.pos_x += (
+                        self.direccion * self.velocidad
+                    )
+
+                # Saltar ocasionalmente mientras persigue.
+                if (
+                    self.en_suelo
+                    and ahora >= self.proximo_salto
+                ):
+                    self.velocidad_vertical = self.velocidad_salto
+                    self.en_suelo = False
+
+                    self.proximo_salto = (
+                        ahora + 2000 + int(
+                            pygame.time.get_ticks() % 2500
+                        )
+                    )
+
+        # Aplicar gravedad.
+        if not self.en_suelo:
+
+            self.velocidad_vertical += self.gravedad
+            self.pos_y += self.velocidad_vertical
+
+            suelo_y = self.posicion_suelo - self.alto
+
+            if self.pos_y >= suelo_y:
+                self.pos_y = suelo_y
+                self.velocidad_vertical = 0
+                self.en_suelo = True
+
+        # Mantener al enemigo dentro del mundo.
+        self.pos_x = max(
+            0,
+            min(
+                self.pos_x,
+                ancho_mundo - self.ancho
+            )
+        )
+
+        # Actualizar rectángulos con la posición nueva.
+        self.actualizar_rectangulos(scroll_x)
+
+    def draw(self, superficie, scroll_x):
+
+        self.actualizar_rectangulos(scroll_x)
+
+        # Dibujar el cuerpo azul.
+        superficie.blit(
+            self.image,
+            self.rect
+        )
+
+        # Dibujar la hitbox roja durante el ataque.
+        if self.hitbox_activa:
+
+            pygame.draw.rect(
+                superficie,
+                (255, 0, 0),
+                self.hitbox
+            )
+# ============================================================
 # CREAR JUGADORES
 # ============================================================
 
@@ -260,7 +454,14 @@ heroe4 = p_planta(
 # ============================================================
 
 jugador_actual = None
+# ============================================================
+# ENEMIGO
+# ============================================================
 
+enemigo = Enemigo(
+    ANCHO + 400,
+    POSICION_SUELO
+)
 
 # ============================================================
 # GRUPO DE SPRITES
@@ -439,6 +640,15 @@ while ejecutando:
             scroll_x,
             ANCHO_MUNDO
         )
+    # ========================================================
+    # ACTUALIZAR ENEMIGO
+    # ========================================================
+
+    enemigo.update(
+        jugador_actual,
+        scroll_x,
+        ANCHO_MUNDO
+    )
 
     # ========================================================
     # DIBUJAR FONDOS
@@ -499,7 +709,14 @@ while ejecutando:
         jugador_actual.proyectiles.draw(
             pantalla
         )
+    # ========================================================
+    # DIBUJAR ENEMIGO
+    # ========================================================
 
+    enemigo.draw(
+        pantalla,
+        scroll_x
+    )
     # ========================================================
     # ACTUALIZAR PANTALLA
     # ========================================================

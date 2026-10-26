@@ -50,7 +50,7 @@ class FlechaAerea(pygame.sprite.Sprite):
         )
 
         self.image = pygame.image.load(ruta_flecha).convert_alpha()
-        self.image = pygame.transform.scale(self.image, (120, 120))
+        self.image = pygame.transform.scale(self.image, (160, 160))
 
         if not mirando_derecha:
             self.image = pygame.transform.flip(self.image, True, False)
@@ -159,7 +159,7 @@ class FlechaHorizontal(pygame.sprite.Sprite):
 
         self.image = pygame.transform.scale(
             self.image,
-            (120, 120)
+            (160, 160)
         )
 
         if not mirando_derecha:

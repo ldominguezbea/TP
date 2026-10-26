@@ -1,7 +1,7 @@
 import os
 import random
 import math
-
+from array import array
 import pygame
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
