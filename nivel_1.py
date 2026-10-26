@@ -2,7 +2,7 @@ import os
 import sys
 import random
 import pygame
-
+from jugador1 import p_viento
 from enemigos import OrcoRojo, OjoVolador, Karasu_tengu
 
 pygame.init()
