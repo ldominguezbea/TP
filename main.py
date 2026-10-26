@@ -1,5 +1,6 @@
 import pygame
 import sys
+import subprocess
 
 pygame.init()
 from config import SCREEN_WIDTH, SCREEN_HEIGHT, GAME_WIDTH, GAME_HEIGHT, BASE_DIR, abrir_archivo
@@ -292,6 +293,14 @@ def main():
                         game_state = "CHARACTER_SELECT"
                     elif isinstance(result, int):
                         chosen_level = result
+                        if chosen_level == 1:
+                            audio.update_ambient(0.0, active=False)
+                            subprocess.run(
+                                [sys.executable, str(BASE_DIR / "nivel_1.py")],
+                                cwd=BASE_DIR,
+                                check=False,
+                            )
+                            chosen_level = None
 
         if game_state == "LEVEL_SELECT":
             level_selector.update(elapsed_ms)
