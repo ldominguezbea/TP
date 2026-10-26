@@ -1259,8 +1259,9 @@ DISTANCIA_ENTRE_GRUPOS = 850
 PRIMER_GRUPO_X = 800
 ULTIMO_GRUPO_X = HUECO_INICIO - 1100
 PUNTOS_GRUPO = list(range(PRIMER_GRUPO_X, ULTIMO_GRUPO_X + 1, DISTANCIA_ENTRE_GRUPOS))
-BUS_EVENTO_X = int(PORTAL_X * 0.75)
-BUS_SCROLL_X = BUS_EVENTO_X - 250
+BUS_ESCENARIO_TRAMO = ANCHO_MUNDO // ANCHO - 2
+BUS_SCROLL_X = BUS_ESCENARIO_TRAMO * ANCHO
+BUS_EVENTO_X = BUS_SCROLL_X + int(ANCHO * 0.4)
 BUS_PUERTA_RECT = pygame.Rect(
     BUS_SCROLL_X + 699, POSICION_SUELO - 90, 44, 90
 )
@@ -1829,7 +1830,11 @@ while ejecutando:
         for i in range(ANCHO_MUNDO // ANCHO):
             pos_x_fondo = i * ANCHO - scroll_x
             if -ANCHO < pos_x_fondo < ANCHO:
-                fondo_tramo = fondos[i % len(fondos)]
+                fondo_tramo = (
+                    fondo_jefe if i == ANCHO_MUNDO // ANCHO - 1
+                    else fondo_autobus if i == BUS_ESCENARIO_TRAMO
+                    else fondos[i % len(fondos)]
+                )
                 pantalla.blit(fondo_tramo, (pos_x_fondo, 0))
 
         dibujar_plataformas(
@@ -1891,39 +1896,13 @@ while ejecutando:
 
     if autobus_dialogo:
         puerta_x_pantalla = BUS_PUERTA_RECT.centerx - scroll_x
-        panel_dialogo = pygame.Rect(puerta_x_pantalla - 250, 330, 500, 112)
-        punta_globo = [
-            (puerta_x_pantalla - 28, panel_dialogo.bottom - 10),
-            (puerta_x_pantalla, panel_dialogo.bottom + 42),
-            (puerta_x_pantalla + 28, panel_dialogo.bottom - 10),
-        ]
-        pygame.draw.polygon(
-            pantalla, (8, 8, 12), [(x + 3, y + 5) for x, y in punta_globo]
-        )
-        pygame.draw.ellipse(
-            pantalla, (8, 8, 12), panel_dialogo.move(3, 5)
-        )
-        pygame.draw.polygon(pantalla, (66, 54, 42), punta_globo)
-        pygame.draw.ellipse(pantalla, (66, 54, 42), panel_dialogo)
-        pygame.draw.polygon(
-            pantalla,
-            (247, 239, 215),
-            [
-                (puerta_x_pantalla - 20, panel_dialogo.bottom - 12),
-                (puerta_x_pantalla, panel_dialogo.bottom + 29),
-                (puerta_x_pantalla + 20, panel_dialogo.bottom - 12),
-            ],
-        )
-        pygame.draw.ellipse(
-            pantalla, (247, 239, 215), panel_dialogo.inflate(-6, -6)
-        )
-        pygame.draw.ellipse(
-            pantalla, (189, 151, 99), panel_dialogo.inflate(-18, -18), 2
-        )
         dialogo = fuente_dialogo_autobus.render(
-            "Gracias por salvarnos", True, (35, 42, 37)
+            "Gracias por salvarnos", True, (255, 255, 255)
         )
-        pantalla.blit(dialogo, dialogo.get_rect(center=panel_dialogo.center))
+        pantalla.blit(
+            dialogo,
+            dialogo.get_rect(center=(puerta_x_pantalla, 386)),
+        )
 
     if autobus_perdido:
         overlay_derrota = pygame.Surface((ANCHO, ALTO), pygame.SRCALPHA)
