@@ -174,10 +174,9 @@ def cargar_fondo_nivel2(nombre_archivo):
 
 
 fondos = [
+    cargar_fondo_nivel2("Nivel2_imagen1.png"),
     cargar_fondo_nivel2("Nivel2_imagen2.png"),
-    cargar_fondo_nivel2("Nivel2_imagen4.png"),
 ]
-fondo_batalla = cargar_fondo_nivel2("Nivel2_imagen1.png")
 fondo_jefe = cargar_fondo_nivel2("Nivel2_imagen3.png")
 fondo_autobus = cargar_fondo_nivel2("Nivel2_imagen5.png.png")
 
@@ -1677,7 +1676,7 @@ while ejecutando:
             pygame.time.wait(2000)
 
             transicion_realizada = True
-            ejecutar_batalla_werewolf(pantalla, heroe, fondo_batalla)
+            ejecutar_batalla_werewolf(pantalla, heroe, fondo_jefe)
             ejecutando = False
             break
 
@@ -1830,10 +1829,7 @@ while ejecutando:
         for i in range(ANCHO_MUNDO // ANCHO):
             pos_x_fondo = i * ANCHO - scroll_x
             if -ANCHO < pos_x_fondo < ANCHO:
-                fondo_tramo = (
-                    fondo_jefe if i == ANCHO_MUNDO // ANCHO - 1
-                    else fondos[i % len(fondos)]
-                )
+                fondo_tramo = fondos[i % len(fondos)]
                 pantalla.blit(fondo_tramo, (pos_x_fondo, 0))
 
         dibujar_plataformas(

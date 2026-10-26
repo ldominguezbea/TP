@@ -3,7 +3,12 @@ import sys
 import random
 import pygame
 
-from enemigos import OrcoRojo, OjoVolador, Karasu_tengu
+from enemigos import (
+    OrcoRojo,
+    OjoVolador,
+    Karasu_tengu,
+    cargar_spritesheet_jokai,
+)
 
 pygame.init()
 pygame.font.init()
@@ -11,13 +16,17 @@ pygame.font.init()
 # 1. Configuración de pantalla y mundo
 ANCHO, ALTO = 1350, 700
 POSICION_SUELO = 620
+ORDEN_FONDOS_NIVEL = (1, 4, 5, 6, 7, 8, 9, 10)
 
 # Recorrido lateral continuo hasta la entrada del jefe.
-CANTIDAD_FONDOS = 3
-ANCHO_MUNDO = ANCHO * 7
+CANTIDAD_FONDOS = len(ORDEN_FONDOS_NIVEL)
+ANCHO_MUNDO = ANCHO * CANTIDAD_FONDOS + 500
 PORTAL_X = ANCHO_MUNDO - 500
 HUECO_INICIO = PORTAL_X - 150
 HUECO_FIN = PORTAL_X + 150
+ZONA_BIBLIOTECA_X = ANCHO * 3 + int(ANCHO * 0.75)
+ZONA_ENFERMERIA_X = ANCHO * 7 + int(ANCHO * 0.75)
+RADIO_INTERACCION_FONDO = 100
 
 pantalla = pygame.display.set_mode((ANCHO, ALTO))
 pygame.display.set_caption("Nivel 1 - Batalla de Jefe")
@@ -140,20 +149,30 @@ def buscar_y_cargar_barra(nombre_archivo):
 IMG_SUN_SPIRIT = buscar_y_cargar_barra("sun_spirit.png")
 IMG_BARRA_JUGADOR = buscar_y_cargar_barra("Barra_de_vida_jugador.png")
 
-# 2. Carga de fondos
-fondos = []
-for i in range(1, CANTIDAD_FONDOS + 1):
-    ruta_imagen = os.path.join("imagenes", "Nivel1", f"Nivel1_imagen{i}.png")
-    if not os.path.exists(ruta_imagen):
-        ruta_imagen = os.path.join("assets", "imagenes", "Nivel1", f"Nivel1_imagen{i}.png")
+def cargar_fondo_nivel1(numero):
+    nombres = [f"Nivel1_imagen{numero}.png"]
+    if numero == 10:
+        nombres.append("Nivel_1imagen10.png")
 
-    if os.path.exists(ruta_imagen):
-        img = pygame.image.load(ruta_imagen).convert()
-        fondos.append(pygame.transform.scale(img, (ANCHO, ALTO)))
-    else:
-        surf = pygame.Surface((ANCHO, ALTO))
-        surf.fill((20, 15, 25))
-        fondos.append(surf)
+    carpetas = (
+        os.path.join("imagenes", "Nivel1"),
+        os.path.join("assets", "imagenes", "Nivel1"),
+    )
+    for carpeta in carpetas:
+        for nombre in nombres:
+            ruta = os.path.join(carpeta, nombre)
+            if os.path.exists(ruta):
+                img = pygame.image.load(ruta).convert()
+                return pygame.transform.scale(img, (ANCHO, ALTO))
+
+    surf = pygame.Surface((ANCHO, ALTO))
+    surf.fill((20, 15, 25))
+    return surf
+
+
+# 2. Carga de fondos
+fondos = [cargar_fondo_nivel1(numero) for numero in ORDEN_FONDOS_NIVEL]
+fondo_batalla = cargar_fondo_nivel1(3)
 
 
 # 3. Clase para el Jugador (P_viento)
@@ -161,7 +180,7 @@ class Jugador(pygame.sprite.Sprite):
     def __init__(self, x, y):
         super().__init__()
         self.animaciones = {
-            'idle': [], 'run': [], 'roll': [], 'j_up': [],
+            'idle': [], 'run': [], 'roll': [], 'j_up': [], 'j_down': [],
             'defend': [], '1_atk': [], '2_atk': [], '3_atk': [],
             'air_atk': [], 'sp_atk': []
         }
@@ -191,6 +210,8 @@ class Jugador(pygame.sprite.Sprite):
         self.gravedad = 0.8
         self.plataformas = []
         self.scroll_x_actual = 0
+        self.plataforma_actual = None
+        self.plataforma_ignorada = None
 
         # Estados de acción
         self.mirando_derecha = True
@@ -225,6 +246,7 @@ class Jugador(pygame.sprite.Sprite):
         self.animaciones['run'] = cargar_secuencia("run", 8)
         self.animaciones['roll'] = cargar_secuencia("roll", 6)
         self.animaciones['j_up'] = cargar_secuencia("j_up", 3)
+        self.animaciones['j_down'] = cargar_secuencia("j_down", 3)
         self.animaciones['defend'] = cargar_secuencia("defend", 8)
         self.animaciones['1_atk'] = cargar_secuencia("1_atk", 8, omitir=[6, 7, 8])
         self.animaciones['2_atk'] = cargar_secuencia("2_atk", 18, omitir=[14, 15, 16, 17, 18])
@@ -234,7 +256,13 @@ class Jugador(pygame.sprite.Sprite):
 
     def procesar_evento(self, evento):
         if evento.type == pygame.KEYDOWN:
-            if evento.key == pygame.K_w and self.en_suelo and not (self.rodando or self.defendiendo):
+            if evento.key == pygame.K_s and self.plataforma_actual is not None:
+                self.plataforma_ignorada = self.plataforma_actual
+                self.plataforma_actual = None
+                self.en_suelo = False
+                self.velocidad_y = max(2, self.gravedad)
+
+            elif evento.key == pygame.K_w and self.en_suelo and not (self.rodando or self.defendiendo):
                 if self.atacando and self.estado != 'sp_atk':
                     self.atacando = False
                 self.velocidad_y = self.fuerza_salto
@@ -304,7 +332,7 @@ class Jugador(pygame.sprite.Sprite):
         elif self.atacando:
             pass
         elif not self.en_suelo:
-            self.estado = 'j_up'
+            self.estado = 'j_up' if self.velocidad_y < 0 else 'j_down'
         elif self.velocidad_x != 0:
             self.estado = 'run'
         else:
@@ -367,12 +395,18 @@ class Jugador(pygame.sprite.Sprite):
     def aplicar_gravedad(self):
         bottom_anterior = self.rect.bottom
         self.en_suelo = False
+        self.plataforma_actual = None
         self.velocidad_y += self.gravedad
         self.rect.y += self.velocidad_y
 
         if self.velocidad_y >= 0:
             for plataforma in self.plataformas:
                 plataforma_pantalla = plataforma.move(-self.scroll_x_actual, 0)
+                if self.plataforma_ignorada is plataforma:
+                    if self.rect.bottom >= plataforma_pantalla.bottom:
+                        self.plataforma_ignorada = None
+                    else:
+                        continue
                 zona_suelo = plataforma_pantalla.inflate(-20, 0)
                 pisa_plataforma = (
                     bottom_anterior <= zona_suelo.top
@@ -384,12 +418,14 @@ class Jugador(pygame.sprite.Sprite):
                     self.rect.bottom = zona_suelo.top
                     self.velocidad_y = 0
                     self.en_suelo = True
+                    self.plataforma_actual = plataforma
                     break
 
         if not self.en_suelo and self.rect.bottom >= POSICION_SUELO:
             self.rect.bottom = POSICION_SUELO
             self.velocidad_y = 0
             self.en_suelo = True
+            self.plataforma_actual = None
 
     def take_damage(self, damage):
         if self.rodando or (self.atacando and self.estado == 'sp_atk'):
@@ -441,7 +477,7 @@ class VistaJugadorMundo:
 
 
 # 4. UI e Interactivos
-def dibujar_boton_demoniaco(pantalla):
+def dibujar_boton_demoniaco(pantalla, texto="PRESS C TO INTERACT"):
     ANCHO_LOW, ALTO_LOW = 150, 38
     surf_pixel = pygame.Surface((ANCHO_LOW, ALTO_LOW))
     surf_pixel.fill((0, 0, 0))
@@ -474,9 +510,8 @@ def dibujar_boton_demoniaco(pantalla):
 
     pygame.draw.rect(surf_pixel, (40, 40, 45), rect_piedra.inflate(-4, -4), 1)
 
-    txt_str = "PRESS C TO INTERACT"
-    txt_sombra = fuente_lava_pixel.render(txt_str, False, (180, 30, 0))
-    txt_fuego = fuente_lava_pixel.render(txt_str, False, (255, 170, 0))
+    txt_sombra = fuente_lava_pixel.render(texto, False, (180, 30, 0))
+    txt_fuego = fuente_lava_pixel.render(texto, False, (255, 170, 0))
 
     rect_txt = txt_fuego.get_rect(center=(ANCHO_LOW // 2, ALTO_LOW // 2 + 1))
     surf_pixel.blit(txt_sombra, (rect_txt.x + 1, rect_txt.y + 1))
@@ -545,6 +580,12 @@ def ejecutar_batalla_carnicero(screen, player, fondo_img):
     player.pos_x = 180.0
     player.rect.centerx = 180
     player.rect.bottom = POSICION_SUELO
+    player.plataformas = []
+    player.plataforma_actual = None
+    player.plataforma_ignorada = None
+    player.scroll_x_actual = 0
+    player.velocidad_y = 0
+    player.en_suelo = True
 
     en_batalla = True
     timer_muerte_jefe = 0.0
@@ -738,6 +779,13 @@ DISTANCIA_ENTRE_GRUPOS = 850
 PRIMER_GRUPO_X = 800
 ULTIMO_GRUPO_X = HUECO_INICIO - 1100
 PUNTOS_GRUPO = list(range(PRIMER_GRUPO_X, ULTIMO_GRUPO_X + 1, DISTANCIA_ENTRE_GRUPOS))
+DISTANCIA_VISION_ENEMIGO = 270
+ANTICIPACION_APARICION_ENEMIGOS = 600
+CONFIGURACION_ANIMACION_IDLE = {
+    OrcoRojo: ("assets/enemigos/Orco_rojo/Idle.png", 5),
+    Karasu_tengu: ("assets/enemigos/Karasu_tengu/Idle.png", 6),
+}
+ANIMACIONES_IDLE_ENEMIGOS = {}
 
 def generar_plataformas_nivel():
     plataformas = []
@@ -757,31 +805,16 @@ def generar_plataformas_nivel():
 
 def generar_diseno_plataforma():
     return {
-        "estilo": random.randrange(5),
-        "color": random.choice([
-            (111, 76, 48), (80, 91, 77), (91, 80, 65),
-            (105, 91, 67), (72, 78, 79),
+        "madera": random.choice([
+            (117, 75, 43), (139, 91, 52), (101, 64, 39),
+            (151, 105, 63),
         ]),
-        "detalles": [
-            (random.random(), random.randint(3, 13), random.randint(3, 8))
-            for _ in range(7)
-        ],
-        "libros": [
-            (random.randint(9, 20), random.choice([
-                (121, 43, 36), (49, 76, 84), (163, 125, 55),
-                (71, 99, 64), (97, 65, 104),
-            ]))
-            for _ in range(5)
-        ],
-        "ladrillos": [
-            random.choice([(119, 91, 72), (91, 83, 73), (132, 112, 91)])
-            for _ in range(7)
-        ],
-        "manchas": [
-            (random.random(), random.randint(6, 16), random.randint(3, 7))
-            for _ in range(4)
-        ],
-        "runa": random.choice([(210, 48, 25), (178, 50, 32), (125, 39, 35)]),
+        "veta": random.choice([
+            (173, 123, 72), (186, 137, 85), (130, 87, 52),
+        ]),
+        "metal": random.choice([
+            (72, 78, 82), (91, 96, 98), (59, 65, 70),
+        ]),
     }
 
 
@@ -791,94 +824,52 @@ def dibujar_plataformas(screen, scroll_x, plataformas, disenos):
         if rect.right < 0 or rect.left > ANCHO:
             continue
 
-        estilo = diseno["estilo"]
-        base = diseno["color"]
-        pygame.draw.rect(screen, (27, 24, 23), rect.move(0, 7))
+        x, y, ancho = rect.x, rect.y, rect.width
+        madera = diseno["madera"]
+        metal = diseno["metal"]
+        pata_izquierda = x + 16
+        pata_derecha = rect.right - 16
+        base_patas_y = y + 58
 
-        if estilo == 0:
-            pygame.draw.rect(screen, (68, 47, 34), rect)
-            pygame.draw.rect(screen, base, (rect.x, rect.y, rect.width, 7))
-            pygame.draw.line(screen, (166, 133, 91), (rect.x + 4, rect.y + 2), (rect.right - 5, rect.y + 2), 2)
-            pygame.draw.polygon(
-                screen, (47, 37, 30),
-                [(rect.x + rect.width // 2, rect.y + 8),
-                 (rect.x + rect.width // 2 + 18, rect.bottom - 2),
-                 (rect.x + rect.width // 2 + 7, rect.bottom - 2)]
-            )
-        elif estilo == 1:
-            pygame.draw.rect(screen, (36, 35, 39), rect)
-            book_x = rect.x + 8
-            for book_width, book_color in diseno["libros"]:
-                if book_x + book_width > rect.right - 5:
-                    break
-                book = pygame.Rect(book_x, rect.y - 12, book_width, 20)
-                pygame.draw.rect(screen, book_color, book)
-                pygame.draw.rect(screen, (197, 174, 128), (book.x + 3, book.y + 4, 2, 12))
-                book_x += book_width + 5
-            pygame.draw.line(screen, (91, 69, 60), (rect.x, rect.y + 8), (rect.right, rect.y + 8), 3)
-        elif estilo == 2:
-            pygame.draw.rect(screen, (27, 45, 48), rect)
-            pygame.draw.rect(screen, (75, 53, 42), rect, 5)
-            for fraccion, largo, inclinacion in diseno["detalles"][:5]:
-                chalk_x = rect.x + int(fraccion * max(1, rect.width - largo))
-                pygame.draw.line(
-                    screen, (134, 133, 105),
-                    (chalk_x, rect.y + 5), (chalk_x + largo, rect.y + 5 + inclinacion // 2), 2
-                )
-            pygame.draw.circle(screen, diseno["runa"], (rect.right - 18, rect.y + 5), 5, 1)
-            pygame.draw.line(screen, diseno["runa"], (rect.right - 22, rect.y + 5), (rect.right - 14, rect.y + 5), 1)
-        elif estilo == 3:
-            pygame.draw.rect(screen, (43, 39, 42), rect)
-            ladrillo_x = rect.x
-            for indice, (fraccion, alto, _) in enumerate(diseno["detalles"]):
-                ladrillo_x = rect.x + int(fraccion * max(1, rect.width - 24))
-                pygame.draw.rect(
-                    screen, diseno["ladrillos"][indice],
-                    (ladrillo_x, rect.y + 2, min(25, rect.right - ladrillo_x), max(4, alto - 2))
-                )
-            pygame.draw.line(screen, (113, 83, 67), (rect.x + 3, rect.y + 1), (rect.right - 4, rect.y + 1), 2)
-        else:
-            pygame.draw.rect(screen, (38, 39, 43), rect)
-            pygame.draw.rect(screen, (75, 67, 58), (rect.x, rect.y + 4, rect.width, 9), border_radius=4)
-            for fraccion, _, _ in diseno["detalles"][:4]:
-                banda_x = rect.x + int(fraccion * max(1, rect.width - 9))
-                pygame.draw.rect(screen, (144, 130, 105), (banda_x, rect.y + 2, 5, 14))
-            pygame.draw.circle(screen, (84, 101, 101), (rect.x + 9, rect.y + 9), 5, 2)
-            pygame.draw.circle(screen, (84, 101, 101), (rect.right - 9, rect.y + 9), 5, 2)
+        pygame.draw.line(
+            screen, (35, 30, 25), (pata_izquierda, y + 14),
+            (pata_izquierda - 5, base_patas_y), 5,
+        )
+        pygame.draw.line(
+            screen, (35, 30, 25), (pata_derecha, y + 14),
+            (pata_derecha + 5, base_patas_y), 5,
+        )
+        pygame.draw.line(
+            screen, metal, (pata_izquierda, y + 14),
+            (pata_izquierda - 5, base_patas_y), 3,
+        )
+        pygame.draw.line(
+            screen, metal, (pata_derecha, y + 14),
+            (pata_derecha + 5, base_patas_y), 3,
+        )
+        pygame.draw.line(
+            screen, metal, (pata_izquierda - 3, y + 39),
+            (pata_derecha + 3, y + 39), 3,
+        )
 
-        # Sangre seca y runas pintadas en restos de mobiliario escolar.
-        for fraccion, largo, alto in diseno["manchas"]:
-            mancha_x = rect.x + int(fraccion * max(1, rect.width - largo))
-            pygame.draw.ellipse(
-                screen, (83, 25, 29),
-                (mancha_x, rect.y + 2, largo, max(3, alto // 2))
-            )
-            pygame.draw.line(
-                screen, (109, 31, 32),
-                (mancha_x + largo // 2, rect.y + 4),
-                (mancha_x + largo // 2 - 2, rect.y + min(16, alto)), 1
-            )
-
-        if estilo in (0, 3):
-            # Silueta discreta de un estudiante caído entre los escombros.
-            cuerpo_x = rect.x + rect.width // 2
-            cuerpo_y = rect.y - 5
-            pygame.draw.ellipse(screen, (24, 21, 25), (cuerpo_x - 12, cuerpo_y - 5, 10, 9))
-            pygame.draw.line(
-                screen, (24, 21, 25), (cuerpo_x - 2, cuerpo_y),
-                (cuerpo_x + 18, cuerpo_y + 4), 5
-            )
-            pygame.draw.line(
-                screen, (24, 21, 25), (cuerpo_x + 10, cuerpo_y + 2),
-                (cuerpo_x + 20, cuerpo_y - 4), 3
-            )
-
-        for fraccion, alto, largo in diseno["detalles"]:
-            detalle_x = rect.x + int(fraccion * max(1, rect.width - 8))
-            pygame.draw.line(
-                screen, (39, 34, 30), (detalle_x, rect.y + 8),
-                (min(rect.right - 2, detalle_x + largo), min(rect.bottom - 2, rect.y + alto)), 1
-            )
+        pygame.draw.rect(
+            screen, (47, 34, 25), (x + 3, y + 6, ancho - 6, 13)
+        )
+        pygame.draw.rect(
+            screen, madera, (x, y - 3, ancho, 10)
+        )
+        pygame.draw.rect(
+            screen, diseno["veta"], (x + 2, y - 2, ancho - 4, 3)
+        )
+        pygame.draw.line(
+            screen, (78, 49, 30), (x + 6, y + 2),
+            (rect.right - 6, y + 2), 1,
+        )
+        pygame.draw.rect(
+            screen, (58, 42, 31), (x + 9, y + 8, ancho - 18, 5), 1
+        )
+        pygame.draw.rect(screen, metal, (x + 12, y + 15, 8, 3))
+        pygame.draw.rect(screen, metal, (rect.right - 20, y + 15, 8, 3))
 
 
 def crear_enemigo(clase, x):
@@ -901,21 +892,84 @@ def crear_enemigo(clase, x):
     return enemigo
 
 
-def generar_grupo_enemigos(posicion):
-    """Genera un grupo pequeño al alcanzar una distancia concreta del recorrido."""
-    cantidad = random.randint(2, 3)
+def obtener_animacion_idle(enemigo):
+    clase = type(enemigo)
+    if clase is OjoVolador:
+        return enemigo.animaciones["correr"]
+    if clase not in ANIMACIONES_IDLE_ENEMIGOS:
+        ruta, cantidad_frames = CONFIGURACION_ANIMACION_IDLE[clase]
+        frames = cargar_spritesheet_jokai(ruta, 1, cantidad_frames)
+        tamaño = enemigo.animaciones["correr"][0].get_size()
+        ANIMACIONES_IDLE_ENEMIGOS[clase] = [
+            pygame.transform.scale(frame, tamaño)
+            if frame.get_size() != tamaño else frame
+            for frame in frames
+        ]
+    return ANIMACIONES_IDLE_ENEMIGOS[clase]
+
+
+def actualizar_animacion_idle(enemigo, dt):
+    frames = enemigo.animaciones["idle"]
+    enemigo.frame_idle = (
+        enemigo.frame_idle + dt * 6
+    ) % len(frames)
+    imagen = frames[int(enemigo.frame_idle)]
+    enemigo.image = (
+        pygame.transform.flip(imagen, True, False)
+        if enemigo.direction == "left"
+        else imagen
+    )
+
+
+def generar_grupo_enemigos(posicion, indice_grupo=0):
+    """Genera dos enemigos y alterna sus tipos entre grupos."""
     enemigos = []
-    indice_grupo = round((posicion - PRIMER_GRUPO_X) / DISTANCIA_ENTRE_GRUPOS)
-    for i in range(cantidad):
-        x = posicion + random.randint(100, 220) + i * 65
-        enemigo = crear_enemigo(random.choice(TIPOS_ENEMIGO), x)
-        enemigo.plataformas = plataformas_nivel
-        enemigo.flank_side = (-1 if i % 2 == 0 else 1) * (
-            1 if indice_grupo % 2 == 0 else -1
+    clases_grupo = [
+        TIPOS_ENEMIGO[indice_grupo % len(TIPOS_ENEMIGO)],
+        TIPOS_ENEMIGO[(indice_grupo + 1) % len(TIPOS_ENEMIGO)],
+    ]
+    posicion_suelo = posicion + 360
+    plataformas_cercanas = [
+        plataforma for plataforma in plataformas_nivel
+        if posicion + 360 <= plataforma.centerx <= posicion + 700
+    ]
+    plataforma_enemigo = min(
+        plataformas_cercanas or plataformas_nivel,
+        key=lambda plataforma: abs(plataforma.centerx - (posicion + 520)),
+        default=None,
+    )
+
+    for i, clase in enumerate(clases_grupo):
+        usa_plataforma = (
+            i == 1
+            and clase is not OjoVolador
+            and plataforma_enemigo is not None
         )
-        enemigo.preferred_distance = random.randint(55, 115)
-        enemigo.strafe_timer = random.uniform(0.6, 1.8)
-        enemigo.strafe_direction = random.choice((-1, 1))
+        x = (
+            plataforma_enemigo.centerx
+            if usa_plataforma
+            else posicion_suelo + i * 160
+        )
+        enemigo = crear_enemigo(clase, x)
+        enemigo.rect.centerx = x
+        enemigo.hurtbox.topleft = enemigo.rect.topleft
+        enemigo.plataformas = plataformas_nivel
+        enemigo.flank_side = -1 if i % 2 == 0 else 1
+        enemigo.attack_range = 270
+        enemigo.ataque_coordinado = True
+        enemigo.esperando_jugador = True
+        enemigo.distancia_vision = DISTANCIA_VISION_ENEMIGO
+        enemigo.animaciones["idle"] = obtener_animacion_idle(enemigo)
+        enemigo.frame_idle = 0.0
+        enemigo.direction = "left"
+        if clase is not OjoVolador:
+            enemigo.preferred_distance = 65
+        if usa_plataforma:
+            enemigo.rect.centerx = plataforma_enemigo.centerx
+            enemigo.rect.bottom = plataforma_enemigo.top
+            enemigo.on_ground = True
+            enemigo.velocity_y = 0
+            enemigo.hurtbox.topleft = enemigo.rect.topleft
         enemigo.jump_cooldown = random.uniform(0.4, 1.4)
         enemigo.speed = random.randint(3, 5)
         enemigos.append(enemigo)
@@ -932,6 +986,7 @@ def separar_enemigos(enemigos, ancho_mundo):
     enemigos_activos = [
         enemigo for enemigo in enemigos
         if enemigo.health > 0 and not getattr(enemigo, "muerto_definitivo", False)
+        and not getattr(enemigo, "esperando_jugador", False)
     ]
 
     for _ in range(3):
@@ -1003,10 +1058,13 @@ while ejecutando:
 
     while (
         proximo_grupo < len(PUNTOS_GRUPO)
-        and heroe.pos_x >= PUNTOS_GRUPO[proximo_grupo]
+        and heroe.pos_x
+        >= PUNTOS_GRUPO[proximo_grupo] - ANTICIPACION_APARICION_ENEMIGOS
     ):
         enemigos_nivel.extend(
-            generar_grupo_enemigos(PUNTOS_GRUPO[proximo_grupo])
+            generar_grupo_enemigos(
+                PUNTOS_GRUPO[proximo_grupo], proximo_grupo
+            )
         )
         proximo_grupo += 1
 
@@ -1021,6 +1079,12 @@ while ejecutando:
         portal_liberado
         and HUECO_INICIO <= heroe.pos_x <= HUECO_FIN
         and not transicion_realizada
+    )
+    en_zona_biblioteca = (
+        abs(heroe.pos_x - ZONA_BIBLIOTECA_X) <= RADIO_INTERACCION_FONDO
+    )
+    en_zona_enfermeria = (
+        abs(heroe.pos_x - ZONA_ENFERMERIA_X) <= RADIO_INTERACCION_FONDO
     )
 
     for evento in pygame.event.get():
@@ -1042,7 +1106,7 @@ while ejecutando:
             pygame.time.wait(2000)
 
             transicion_realizada = True
-            ejecutar_batalla_carnicero(pantalla, heroe, fondos[2])
+            ejecutar_batalla_carnicero(pantalla, heroe, fondo_batalla)
             ejecutando = False
             break
 
@@ -1067,6 +1131,22 @@ while ejecutando:
                 enemigo.update(vista_heroe, dt, width=ANCHO_MUNDO)
             continue
 
+        if getattr(enemigo, "esperando_jugador", False):
+            distancia_horizontal = abs(
+                vista_heroe.pos_x - enemigo.rect.centerx
+            )
+            distancia_vertical = abs(
+                vista_heroe.hurtbox.centery - enemigo.rect.centery
+            )
+            if (
+                distancia_horizontal <= enemigo.distancia_vision
+                and distancia_vertical <= 300
+            ):
+                enemigo.esperando_jugador = False
+            else:
+                actualizar_animacion_idle(enemigo, dt)
+                continue
+
         enemigo.suelo_y = POSICION_SUELO
         enemigo.plataformas = plataformas_nivel
         enemigo.update(vista_heroe, dt, width=ANCHO_MUNDO)
@@ -1087,13 +1167,30 @@ while ejecutando:
                 heroe.take_damage(getattr(enemigo, 'dano_ataque', 10))
                 enemigo.has_hit = True
 
+    enemigos_cercanos = [
+        enemigo for enemigo in enemigos_nivel
+        if isinstance(enemigo, (OrcoRojo, Karasu_tengu))
+        and enemigo.health > 0
+        and not getattr(enemigo, "esperando_jugador", False)
+        and not getattr(enemigo, "muerto_definitivo", False)
+        and abs(enemigo.rect.centerx - vista_heroe.pos_x) <= 175
+        and abs(enemigo.rect.centery - vista_heroe.hurtbox.centery) <= 95
+    ]
+    grupo_listo_para_atacar = bool(enemigos_cercanos) and all(
+        not enemigo.attacking and enemigo.attack_cooldown <= 0
+        for enemigo in enemigos_cercanos
+    )
+    if grupo_listo_para_atacar:
+        for enemigo in enemigos_cercanos:
+            enemigo.attack()
+
     separar_enemigos(enemigos_nivel, ANCHO_MUNDO)
 
     # --- Fondo continuo: cada tramo da paso al siguiente escenario ---
-    for i in range(ANCHO_MUNDO // ANCHO):
+    for i in range((ANCHO_MUNDO + ANCHO - 1) // ANCHO):
         pos_x_fondo = i * ANCHO - scroll_x
         if -ANCHO < pos_x_fondo < ANCHO:
-            pantalla.blit(fondos[i % len(fondos)], (pos_x_fondo, 0))
+            pantalla.blit(fondos[min(i, len(fondos) - 1)], (pos_x_fondo, 0))
 
     dibujar_plataformas(
         pantalla, scroll_x, plataformas_nivel, disenos_plataformas
@@ -1131,7 +1228,9 @@ while ejecutando:
     pantalla.blit(txt_progreso_sombra, (rect_progreso.x + 2, rect_progreso.y + 2))
     pantalla.blit(txt_progreso, rect_progreso)
 
-    if en_zona_hueco:
+    if en_zona_biblioteca or en_zona_enfermeria:
+        dibujar_boton_demoniaco(pantalla, "PRESIONA C PARA ENTRAR")
+    elif en_zona_hueco:
         dibujar_boton_demoniaco(pantalla)
 
     pygame.display.flip()
