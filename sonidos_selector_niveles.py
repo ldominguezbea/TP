@@ -116,10 +116,10 @@ class Audio:
         if self.ok:
             self._play(self.s_planet, 1.0)
  
-    def update_ambient(self, env):
+    def update_ambient(self, env, active=True):
         if not self.ok:
             return
-        k = 0.0 if self.muted else self.master
+        k = 0.0 if self.muted or not active else self.master
         for key, vol in (("earth", (1 - env) * 0.55), ("gehena", env * 0.7)):
             ch = self._amb_ch.get(key)
             if ch is not None:

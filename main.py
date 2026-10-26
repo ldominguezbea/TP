@@ -14,6 +14,14 @@ import random
 import math
 import animacion_menu
 from prologo import prologue
+from selector_niveles import LevelSelector
+from sonidos_selector_niveles import Audio
+
+audio = Audio()
+level_selector = None
+chosen_level = None
+level_select_overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+level_select_overlay.fill((0, 0, 0, 155))
 
 # Fuentes tipográficas vectoriales
 font_title = pygame.font.SysFont("Impact", 64)
@@ -170,6 +178,13 @@ def render_prologue():
     screen.blit(prologue_images[prologue_image_index], (0, 0))
 
 
+def render_level_select(time_counter):
+    animacion_menu.draw_scenery(canvas, time_counter)
+    pygame.transform.scale(canvas, (SCREEN_WIDTH, SCREEN_HEIGHT), screen)
+    screen.blit(level_select_overlay, (0, 0))
+    level_selector.draw(pygame.time.get_ticks())
+
+
 def render_character_select_high_res(time_counter):
     """Función de renderizado de la selección de personaje."""
     screen.fill((14, 11, 18))
@@ -222,12 +237,12 @@ def render_character_select_high_res(time_counter):
 
 def main():
     global selected_option, game_state, selected_char_index, chosen_char_name
-    global prologue_images, prologue_image_index
+    global prologue_images, prologue_image_index, level_selector, chosen_level
     time_counter = 0
     running = True
 
     while running:
-        clock.tick(60)
+        elapsed_ms = clock.tick(60)
         time_counter += 0.05
 
         for event in pygame.event.get():
@@ -264,9 +279,22 @@ def main():
                         selected_char_index = (selected_char_index + 1) % len(characters)
                     elif event.key == pygame.K_RETURN:
                         chosen_char_name = characters[selected_char_index]["name"]
-                        game_state = "MENU"
+                        chosen_level = None
+                        level_selector = LevelSelector(screen, audio)
+                        game_state = "LEVEL_SELECT"
                     elif event.key == pygame.K_ESCAPE:
                         game_state = "MENU"
+
+                elif game_state == "LEVEL_SELECT":
+                    result = level_selector.handle_event(event)
+                    if result == "back":
+                        audio.update_ambient(0.0, active=False)
+                        game_state = "CHARACTER_SELECT"
+                    elif isinstance(result, int):
+                        chosen_level = result
+
+        if game_state == "LEVEL_SELECT":
+            level_selector.update(elapsed_ms)
 
         # --- DIBUJO ---
         if game_state == "MENU":
@@ -275,6 +303,8 @@ def main():
             render_prologue()
         elif game_state == "CHARACTER_SELECT":
             render_character_select_high_res(time_counter)
+        elif game_state == "LEVEL_SELECT":
+            render_level_select(time_counter)
 
         pygame.display.flip()
 
