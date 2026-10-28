@@ -6,11 +6,12 @@ import os
 import random
 import numpy as np
  
-from efectos_selector import SwirlCursor, draw_fire_icon
-from sonidos import Audio
+from efectos_selector_de_niveles import SwirlCursor, draw_fire_icon
+from sonidos_selector_niveles import Audio
  
 # Requiere:  pip install pygame numpy
-# Requiere tener efectos_selector.py y sonidos.py en la misma carpeta.
+# Requiere tener efectos_selector_de_niveles.py y sonidos_selector_niveles.py
+# en la misma carpeta.
  
 pygame.init()
 pygame.font.init()
@@ -18,9 +19,7 @@ pygame.font.init()
 # ----------------------------------------------------------------------------
 # Ventana (escalable, F11 = pantalla completa)
 # ----------------------------------------------------------------------------
-WIDTH, HEIGHT = 960, 540
- 
- 
+WIDTH, HEIGHT = 1350, 720
 def crear_ventana():
     intentos = (
         (pygame.SCALED | pygame.RESIZABLE, {"vsync": 1}),
@@ -35,10 +34,9 @@ def crear_ventana():
     raise RuntimeError("No se pudo crear la ventana.")
  
  
-screen = crear_ventana()
-pygame.display.set_caption("Selector de Niveles")
+screen = pygame.Surface((WIDTH, HEIGHT))
 clock = pygame.time.Clock()
-audio = Audio()
+audio = None
  
 WHITE = (255, 255, 255)
 GOLD = (255, 215, 0)
@@ -67,13 +65,13 @@ def resolver_nivel(script_name):
  
  
 tierra_levels = [
-    {"id": "Nivel 2", "file": "nivel_2.py", "lat": 0, "lon": -110, "boss": "2", "tag": "NIVEL", "big": "2"},
-    {"id": "Nivel 1", "file": "nivel_1.py", "lat": 25, "lon": 0, "boss": "1", "tag": "NIVEL", "big": "1"},
-    {"id": "Nivel 3", "file": "nivel_3.py", "lat": 0, "lon": 110, "boss": "3", "tag": "NIVEL", "big": "3"},
+    {"id": "Nivel 2", "number": 2, "file": "nivel2.py", "lat": 0, "lon": -110, "boss": "2", "tag": "NIVEL", "big": "2"},
+    {"id": "Nivel 1", "number": 1, "file": "nivel_1.py", "lat": 25, "lon": 0, "boss": "1", "tag": "NIVEL", "big": "1"},
+    {"id": "Nivel 3", "number": 3, "file": "nivel_3.py", "lat": 0, "lon": 110, "boss": "3", "tag": "NIVEL", "big": "3"},
 ]
 gehena_levels = [
-    {"id": "Nivel 4", "file": "nivel_4.py", "lat": 20, "lon": -80, "boss": "4", "tag": "NIVEL", "big": "4"},
-    {"id": "Nivel Secreto", "file": "nivel_5.py", "lat": -10, "lon": 80, "boss": "?", "tag": "???", "big": "SECRETO"},
+    {"id": "Nivel 4", "number": 4, "file": "nivel_4.py", "lat": 20, "lon": -80, "boss": "4", "tag": "NIVEL", "big": "4"},
+    {"id": "Nivel Secreto", "number": 5, "file": "nivel_5.py", "lat": -10, "lon": 80, "boss": "?", "tag": "???", "big": "SECRETO"},
 ]
 for _lvl in tierra_levels + gehena_levels:
     _lvl["available"] = resolver_nivel(_lvl["file"])[0]
@@ -203,10 +201,13 @@ def intentar_lanzar(lvl):
         print(f"[Aviso] {motivo}" + (f" ({ruta})" if ruta else ""))
         audio.denied()
         mostrar_toast(motivo)
-        return
+        return False
     audio.confirm()
-    pygame.time.wait(260)
-    ejecutar_nivel(ruta)
+    return True
+
+
+def numero_nivel(lvl):
+    return lvl["number"]
  
  
 # ----------------------------------------------------------------------------
@@ -647,7 +648,7 @@ def scene_secret(k):
 def make_secret_surface():
     nr = NODE_R * 2                      # radio en alta resolucion
     dd = nr * 2
-    surf = pygame.transform.smoothscale(scene_secret(2.0), (dd, dd)).convert_alpha()
+    surf = pygame.transform.smoothscale(scene_secret(2.0), (dd, dd))
     vig = pygame.Surface((dd, dd), pygame.SRCALPHA)
     for i in range(14):
         pygame.draw.circle(vig, (20, 0, 0, max(0, 140 - i * 10)), (nr, nr), nr - i, 2)
@@ -1015,7 +1016,7 @@ BTN_TEXT = {
     "TIERRA": fancy_text("IR A GEHENA", get_font(16), (255, 240, 170), (255, 120, 40), (70, 8, 0), spacing=2, ow=1),
     "GEHENA": fancy_text("IR A TIERRA", get_font(16), (230, 250, 255), (90, 200, 255), (6, 40, 96), spacing=2, ow=1),
 }
-HUD_TEXT = fancy_text("A / D o FLECHAS: GIRAR    CLIC o ENTER: ELEGIR / JUGAR    F11: PANTALLA    M: SONIDO    ESC: SALIR",
+HUD_TEXT = fancy_text("A / D o FLECHAS: GIRAR    CLIC o ENTER: ELEGIR / JUGAR    F11: PANTALLA    M: SONIDO    ESC: VOLVER",
                       get_font(13), (240, 244, 255), (170, 180, 210), (10, 10, 20), spacing=1, ow=1)
  
 BTN_PLANET = pygame.Rect(WIDTH - 190, 22, 170, 42)
@@ -1089,179 +1090,274 @@ def set_index(i):
  
  
 # ----------------------------------------------------------------------------
-# Bucle principal
+# Integracion con el menu principal
 # ----------------------------------------------------------------------------
-cursor = SwirlCursor((WIDTH, HEIGHT))   # estela de luz que viaja entre niveles
+cursor = None
 snap_cursor = False
 clickable_nodes = []
 hover_anim = {}
 bubble_acc = 0.0
 par_x = par_y = 0.0
- 
-running = True
-last_ticks = pygame.time.get_ticks()
-while running:
-    ticks = pygame.time.get_ticks()
-    dt = max(1, min(50, ticks - last_ticks))
-    last_ticks = ticks
-    frames = dt / FRAME_MS                       # 1.0 = un frame a 60 FPS
-    mouse_pos = pygame.mouse.get_pos()
- 
-    # Nodo bajo el mouse (segun el frame anterior)
-    hover_idx = None
-    for _rect, _idx_n in clickable_nodes:
-        if _rect.collidepoint(mouse_pos):
-            hover_idx = _idx_n
- 
-    # Transicion Tierra <-> Gehena
-    env_t += max(-0.025 * frames, min(0.025 * frames, env_target - env_t))
-    new_planet = "GEHENA" if env_t > 0.5 else "TIERRA"
-    if new_planet != current_planet:
-        current_planet = new_planet
-        active_levels = gehena_levels if current_planet == "GEHENA" else tierra_levels
-        current_index = 0 if current_planet == "GEHENA" else 1
-        planet_rotation = -active_levels[current_index]["lon"] + 80
-        hover_anim.clear()
-        snap_cursor = True
-    transitioning = abs(env_t - env_target) > 0.001
- 
-    target_rotation = -active_levels[current_index]["lon"]
-    planet_rotation += (target_rotation - planet_rotation) * (1 - 0.9 ** frames)
- 
-    # Paralaje suave con el mouse
-    par_x += ((mouse_pos[0] / WIDTH - 0.5) * 2 - par_x) * 0.08
-    par_y += ((mouse_pos[1] / HEIGHT - 0.5) * 2 - par_y) * 0.08
- 
-    # Sol (gira con el mundo) y luz
-    sun_x, sun_y, theta = sun_state(planet_rotation)
-    lx = math.sin(theta)
-    ly = (CENTER_Y - sun_y) / 260.0
-    lz = math.cos(theta) * 0.8 + 0.45
-    ln_ = math.sqrt(lx * lx + ly * ly + lz * lz)
-    light = (lx / ln_, ly / ln_, lz / ln_)
- 
-    audio.update_ambient(env_t)
-    draw_space(ticks, dt, planet_rotation, env_t, par_x, par_y)
-    draw_sun(sun_x, sun_y, theta, ticks, env_t)
- 
-    # Planeta
-    glow = GLOW_GEHENA if current_planet == "GEHENA" else GLOW_TIERRA
-    screen.blit(glow, glow.get_rect(center=(CENTER_X, CENTER_Y)))
-    planet_surf = render_planet(current_planet, planet_rotation, ticks, light)
-    screen.blit(planet_surf, (CENTER_X - R, CENTER_Y - R))
-    if current_planet == "GEHENA":
-        bubble_acc += dt * 0.036                 # ~0.6 burbujas por frame a 60 FPS
-        while bubble_acc >= 1.0:
-            bubble_acc -= 1.0
-            if len(bubbles) < 46:
-                spawn_bubble(ticks)
-        screen.blit(draw_bubbles(planet_rotation, ticks), (CENTER_X - R, CENTER_Y - R))
-    elif bubbles:
-        bubbles.clear()
- 
-    if env_t > 0.001:
-        MIST.set_alpha(int(255 * env_t))
-        screen.blit(MIST, (0, HEIGHT - 150))
- 
-    # Estela de luz: sigue al nivel seleccionado y viaja hacia el nuevo
-    sel = active_levels[current_index]
-    _lon = math.radians(sel["lon"] + planet_rotation)
-    _lat = math.radians(sel["lat"])
-    cur_x = CENTER_X + R * math.cos(_lat) * math.sin(_lon)
-    cur_y = CENTER_Y - R * math.sin(_lat)
-    cur_z = math.cos(_lat) * math.cos(_lon)
-    if snap_cursor:
-        cursor.snap(cur_x, cur_y)
+
+
+class LevelSelector:
+    def __init__(self, target_surface, audio_manager):
+        global audio, cursor, snap_cursor, clickable_nodes, hover_anim
+        global bubble_acc, par_x, par_y, current_planet, active_levels
+        global current_index, planet_rotation, target_rotation, env_t, env_target
+
+        self.target_surface = target_surface
+        self.audio = audio_manager
+        audio = audio_manager
+        current_planet = "TIERRA"
+        active_levels = tierra_levels
+        current_index = 1
+        planet_rotation = 0.0
+        target_rotation = 0.0
+        env_t = 0.0
+        env_target = 0.0
+        cursor = SwirlCursor((WIDTH, HEIGHT))
         snap_cursor = False
-    cursor.update(cur_x, cur_y, max(0.0, min(1.0, (cur_z - 0.05) / 0.35)), dt)
-    cursor.draw(screen, NODE_R * (0.55 + 0.45 * max(0.0, cur_z)), ticks)
- 
-    # Nodos de nivel (con ocultacion trasera 3D)
-    nodes = []
-    for idx, node in enumerate(active_levels):
-        rad_lon = math.radians(node["lon"] + planet_rotation)
-        rad_lat = math.radians(node["lat"])
-        x3 = R * math.cos(rad_lat) * math.sin(rad_lon)
-        y3 = -R * math.sin(rad_lat)
-        z3 = R * math.cos(rad_lat) * math.cos(rad_lon)
-        fz = z3 / R
-        if fz > 0.12:
-            nodes.append((fz, idx, int(CENTER_X + x3), int(CENTER_Y + y3)))
-    nodes.sort()
-    clickable_nodes = []
-    for fz, idx, sx, sy in nodes:
-        amt = hover_anim.get(idx, 0.0)
-        amt += ((1.0 if idx == hover_idx else 0.0) - amt) * min(1.0, 0.2 * frames)
-        hover_anim[idx] = amt
-        rect = draw_level_node(sx, sy, active_levels[idx], idx == current_index, ticks,
-                               0.55 + 0.45 * fz, amt)
-        clickable_nodes.append((rect, idx))
- 
-    # UI
-    draw_title(current_planet, ticks)
- 
-    hover_p = BTN_PLANET.collidepoint(mouse_pos) and not transitioning
-    acc = GOLD if hover_p else ACCENT["GEHENA" if current_planet == "TIERRA" else "TIERRA"]
-    pygame.draw.rect(screen, (22, 24, 38), BTN_PLANET, border_radius=10)
-    pygame.draw.rect(screen, acc, BTN_PLANET, 2, border_radius=10)
-    bt = BTN_TEXT[current_planet]
-    screen.blit(bt, bt.get_rect(center=(BTN_PLANET.centerx + (-8 if current_planet == "TIERRA" else 8), BTN_PLANET.centery)))
-    if current_planet == "TIERRA":
-        ax = BTN_PLANET.right - 18
-        pygame.draw.polygon(screen, acc, [(ax + 6, BTN_PLANET.centery), (ax - 5, BTN_PLANET.centery - 8), (ax - 5, BTN_PLANET.centery + 8)])
-    else:
-        ax = BTN_PLANET.left + 18
-        pygame.draw.polygon(screen, acc, [(ax - 6, BTN_PLANET.centery), (ax + 5, BTN_PLANET.centery - 8), (ax + 5, BTN_PLANET.centery + 8)])
- 
-    draw_arrow_button(BTN_LEFT, -1, BTN_LEFT.collidepoint(mouse_pos))
-    draw_arrow_button(BTN_RIGHT, 1, BTN_RIGHT.collidepoint(mouse_pos))
- 
-    screen.blit(HUD_TEXT, HUD_TEXT.get_rect(center=(WIDTH // 2, HEIGHT - 18)))
-    draw_toast(ticks)
- 
-    set_hand(hover_idx is not None or hover_p
-             or BTN_LEFT.collidepoint(mouse_pos) or BTN_RIGHT.collidepoint(mouse_pos))
- 
-    # Eventos
-    for event in pygame.event.get():
-        if event.type == pygame.QUIT:
-            running = False
-        elif event.type == pygame.KEYDOWN:
+        clickable_nodes = []
+        hover_anim = {}
+        bubble_acc = 0.0
+        par_x = par_y = 0.0
+        bubbles.clear()
+        self._dt = FRAME_MS
+
+    def update(self, elapsed_ms):
+        self._dt = max(1, min(50, elapsed_ms))
+
+    def _map_point(self, point):
+        width, height = self.target_surface.get_size()
+        return (int(point[0] * WIDTH / width), int(point[1] * HEIGHT / height))
+
+    def get_level_path(self, level_number):
+        for lvl in tierra_levels + gehena_levels:
+            if lvl["number"] == level_number:
+                available, path, _ = resolver_nivel(lvl["file"])
+                return path if available else None
+        return None
+
+    def draw(self, ticks):
+        global current_planet, active_levels, current_index, env_t
+        global planet_rotation, snap_cursor, bubble_acc, par_x, par_y
+        global clickable_nodes
+
+        dt = self._dt
+        frames = dt / FRAME_MS
+        mouse_pos = self._map_point(pygame.mouse.get_pos())
+
+        hover_idx = None
+        for rect, node_index in clickable_nodes:
+            if rect.collidepoint(mouse_pos):
+                hover_idx = node_index
+
+        env_t += max(-0.025 * frames, min(0.025 * frames, env_target - env_t))
+        new_planet = "GEHENA" if env_t > 0.5 else "TIERRA"
+        if new_planet != current_planet:
+            current_planet = new_planet
+            active_levels = gehena_levels if current_planet == "GEHENA" else tierra_levels
+            current_index = 0 if current_planet == "GEHENA" else 1
+            planet_rotation = -active_levels[current_index]["lon"] + 80
+            hover_anim.clear()
+            snap_cursor = True
+        transitioning = abs(env_t - env_target) > 0.001
+
+        target_rotation = -active_levels[current_index]["lon"]
+        planet_rotation += (target_rotation - planet_rotation) * (1 - 0.9 ** frames)
+        par_x += ((mouse_pos[0] / WIDTH - 0.5) * 2 - par_x) * 0.08
+        par_y += ((mouse_pos[1] / HEIGHT - 0.5) * 2 - par_y) * 0.08
+
+        sun_x, sun_y, theta = sun_state(planet_rotation)
+        lx = math.sin(theta)
+        ly = (CENTER_Y - sun_y) / 260.0
+        lz = math.cos(theta) * 0.8 + 0.45
+        light_length = math.sqrt(lx * lx + ly * ly + lz * lz)
+        light = (lx / light_length, ly / light_length, lz / light_length)
+
+        audio.update_ambient(env_t)
+        screen.fill((0, 0, 0))
+        draw_space(ticks, dt, planet_rotation, env_t, par_x, par_y)
+        draw_sun(sun_x, sun_y, theta, ticks, env_t)
+
+        glow = GLOW_GEHENA if current_planet == "GEHENA" else GLOW_TIERRA
+        screen.blit(glow, glow.get_rect(center=(CENTER_X, CENTER_Y)))
+        planet_surf = render_planet(current_planet, planet_rotation, ticks, light)
+        screen.blit(planet_surf, (CENTER_X - R, CENTER_Y - R))
+        if current_planet == "GEHENA":
+            bubble_acc += dt * 0.036
+            while bubble_acc >= 1.0:
+                bubble_acc -= 1.0
+                if len(bubbles) < 46:
+                    spawn_bubble(ticks)
+            screen.blit(draw_bubbles(planet_rotation, ticks), (CENTER_X - R, CENTER_Y - R))
+        elif bubbles:
+            bubbles.clear()
+
+        if env_t > 0.001:
+            MIST.set_alpha(int(255 * env_t))
+            screen.blit(MIST, (0, HEIGHT - 150))
+
+        selected = active_levels[current_index]
+        longitude = math.radians(selected["lon"] + planet_rotation)
+        latitude = math.radians(selected["lat"])
+        cursor_x = CENTER_X + R * math.cos(latitude) * math.sin(longitude)
+        cursor_y = CENTER_Y - R * math.sin(latitude)
+        cursor_z = math.cos(latitude) * math.cos(longitude)
+        if snap_cursor:
+            cursor.snap(cursor_x, cursor_y)
+            snap_cursor = False
+        cursor.update(cursor_x, cursor_y, max(0.0, min(1.0, (cursor_z - 0.05) / 0.35)), dt)
+        cursor.draw(screen, NODE_R * (0.55 + 0.45 * max(0.0, cursor_z)), ticks)
+
+        nodes = []
+        for idx, node in enumerate(active_levels):
+            rad_lon = math.radians(node["lon"] + planet_rotation)
+            rad_lat = math.radians(node["lat"])
+            x3 = R * math.cos(rad_lat) * math.sin(rad_lon)
+            y3 = -R * math.sin(rad_lat)
+            z3 = R * math.cos(rad_lat) * math.cos(rad_lon)
+            front = z3 / R
+            if front > 0.12:
+                nodes.append((front, idx, int(CENTER_X + x3), int(CENTER_Y + y3)))
+        nodes.sort()
+        clickable_nodes = []
+        for front, idx, node_x, node_y in nodes:
+            amount = hover_anim.get(idx, 0.0)
+            amount += ((1.0 if idx == hover_idx else 0.0) - amount) * min(1.0, 0.2 * frames)
+            hover_anim[idx] = amount
+            rect = draw_level_node(
+                node_x,
+                node_y,
+                active_levels[idx],
+                idx == current_index,
+                ticks,
+                0.55 + 0.45 * front,
+                amount,
+            )
+            clickable_nodes.append((rect, idx))
+
+        draw_title(current_planet, ticks)
+        hover_planet = BTN_PLANET.collidepoint(mouse_pos) and not transitioning
+        accent = GOLD if hover_planet else ACCENT["GEHENA" if current_planet == "TIERRA" else "TIERRA"]
+        pygame.draw.rect(screen, (22, 24, 38), BTN_PLANET, border_radius=10)
+        pygame.draw.rect(screen, accent, BTN_PLANET, 2, border_radius=10)
+        button_text = BTN_TEXT[current_planet]
+        screen.blit(
+            button_text,
+            button_text.get_rect(
+                center=(BTN_PLANET.centerx + (-8 if current_planet == "TIERRA" else 8),
+                        BTN_PLANET.centery)
+            ),
+        )
+        if current_planet == "TIERRA":
+            arrow_x = BTN_PLANET.right - 18
+            pygame.draw.polygon(
+                screen,
+                accent,
+                [(arrow_x + 6, BTN_PLANET.centery),
+                 (arrow_x - 5, BTN_PLANET.centery - 8),
+                 (arrow_x - 5, BTN_PLANET.centery + 8)],
+            )
+        else:
+            arrow_x = BTN_PLANET.left + 18
+            pygame.draw.polygon(
+                screen,
+                accent,
+                [(arrow_x - 6, BTN_PLANET.centery),
+                 (arrow_x + 5, BTN_PLANET.centery - 8),
+                 (arrow_x + 5, BTN_PLANET.centery + 8)],
+            )
+
+        draw_arrow_button(BTN_LEFT, -1, BTN_LEFT.collidepoint(mouse_pos))
+        draw_arrow_button(BTN_RIGHT, 1, BTN_RIGHT.collidepoint(mouse_pos))
+        screen.blit(HUD_TEXT, HUD_TEXT.get_rect(center=(WIDTH // 2, HEIGHT - 18)))
+        draw_toast(ticks)
+        set_hand(
+            hover_idx is not None
+            or hover_planet
+            or BTN_LEFT.collidepoint(mouse_pos)
+            or BTN_RIGHT.collidepoint(mouse_pos)
+        )
+
+        if self.target_surface.get_size() == (WIDTH, HEIGHT):
+            self.target_surface.blit(screen, (0, 0))
+        else:
+            scaled = pygame.transform.smoothscale(screen, self.target_surface.get_size())
+            self.target_surface.blit(scaled, (0, 0))
+
+    def handle_event(self, event):
+        global env_target
+
+        if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_ESCAPE:
-                running = False
-            elif event.key in (pygame.K_a, pygame.K_LEFT):
+                return "back"
+            if event.key in (pygame.K_a, pygame.K_LEFT):
                 set_index(current_index - 1)
             elif event.key in (pygame.K_d, pygame.K_RIGHT):
                 set_index(current_index + 1)
             elif event.key in (pygame.K_RETURN, pygame.K_SPACE):
-                intentar_lanzar(active_levels[current_index])
+                if intentar_lanzar(active_levels[current_index]):
+                    return numero_nivel(active_levels[current_index])
             elif event.key == pygame.K_F11:
                 try:
                     pygame.display.toggle_fullscreen()
                 except Exception:
                     pass
             elif event.key == pygame.K_m:
-                mostrar_toast("Sonido desactivado" if audio.toggle_mute() else "Sonido activado", 1400)
+                muted = audio.toggle_mute()
+                mostrar_toast("Sonido desactivado" if muted else "Sonido activado", 1400)
         elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-            if BTN_LEFT.collidepoint(event.pos):
+            position = self._map_point(event.pos)
+            if BTN_LEFT.collidepoint(position):
                 set_index(current_index - 1)
-            elif BTN_RIGHT.collidepoint(event.pos):
+            elif BTN_RIGHT.collidepoint(position):
                 set_index(current_index + 1)
-            elif BTN_PLANET.collidepoint(event.pos):
-                if not transitioning:
+            elif BTN_PLANET.collidepoint(position):
+                if abs(env_t - env_target) <= 0.001:
                     env_target = 1.0 if current_planet == "TIERRA" else 0.0
                     audio.planet_switch()
             else:
                 for rect, idx in clickable_nodes:
-                    if rect.collidepoint(event.pos):
+                    if rect.collidepoint(position):
                         if idx != current_index:
-                            set_index(idx)          # primer clic: la estela viaja hasta el nivel
-                        else:
-                            intentar_lanzar(active_levels[idx])   # segundo clic: jugar
+                            set_index(idx)
+                        elif intentar_lanzar(active_levels[idx]):
+                            return numero_nivel(active_levels[idx])
                         break
- 
-    pygame.display.flip()
-    clock.tick(60)
- 
-pygame.quit()
-sys.exit()
+        return None
+
+
+def run_selector():
+    window = crear_ventana()
+    pygame.display.set_caption("Selector de Niveles")
+    selector = LevelSelector(window, Audio())
+    running = True
+    last_ticks = pygame.time.get_ticks()
+
+    while running:
+        ticks = pygame.time.get_ticks()
+        dt = max(1, min(50, ticks - last_ticks))
+        last_ticks = ticks
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                running = False
+            else:
+                result = selector.handle_event(event)
+                if result == "back":
+                    running = False
+                elif isinstance(result, int):
+                    ruta = resolver_nivel(active_levels[current_index]["file"])[1]
+                    ejecutar_nivel(ruta)
+
+        selector.update(dt)
+        selector.draw(ticks)
+        pygame.display.flip()
+        clock.tick(60)
+
+    pygame.quit()
+
+
+if __name__ == "__main__":
+    run_selector()

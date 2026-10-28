@@ -293,14 +293,17 @@ def main():
                         game_state = "CHARACTER_SELECT"
                     elif isinstance(result, int):
                         chosen_level = result
-                        if chosen_level == 1:
-                            audio.update_ambient(0.0, active=False)
+                        level_path = level_selector.get_level_path(chosen_level)
+                        audio.update_ambient(0.0, active=False)
+                        if level_path is None:
+                            print(f"[NIVEL] No se encontró el archivo del nivel {chosen_level}.")
+                        else:
                             subprocess.run(
-                                [sys.executable, str(BASE_DIR / "nivel_1.py")],
+                                [sys.executable, level_path],
                                 cwd=BASE_DIR,
                                 check=False,
                             )
-                            chosen_level = None
+                        chosen_level = None
 
         if game_state == "LEVEL_SELECT":
             level_selector.update(elapsed_ms)

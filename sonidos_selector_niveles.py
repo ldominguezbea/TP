@@ -69,6 +69,16 @@ class Audio:
             )
         self._sfx["confirm"] = self._sound(out, 0.7)
 
+        denied_duration = 0.35
+        denied_t = self._t(denied_duration)
+        denied_phase = 2 * np.pi * np.cumsum(
+            260 - 120 * denied_t / denied_duration
+        ) / sr
+        denied_env = np.exp(-denied_t * 7)
+        self._sfx["denied"] = self._sound(
+            np.sin(denied_phase) * denied_env, 0.45
+        )
+
         dur_p = 1.6
         t_p = self._t(dur_p)
         n_p = np.random.default_rng(2).standard_normal(len(t_p))
@@ -114,6 +124,9 @@ class Audio:
 
     def confirm(self):
         self._play(self._sfx.get("confirm"), 0.9)
+
+    def denied(self):
+        self._play(self._sfx.get("denied"), 0.8)
 
     def toggle_mute(self):
         self.muted = not self.muted
