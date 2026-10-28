@@ -10,7 +10,12 @@ pygame.display.set_caption("Plataformero")
 
 clock = pygame.time.Clock()
 
-fondo = pygame.image.load("assets/fondos/fondo_mvp.png")
+try:
+    fondo = pygame.image.load("assets/fondos/fondo_escuela.jpg")
+except FileNotFoundError:
+    fondo = pygame.Surface((WIDTH, HEIGHT))
+    fondo.fill((30, 30, 40))
+
 fondo = pygame.transform.scale(fondo, (WIDTH, HEIGHT))
 
 class Player:
