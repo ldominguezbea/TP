@@ -1,4 +1,5 @@
-import pygame
+import pygame 
+
 import os
 import sys
 import math
@@ -226,9 +227,6 @@ def mostrar_athros():
     pygame.time.wait(2000)
 
 
-# ============================================================
-# CLASE ENEMIGO
-# ============================================================
 
 class Enemigo(pygame.sprite.Sprite):
 
@@ -241,13 +239,22 @@ class Enemigo(pygame.sprite.Sprite):
         self.velocidad_salto = -12
         self.gravedad = 0.6
 
+        # Vida
+        self.vida = 100
+        self.vida_maxima = 100
+
+        # Efecto al recibir daño
+        self.recibiendo_dano = False
+        self.tiempo_dano = 0
+        self.duracion_dano = 300  # 0,3 segundos
+
         self.posicion_suelo = posicion_suelo
 
-        # Posición del enemigo en el mundo.
+        # Posición en el mundo
         self.pos_x = float(x)
         self.pos_y = float(posicion_suelo - self.alto)
 
-        # Cuerpo rectangular azul.
+        # Cuerpo azul
         self.image = pygame.Surface(
             (self.ancho, self.alto)
         )
@@ -255,15 +262,15 @@ class Enemigo(pygame.sprite.Sprite):
 
         self.rect = self.image.get_rect()
 
-        # Hurtbox invisible.
+        # Hurtbox invisible
         self.hurtbox = pygame.Rect(
             0, 0, self.ancho, self.alto
         )
 
-        # Hitbox roja que aparece durante el ataque.
+        # Hitbox de ataque
         self.hitbox = pygame.Rect(0, 0, 0, 0)
-
         self.hitbox_activa = False
+
         self.duracion_ataque = 250
         self.tiempo_ataque = 0
         self.cooldown_ataque = 1000
@@ -272,14 +279,42 @@ class Enemigo(pygame.sprite.Sprite):
         self.direccion = -1
         self.atacando = False
 
-        # Salto.
+        # Salto
         self.velocidad_vertical = 0
         self.en_suelo = True
         self.proximo_salto = pygame.time.get_ticks() + 2000
 
+    # ==========================================
+    # RECIBIR DAÑO
+    # ==========================================
+
+    def recibir_dano(self, dano):
+
+        if self.vida <= 0:
+            return
+
+        self.vida = max(0, self.vida - dano)
+
+        # Desaparecer al llegar a cero
+        if self.vida <= 0:
+            self.hitbox_activa = False
+            self.kill()
+            return
+
+        # Activar efecto rojo
+        self.recibiendo_dano = True
+        self.tiempo_dano = pygame.time.get_ticks()
+
+        # Interrumpir ataque
+        self.atacando = False
+        self.hitbox_activa = False
+
+    # ==========================================
+    # ACTUALIZAR RECTÁNGULOS
+    # ==========================================
+
     def actualizar_rectangulos(self, scroll_x):
 
-        # Rectángulos en coordenadas de pantalla.
         self.rect.topleft = (
             int(self.pos_x - scroll_x),
             int(self.pos_y)
@@ -287,7 +322,6 @@ class Enemigo(pygame.sprite.Sprite):
 
         self.hurtbox.topleft = self.rect.topleft
 
-        # Actualizar la hitbox roja según la dirección.
         if self.hitbox_activa:
 
             if self.direccion == 1:
@@ -306,6 +340,10 @@ class Enemigo(pygame.sprite.Sprite):
                     50
                 )
 
+    # ==========================================
+    # INICIAR ATAQUE
+    # ==========================================
+
     def iniciar_ataque(self, ahora):
 
         self.atacando = True
@@ -313,41 +351,87 @@ class Enemigo(pygame.sprite.Sprite):
         self.tiempo_ataque = ahora
         self.ultimo_ataque = ahora
 
+    # ==========================================
+    # ACTUALIZAR ENEMIGO
+    # ==========================================
+
     def update(self, jugador, scroll_x, ancho_mundo):
 
         ahora = pygame.time.get_ticks()
 
-        # Actualizar posición visual y hurtbox.
+        # Si murió, no actualizarlo
+        if self.vida <= 0:
+            return
+
         self.actualizar_rectangulos(scroll_x)
+
+        # ==========================================
+        # RECIBIR DAÑO: QUIETO Y ROJO POR 0,3 SEGUNDOS
+        # ==========================================
+
+        if self.recibiendo_dano:
+
+            if ahora - self.tiempo_dano < self.duracion_dano:
+
+                self.atacando = False
+                self.hitbox_activa = False
+
+                self.actualizar_rectangulos(scroll_x)
+                return
+
+            else:
+                self.recibiendo_dano = False
+
+        # ==========================================
+        # COMPROBAR JUGADOR
+        # ==========================================
 
         if jugador is None:
             self.hitbox_activa = False
             self.atacando = False
             return
 
-        # Posición del jugador en el mundo.
         jugador_x = jugador.pos_x
-
         diferencia_x = jugador_x - self.pos_x
 
-        # Determinar hacia dónde mira el enemigo.
+        # Dirección
         if diferencia_x > 0:
             self.direccion = 1
-
         elif diferencia_x < 0:
             self.direccion = -1
 
-        # Terminar el ataque después de su duración.
+        # ==========================================
+        # TERMINAR ATAQUE
+        # ==========================================
+
         if self.atacando:
 
             if ahora - self.tiempo_ataque >= self.duracion_ataque:
                 self.atacando = False
                 self.hitbox_activa = False
+    # ==========================================
+# HACER DAÑO AL JUGADOR
+# ==========================================
 
-        # Si está atacando, permanece quieto.
+        if (
+           self.atacando
+            and self.hitbox_activa
+             and jugador is not None
+            and hasattr(jugador, "recibir_dano")
+            and self.hitbox.colliderect(jugador.hurtbox)
+):
+
+            jugador.recibir_dano(10)
+ 
+        # Evitar repetir el daño en el mismo ataque.
+        self.hitbox_activa = False
+
+        # ==========================================
+        # PERSEGUIR Y ATACAR
+        # ==========================================
+
         if not self.atacando:
 
-            # Atacar cuando el jugador está cerca.
             if (
                 abs(diferencia_x) <= 100
                 and ahora - self.ultimo_ataque
@@ -357,17 +441,18 @@ class Enemigo(pygame.sprite.Sprite):
 
             else:
 
-                # Perseguir al jugador.
+                # Perseguir al jugador
                 if abs(diferencia_x) > 5:
                     self.pos_x += (
                         self.direccion * self.velocidad
                     )
 
-                # Saltar ocasionalmente mientras persigue.
+                # Saltar ocasionalmente
                 if (
                     self.en_suelo
                     and ahora >= self.proximo_salto
                 ):
+
                     self.velocidad_vertical = self.velocidad_salto
                     self.en_suelo = False
 
@@ -377,7 +462,10 @@ class Enemigo(pygame.sprite.Sprite):
                         )
                     )
 
-        # Aplicar gravedad.
+        # ==========================================
+        # GRAVEDAD
+        # ==========================================
+
         if not self.en_suelo:
 
             self.velocidad_vertical += self.gravedad
@@ -390,7 +478,10 @@ class Enemigo(pygame.sprite.Sprite):
                 self.velocidad_vertical = 0
                 self.en_suelo = True
 
-        # Mantener al enemigo dentro del mundo.
+        # ==========================================
+        # LÍMITES DEL MUNDO
+        # ==========================================
+
         self.pos_x = max(
             0,
             min(
@@ -399,20 +490,34 @@ class Enemigo(pygame.sprite.Sprite):
             )
         )
 
-        # Actualizar rectángulos con la posición nueva.
         self.actualizar_rectangulos(scroll_x)
+
+    # ==========================================
+    # DIBUJAR ENEMIGO
+    # ==========================================
 
     def draw(self, superficie, scroll_x):
 
+        # No dibujar si murió
+        if self.vida <= 0:
+            return
+
         self.actualizar_rectangulos(scroll_x)
 
-        # Dibujar el cuerpo azul.
+        # Crear una imagen temporal para el efecto rojo
+        if self.recibiendo_dano:
+            imagen = self.image.copy()
+            imagen.fill((255, 0, 0))
+        else:
+            imagen = self.image
+
+        # Dibujar cuerpo
         superficie.blit(
-            self.image,
+            imagen,
             self.rect
         )
 
-        # Dibujar la hitbox roja durante el ataque.
+        # Dibujar hitbox durante el ataque
         if self.hitbox_activa:
 
             pygame.draw.rect(
@@ -420,6 +525,7 @@ class Enemigo(pygame.sprite.Sprite):
                 (255, 0, 0),
                 self.hitbox
             )
+
 # ============================================================
 # CREAR JUGADORES
 # ============================================================
@@ -632,14 +738,27 @@ while ejecutando:
     # ACTUALIZAR JUGADOR Y PROYECTILES
     # ========================================================
 
+# ========================================================
+# ACTUALIZAR JUGADOR Y PROYECTILES
+# ========================================================
+
     if jugador_actual is not None:
 
-        # El jugador actualiza sus proyectiles internamente.
-        # No volver a llamar proyectiles.update() aquí.
-        todos_los_sprites.update(
+       if jugador_actual == heroe1:
+        # P_viento recibe la referencia del enemigo
+        jugador_actual.update(
+            scroll_x,
+            ANCHO_MUNDO,
+            enemigo
+        )
+
+       else:
+        # Los demás héroes conservan su actualización habitual
+            jugador_actual.update(
             scroll_x,
             ANCHO_MUNDO
-        )
+            )
+
     # ========================================================
     # ACTUALIZAR ENEMIGO
     # ========================================================

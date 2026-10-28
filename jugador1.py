@@ -1,5 +1,8 @@
+
 import pygame
 import os
+
+
 class p_viento(pygame.sprite.Sprite):
 
     def __init__(
@@ -34,7 +37,9 @@ class p_viento(pygame.sprite.Sprite):
             "2_atk": [],
             "3_atk": [],
             "air_atk": [],
-            "sp_atk": []
+            "sp_atk": [],
+            "take_hit": [],
+            "death": []
         }
 
         self.cargar_animaciones()
@@ -60,6 +65,36 @@ class p_viento(pygame.sprite.Sprite):
         self.pos_x = float(x)
 
         # ====================================================
+        # VIDA DEL HÉROE
+        # ====================================================
+
+        self.vida_maxima = 100
+        self.vida = 100
+
+        # ====================================================
+        # MUERTE DEL HÉROE
+        # ====================================================
+
+        self.muerto = False
+
+        # ====================================================
+        # HURTBOX DEL HÉROE
+        # ====================================================
+
+        self.hurtbox = pygame.Rect(0, 0, 60, 100)
+        self.color_hurtbox = (0, 255, 0)
+
+        # ====================================================
+        # RECIBIR DAÑO
+        # ====================================================
+
+        self.recibiendo_dano = False
+
+        self.inmune_dano = False
+        self.tiempo_inmunidad = 0
+        self.duracion_inmunidad = 500
+
+        # ====================================================
         # FÍSICA
         # ====================================================
 
@@ -83,6 +118,19 @@ class p_viento(pygame.sprite.Sprite):
         self.atacando = False
 
         self.combo_siguiente = False
+
+        # Daño del primer ataque
+        self.dano_ataque_1 = 15
+
+        # Hitbox invisible
+        self.hitbox = pygame.Rect(0, 0, 0, 0)
+        self.hitbox_activa = False
+
+        # Evita repetir el daño durante el mismo ataque
+        self.golpe_aplicado = False
+
+        # Actualizar la hurtbox inicial
+        self.actualizar_hurtbox()
 
     # ========================================================
     # CARGAR ANIMACIONES
@@ -311,11 +359,158 @@ class p_viento(pygame.sprite.Sprite):
 
             self.animaciones["3_atk"].append(img)
 
+        # ----------------------------------------------------
+        # ANIMACIÓN HIT: 6 IMÁGENES
+        # ----------------------------------------------------
+
+        for i in range(1, 7):
+
+            img = pygame.image.load(
+                os.path.join(
+                    base_path,
+                    "take_hit",
+                    f"take_hit_{i}.png"
+                )
+            ).convert_alpha()
+
+            img = pygame.transform.scale(
+                img,
+                escala
+            )
+
+            self.animaciones["take_hit"].append(img)
+
+        # ----------------------------------------------------
+        # ANIMACIÓN DE MUERTE: 19 IMÁGENES
+        # ----------------------------------------------------
+
+        for i in range(1, 20):
+
+            img = pygame.image.load(
+                os.path.join(
+                    base_path,
+                    "death",
+                    f"death_{i}.png"
+                )
+            ).convert_alpha()
+
+            img = pygame.transform.scale(
+                img,
+                escala
+            )
+
+            self.animaciones["death"].append(img)
+
+    # ========================================================
+    # RECIBIR DAÑO
+    # ========================================================
+
+    def recibir_dano(self, cantidad):
+
+        if self.vida <= 0 or self.muerto:
+            return
+
+        if self.recibiendo_dano or self.inmune_dano:
+            return
+
+        # Rodar y defenderse conservan su protección.
+        if self.rodando or self.defendiendo:
+            return
+
+        # Reducir la vida.
+        self.vida = max(
+            0,
+            self.vida - cantidad
+        )
+
+        # Si la vida llega a cero, iniciar la muerte.
+        if self.vida <= 0:
+
+            self.muerto = True
+            self.recibiendo_dano = False
+
+            self.estado = "death"
+            self.frame_index = 0
+
+            self.velocidad_x = 0
+            self.velocidad_y = 0
+
+            self.atacando = False
+            self.rodando = False
+            self.defendiendo = False
+
+            self.combo_siguiente = False
+            self.hitbox_activa = False
+
+            return
+
+        # Iniciar la animación de daño.
+        self.recibiendo_dano = True
+        self.estado = "take_hit"
+        self.frame_index = 0
+
+        # Detener el movimiento y cancelar el ataque actual.
+        self.velocidad_x = 0
+        self.atacando = False
+        self.combo_siguiente = False
+        self.hitbox_activa = False
+
+        # Evitar recibir golpes consecutivos inmediatamente.
+        self.inmune_dano = True
+        self.tiempo_inmunidad = pygame.time.get_ticks()
+
+    # ========================================================
+    # ACTUALIZAR INMUNIDAD
+    # ========================================================
+
+    def actualizar_inmunidad(self):
+
+        if not self.inmune_dano:
+            return
+
+        tiempo_actual = pygame.time.get_ticks()
+
+        if (
+            tiempo_actual - self.tiempo_inmunidad
+            >= self.duracion_inmunidad
+        ):
+
+            self.inmune_dano = False
+
+    # ========================================================
+    # ACTUALIZAR HURTBOX
+    # ========================================================
+
+    def actualizar_hurtbox(self):
+
+        self.hurtbox.centerx = self.rect.centerx
+        self.hurtbox.bottom = self.rect.bottom
+
+    # ========================================================
+    # DIBUJAR HURTBOX VERDE
+    # ========================================================
+
+    def dibujar_hurtbox(self, pantalla):
+
+        if self.muerto:
+            return
+
+        pygame.draw.rect(
+            pantalla,
+            self.color_hurtbox,
+            self.hurtbox,
+            2
+        )
+
     # ========================================================
     # EVENTOS DEL JUGADOR
     # ========================================================
 
     def procesar_evento(self, evento):
+
+        # No permitir acciones si recibe daño o está muerto.
+        if self.recibiendo_dano or self.muerto:
+            return
 
         # Aceptar teclado y mouse
         if evento.type not in (
@@ -437,6 +632,7 @@ class p_viento(pygame.sprite.Sprite):
                     self.estado = "1_atk"
                     self.frame_index = 0
                     self.combo_siguiente = False
+                    self.golpe_aplicado = False
 
                 elif self.estado in [
                     "1_atk",
@@ -453,9 +649,11 @@ class p_viento(pygame.sprite.Sprite):
 
         teclas = pygame.key.get_pressed()
 
-        # Bloquear movimiento durante acciones
+        # Bloquear movimiento durante acciones.
         if (
-            self.rodando
+            self.muerto
+            or self.recibiendo_dano
+            or self.rodando
             or self.defendiendo
             or (
                 self.atacando
@@ -492,7 +690,17 @@ class p_viento(pygame.sprite.Sprite):
 
     def actualizar_estado(self):
 
-        if self.rodando:
+        # La muerte tiene prioridad sobre los demás estados.
+        if self.muerto:
+
+            self.estado = "death"
+
+        # La animación de daño tiene prioridad.
+        elif self.recibiendo_dano:
+
+            self.estado = "take_hit"
+
+        elif self.rodando:
 
             self.estado = "roll"
 
@@ -522,6 +730,41 @@ class p_viento(pygame.sprite.Sprite):
 
     def animar(self):
 
+        # ----------------------------------------------------
+        # ANIMACIÓN DE MUERTE
+        # ----------------------------------------------------
+
+        if self.muerto:
+
+            anim = self.animaciones["death"]
+
+            self.frame_index += self.velocidad_animacion
+
+            # La animación se reproduce una sola vez.
+            if self.frame_index >= len(anim):
+
+                self.kill()
+                return
+
+            frame_actual = anim[
+                int(self.frame_index)
+            ]
+
+            # Girar personaje según su dirección.
+            if not self.mirando_derecha:
+
+                self.image = pygame.transform.flip(
+                    frame_actual,
+                    True,
+                    False
+                )
+
+            else:
+
+                self.image = frame_actual
+
+            return
+
         anim = self.animaciones[self.estado]
 
         self.frame_index += self.velocidad_animacion
@@ -534,8 +777,18 @@ class p_viento(pygame.sprite.Sprite):
 
             self.frame_index = 0
 
+            # Animación de daño.
+            if self.recibiendo_dano:
+
+                self.recibiendo_dano = False
+                self.estado = "idle"
+                self.velocidad_x = 0
+
+                # Obtener el primer fotograma de idle.
+                anim = self.animaciones["idle"]
+
             # Roll
-            if self.rodando:
+            elif self.rodando:
 
                 self.rodando = False
 
@@ -581,8 +834,12 @@ class p_viento(pygame.sprite.Sprite):
         # FRAME ACTUAL
         # ----------------------------------------------------
 
+        # Si la animación de daño terminó, usar idle.
+        if not self.recibiendo_dano and self.estado == "idle":
+            anim = self.animaciones["idle"]
+
         frame_actual = anim[
-            int(self.frame_index)
+            min(int(self.frame_index), len(anim) - 1)
         ]
 
         # Girar personaje
@@ -619,6 +876,74 @@ class p_viento(pygame.sprite.Sprite):
             self.velocidad_y = 0
             self.en_suelo = True
 
+        else:
+
+            self.en_suelo = False
+
+    # ========================================================
+    # ACTUALIZAR HITBOX
+    # ========================================================
+
+    def actualizar_hitbox(self, scroll_x):
+
+        self.hitbox_activa = False
+
+        if self.estado != "1_atk" or not self.atacando:
+            return
+
+        # Ventana de impacto: primera imagen de la animación.
+        if int(self.frame_index) != 0 or self.golpe_aplicado:
+            return
+
+        ancho_hitbox = 80
+        alto_hitbox = 30
+        y_hitbox = self.rect.top + 100
+
+        if self.mirando_derecha:
+
+            self.hitbox = pygame.Rect(
+                self.rect.right - 20,
+                y_hitbox,
+                ancho_hitbox,
+                alto_hitbox
+            )
+
+        else:
+
+            self.hitbox = pygame.Rect(
+                self.rect.left - ancho_hitbox + 20,
+                y_hitbox,
+                ancho_hitbox,
+                alto_hitbox
+            )
+
+        self.hitbox_activa = True
+
+    # ========================================================
+    # COMPROBAR GOLPE
+    # ========================================================
+
+    def comprobar_golpe(self, enemigo):
+
+        if self.muerto:
+            return
+
+        if enemigo is None:
+            return
+
+        if not self.hitbox_activa or self.golpe_aplicado:
+            return
+
+        if not enemigo.alive() or enemigo.vida <= 0:
+            return
+
+        if self.hitbox.colliderect(enemigo.hurtbox):
+
+            enemigo.recibir_dano(self.dano_ataque_1)
+
+            self.golpe_aplicado = True
+            self.hitbox_activa = False
+
     # ========================================================
     # ACTUALIZAR JUGADOR
     # ========================================================
@@ -626,8 +951,19 @@ class p_viento(pygame.sprite.Sprite):
     def update(
         self,
         scroll_x,
-        ancho_mundo
+        ancho_mundo,
+        enemigo=None
     ):
+
+        # Si está muerto, solo reproducir la animación de muerte.
+        # No aplicar movimiento, gravedad ni ataques.
+        if self.muerto:
+
+            self.animar()
+            return
+
+        # Actualizar inmunidad.
+        self.actualizar_inmunidad()
 
         self.manejar_movimiento_continuo()
 
@@ -635,7 +971,7 @@ class p_viento(pygame.sprite.Sprite):
         # VELOCIDAD AL RODAR
         # ----------------------------------------------------
 
-        if self.rodando:
+        if self.rodando and not self.recibiendo_dano:
 
             self.velocidad_x = (
                 self.velocidad_movimiento + 3
@@ -679,6 +1015,9 @@ class p_viento(pygame.sprite.Sprite):
 
         self.aplicar_gravedad()
 
+        # Actualizar hurtbox.
+        self.actualizar_hurtbox()
+
         # ----------------------------------------------------
         # ESTADO
         # ----------------------------------------------------
@@ -691,3 +1030,6 @@ class p_viento(pygame.sprite.Sprite):
 
         self.animar()
 
+        # Actualizar hitbox y comprobar impacto.
+        self.actualizar_hitbox(scroll_x)
+        self.comprobar_golpe(enemigo)
