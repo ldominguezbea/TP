@@ -1,5 +1,11 @@
-
-
+"""
+Efectos para el selector de niveles:
+  - SwirlCursor: remolino de luz (rojo / naranja / verde / azul con destellos) que viaja de un
+    nivel a otro dejando un rayo de luz detrás.
+  - draw_fire_icon: icono del Nivel 4 (portal infernal con demonio cornudo y llamas).
+ 
+Va en la misma carpeta que el selector. Requiere pygame y numpy.
+"""
 import math
 import random
 from collections import deque
@@ -299,4 +305,3 @@ def draw_fire_icon(screen, cx, cy, r, ticks):
     pygame.draw.circle(mask, (255, 255, 255, 255), (c, c), r)
     s.blit(mask, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
     screen.blit(s, s.get_rect(center=(cx, cy)))
- 
