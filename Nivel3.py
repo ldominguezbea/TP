@@ -69,7 +69,22 @@ def dibujar_luna_roja_batalla(screen, tiempo):
 # ==============================================================================
 # CARGA DE IMÁGENES
 # ==============================================================================
+def cargar_imagen_comic_nivel3(nombre_archivo):
+    rutas = (
+        os.path.join(BASE_DIR, "imagenes", "Nivel3", nombre_archivo),
+        os.path.join(BASE_DIR, "assets", "imagenes", "Nivel3", nombre_archivo),
+    )
+    for ruta in rutas:
+        if os.path.isfile(ruta):
+            imagen = pygame.image.load(ruta).convert()
+            return pygame.transform.scale(imagen, (ANCHO, ALTO))
+    raise FileNotFoundError(
+        f"No se encontro el comic {nombre_archivo}: {rutas}"
+    )
+
+
 def mostrar_comic_inicio(screen):
+    img_inicio = cargar_imagen_comic_nivel3("comic_inicio3.png")
     reloj = pygame.time.Clock()
     esperando = True
     while esperando:
@@ -79,7 +94,7 @@ def mostrar_comic_inicio(screen):
                 sys.exit()
             if event.type == pygame.KEYDOWN and event.key == pygame.K_RETURN:
                 esperando = False
-        screen.blit(fondos[0], (0, 0))
+        screen.blit(img_inicio, (0, 0))
         label = fuente_ui.render("PRESIONA ENTER PARA COMENZAR EL NIVEL 3", True, (255, 255, 255))
         rect = label.get_rect(center=(ANCHO // 2, ALTO - 35))
         sombra = pygame.Surface((rect.width + 20, rect.height + 10))
@@ -143,7 +158,40 @@ fondo_batalla = cargar_fondo_nivel3("Nivel3_imagen5.png.png")
 
 
 def mostrar_comic_final(screen):
+    img_final = cargar_imagen_comic_nivel3("comic_final3.png")
     reloj = pygame.time.Clock()
+    opcion = None
+    while opcion is None:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_1:
+                    opcion = 1
+                elif event.key == pygame.K_2:
+                    opcion = 2
+
+        screen.blit(img_final, (0, 0))
+        instrucciones = (
+            "Presiona 1 para dejar que Escanor entre al portal.",
+            "Presiona 2 para impedir que Escanor entre al portal.",
+        )
+        for indice, instruccion in enumerate(instrucciones):
+            texto = fuente_ui.render(instruccion, True, (255, 255, 255))
+            rect_texto = texto.get_rect(
+                center=(ANCHO // 2, ALTO - 54 + indice * 24)
+            )
+            sombra = pygame.Surface((rect_texto.width + 20, rect_texto.height + 8))
+            sombra.fill((0, 0, 0))
+            sombra.set_alpha(180)
+            screen.blit(sombra, (rect_texto.x - 10, rect_texto.y - 4))
+            screen.blit(texto, rect_texto)
+        pygame.display.flip()
+        reloj.tick(60)
+
+    nombre_final = "comic_final2_3.png" if opcion == 1 else "comic_final1_3.png"
+    imagen_final = cargar_imagen_comic_nivel3(nombre_final)
     esperando = True
     while esperando:
         for event in pygame.event.get():
@@ -152,19 +200,7 @@ def mostrar_comic_final(screen):
                 sys.exit()
             if event.type == pygame.KEYDOWN:
                 esperando = False
-
-        screen.blit(fondo_batalla, (0, 0))
-        texto = fuente_ui.render(
-            "FIN DEL NIVEL 3 - PRESIONA UNA TECLA PARA CONTINUAR",
-            True,
-            (255, 255, 255),
-        )
-        rect_texto = texto.get_rect(center=(ANCHO // 2, ALTO - 35))
-        sombra = pygame.Surface((rect_texto.width + 20, rect_texto.height + 10))
-        sombra.fill((0, 0, 0))
-        sombra.set_alpha(180)
-        screen.blit(sombra, (rect_texto.x - 10, rect_texto.y - 5))
-        screen.blit(texto, rect_texto)
+        screen.blit(imagen_final, (0, 0))
         pygame.display.flip()
         reloj.tick(60)
 
