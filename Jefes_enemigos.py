@@ -23,6 +23,7 @@ except ImportError:
 
 WIDTH = 1350
 SUELO_Y = 638
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 def extraer_numero(nombre_archivo):
     numeros = re.findall(r'\d+', nombre_archivo)
@@ -377,7 +378,10 @@ class WerewolfBoss(Enemigo):
         idx = int(self.frame_actual) % len(frames)
         imagen_frame = frames[idx]
 
-        if self.direction == "left":
+        espejar_sprite = self.direction == "left"
+        if getattr(self, "invertir_orientacion_sprite", False):
+            espejar_sprite = not espejar_sprite
+        if espejar_sprite:
             imagen_frame = pygame.transform.flip(imagen_frame, True, False)
 
         if self.esta_rojo:
@@ -457,6 +461,49 @@ class WerewolfBoss(Enemigo):
             pos_y = self.rect.bottom - self.image.get_height()
             screen.blit(self.image, (pos_x, pos_y))
 
+
+class CiclopeBoss(WerewolfBoss):
+
+    def __init__(self, x=900, y=500):
+        Enemigo.__init__(self, "Ciclope", 12, x, y)
+
+        base_path = os.path.join(BASE_DIR, "assets", "Jefes", "Ciclope")
+        altura_maxima = 180
+        self.animaciones = {
+            "idle": cargar_animacion_con_altura_maxima(
+                os.path.join(base_path, "Idle"), altura_maxima
+            ),
+            "correr": cargar_animacion_con_altura_maxima(
+                os.path.join(base_path, "Walk"), altura_maxima
+            ),
+            "muerte": cargar_animacion_con_altura_maxima(
+                os.path.join(base_path, "Death"), altura_maxima
+            ),
+            "attack1": cargar_animacion_con_altura_maxima(
+                os.path.join(base_path, "Attack"), altura_maxima
+            ),
+        }
+
+        self.estado_actual = "idle"
+        self.frame_actual = 0.0
+        self.velocidad_animacion = 0.25
+        self.image = self.animaciones["idle"][0]
+        self.rect = pygame.Rect(x, SUELO_Y - altura_maxima, 110, altura_maxima)
+        self.hurtbox = self.rect.copy()
+        self.hitbox = pygame.Rect(0, 0, 0, 0)
+        self.velocity_y = 0
+        self.gravity = 0.6
+        self.on_ground = True
+        self.direction = "right"
+        self.attacking = False
+        self.has_hit = False
+        self.dano_ataque = 15
+        self.cooldown_ataque = 1.0
+        self.esta_rojo = False
+        self.hit_timer = 0.0
+        self.desaparecer_timer = 3.0
+        self.muerto_definitivo = False
+        self.invertir_orientacion_sprite = True
 
 
 class CarniceroBoss(Enemigo):
