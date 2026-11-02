@@ -810,15 +810,20 @@ def ejecutar_batalla_carnicero(screen, player, fondo_img):
         pygame.display.flip()
 
 
-def ejecutar_batalla_werewolf(screen, player, fondo_img):
-    from Jefes_enemigos import WerewolfBoss
+def ejecutar_batalla_ciclope(screen, player, fondo_img):
+    from Jefes_enemigos import CiclopeBoss
 
     clock = pygame.time.Clock()
-    jefe = WerewolfBoss(x=920, y=POSICION_SUELO - 100)
+    jefe = CiclopeBoss(x=920, y=POSICION_SUELO - 180)
     jefe.max_health = 300
     jefe.health = jefe.max_health
     jefe.rect.bottom = POSICION_SUELO
     jefe.hurtbox = jefe.rect.copy()
+    sombra_base = pygame.image.load(
+        os.path.join(BASE_DIR, "assets", "Jefes", "Ciclope", "sombra.png")
+    ).convert_alpha()
+    proyectiles_sombra = []
+    temporizador_corte_sombra = 2.0
 
     player.health = player.max_health
     player.pos_x = 180.0
@@ -961,15 +966,54 @@ def ejecutar_batalla_werewolf(screen, player, fondo_img):
 
         if (
             fase == 1
+            and jefe.health > jefe.max_health * 0.75
             and jefe.health > 0
-            and jefe.health <= jefe.max_health * 0.5
-            and not fase2_activada
+            and not jefe.muerto_definitivo
+            and not transicion_fase
         ):
-            fase = 2
-            fase2_activada = True
-            transicion_fase = True
-            transicion_timer = 3.0
-            tiempo_congelado_transicion = tiempo
+            temporizador_corte_sombra -= dt
+            if temporizador_corte_sombra <= 0:
+                temporizador_corte_sombra = 2.0
+                origen = pygame.Vector2(jefe.rect.center)
+                destino = pygame.Vector2(player.hurtbox.center)
+                direccion = destino - origen
+                if direccion.length_squared() == 0:
+                    direccion.update(1 if jefe.direction == "right" else -1, 0)
+                direccion = direccion.normalize()
+                angulo = -math.degrees(math.atan2(direccion.y, direccion.x))
+                imagen_base = pygame.transform.flip(sombra_base, True, False)
+                imagen_sombra = pygame.transform.rotate(imagen_base, angulo)
+                rect_sombra = imagen_sombra.get_rect(center=origen)
+                hitbox_sombra = imagen_sombra.get_bounding_rect().move(
+                    rect_sombra.topleft
+                )
+                proyectiles_sombra.append({
+                    "x": float(rect_sombra.centerx),
+                    "y": float(rect_sombra.centery),
+                    "vx": direccion.x * 500,
+                    "vy": direccion.y * 500,
+                    "imagen": imagen_sombra,
+                    "rect": rect_sombra,
+                    "hitbox": hitbox_sombra,
+                })
+
+        for proyectil in proyectiles_sombra[:]:
+            proyectil["x"] += proyectil["vx"] * dt
+            proyectil["y"] += proyectil["vy"] * dt
+            nuevo_centro = (round(proyectil["x"]), round(proyectil["y"]))
+            desplazamiento = pygame.Vector2(nuevo_centro) - proyectil["rect"].center
+            proyectil["rect"].center = nuevo_centro
+            proyectil["hitbox"].move_ip(round(desplazamiento.x), round(desplazamiento.y))
+            if proyectil["hitbox"].colliderect(player.hurtbox):
+                player.take_damage(15)
+                proyectiles_sombra.remove(proyectil)
+            elif (
+                proyectil["rect"].right < 0
+                or proyectil["rect"].left > ANCHO
+                or proyectil["rect"].bottom < 0
+                or proyectil["rect"].top > ALTO
+            ):
+                proyectiles_sombra.remove(proyectil)
 
         if transicion_fase:
             transicion_timer -= dt
@@ -1094,6 +1138,8 @@ def ejecutar_batalla_werewolf(screen, player, fondo_img):
             dibujar_luna_roja_batalla(screen, tiempo)
 
         jefe.draw(screen)
+        for proyectil in proyectiles_sombra:
+            screen.blit(proyectil["imagen"], proyectil["rect"])
         if demonios_activos and not jefe.muerto_definitivo:
             dibujar_escudo(tiempo)
             for demonio in demonios:
@@ -1165,12 +1211,12 @@ def ejecutar_batalla_werewolf(screen, player, fondo_img):
                     pygame.draw.rect(screen, color_vida, (x_relleno, y_relleno, int(ancho_relleno * porcentaje_vida), alto_relleno))
                 screen.blit(barra, (x_barra, y_barra))
                 nombre_jefe = fuente_nombre_jefe.render(
-                    "Abbadon: The Guardian of the Red Eclipse",
+                    "Ciclope: El Portador de la Muerte",
                     True,
                     (190, 100, 255),
                 )
                 nombre_sombra = fuente_nombre_jefe.render(
-                    "Abbadon: The Guardian of the Red Eclipse",
+                    "Ciclope: El Portador de la Muerte",
                     True,
                     (35, 10, 55),
                 )
@@ -1193,10 +1239,10 @@ def ejecutar_batalla_werewolf(screen, player, fondo_img):
             banda.fill((0, 0, 0, int(progreso * 135)))
             screen.blit(banda, (0, ALTO // 2 - 60))
             texto = fuente_legend.render(
-                "LEGEND FALLEN", True, (235, 195, 75)
+                "CICLOPE DERROTADO", True, (235, 195, 75)
             )
             sombra = fuente_legend.render(
-                "LEGEND FALLEN", True, (25, 10, 5)
+                "CICLOPE DERROTADO", True, (25, 10, 5)
             )
             texto.set_alpha(alpha_val)
             sombra.set_alpha(alpha_val)
@@ -2046,277 +2092,278 @@ def ejecutar_prueba_tuneles(screen, player):
         player.plataformas = player_platforms
 
 
-mostrar_comic_inicio(pantalla)
-heroe = Jugador(200, POSICION_SUELO)
-todos_los_sprites = pygame.sprite.Group(heroe)
-vista_heroe = VistaJugadorMundo(heroe)
-plataformas_nivel = generar_plataformas_nivel()
-plataformas_nivel = [
-    plataforma
-    for plataforma in plataformas_nivel
-    if plataforma.right <= PUERTA_TUNELES_X
-    or plataforma.left >= FIN_TRAMO_FONDO_TUNELES
-]
-disenos_plataformas = [generar_diseno_plataforma() for _ in plataformas_nivel]
-heroe.plataformas = plataformas_nivel
-enemigos_nivel = []
-proximo_grupo = 0
-scroll_x = 0
-transicion_realizada = False
-puzzle_completado = False
-mimicos_cofres = []
-enemigos_post_cofre_generados = False
-ejecutando = True
-reloj = pygame.time.Clock()
+if __name__ == "__main__":
+    mostrar_comic_inicio(pantalla)
+    heroe = Jugador(200, POSICION_SUELO)
+    todos_los_sprites = pygame.sprite.Group(heroe)
+    vista_heroe = VistaJugadorMundo(heroe)
+    plataformas_nivel = generar_plataformas_nivel()
+    plataformas_nivel = [
+        plataforma
+        for plataforma in plataformas_nivel
+        if plataforma.right <= PUERTA_TUNELES_X
+        or plataforma.left >= FIN_TRAMO_FONDO_TUNELES
+    ]
+    disenos_plataformas = [generar_diseno_plataforma() for _ in plataformas_nivel]
+    heroe.plataformas = plataformas_nivel
+    enemigos_nivel = []
+    proximo_grupo = 0
+    scroll_x = 0
+    transicion_realizada = False
+    puzzle_completado = False
+    mimicos_cofres = []
+    enemigos_post_cofre_generados = False
+    ejecutando = True
+    reloj = pygame.time.Clock()
 
-while ejecutando:
-    dt = reloj.tick(60) / 1000.0
+    while ejecutando:
+        dt = reloj.tick(60) / 1000.0
 
-    while (
-        proximo_grupo < len(PUNTOS_GRUPO)
-        and heroe.pos_x
-        >= PUNTOS_GRUPO[proximo_grupo] - ANTICIPACION_APARICION_ENEMIGOS
-        and (
-            puzzle_completado
-            or PUNTOS_GRUPO[proximo_grupo] <= PUERTA_TUNELES_X
-        )
-    ):
-        nuevo_grupo = generar_grupo_enemigos(
-            PUNTOS_GRUPO[proximo_grupo], proximo_grupo
-        )
-        enemigos_nivel.extend(nuevo_grupo)
-        proximo_grupo += 1
-    todos_los_grupos_generados = proximo_grupo == len(PUNTOS_GRUPO)
-    enemigos_pendientes = [e for e in enemigos_nivel if not enemigo_derrotado(e)]
-    entrada_tuneles_desbloqueada = (
-        proximo_grupo >= GRUPOS_PREVIOS_TUNELES
-        and not enemigos_pendientes
-    )
-    portal_liberado = todos_los_grupos_generados and not enemigos_pendientes
-    limite_max_x = HUECO_FIN if portal_liberado else HUECO_INICIO-40
-    en_puerta_tuneles = (
-        not puzzle_completado
-        and abs(heroe.pos_x - PUERTA_TUNELES_X) <= 115
-    )
-    mimico_cercano = next(
-        (
-            enemigo
-            for enemigo in enemigos_nivel
-            if isinstance(enemigo, MimicoCueva)
-            and enemigo.es_cofre_cerrado
-            and abs(heroe.pos_x - enemigo.rect.centerx) <= 145
-        ),
-        None,
-    )
-    if not puzzle_completado:
-        limite_max_x = min(limite_max_x, PUERTA_TUNELES_X)
-    en_zona_hueco = portal_liberado and HUECO_INICIO <= heroe.pos_x <= HUECO_FIN and not transicion_realizada
-
-    for evento in pygame.event.get():
-        if evento.type == pygame.QUIT:
-            ejecutando = False
-        elif (
-            evento.type == pygame.KEYDOWN
-            and evento.key == pygame.K_c
-            and en_puerta_tuneles
-            and entrada_tuneles_desbloqueada
+        while (
+            proximo_grupo < len(PUNTOS_GRUPO)
+            and heroe.pos_x
+            >= PUNTOS_GRUPO[proximo_grupo] - ANTICIPACION_APARICION_ENEMIGOS
+            and (
+                puzzle_completado
+                or PUNTOS_GRUPO[proximo_grupo] <= PUERTA_TUNELES_X
+            )
         ):
-            puzzle_completado = ejecutar_prueba_tuneles(pantalla, heroe)
-            if puzzle_completado:
-                enemigos_nivel.clear()
-                plataformas_restantes = [
-                    (plataforma, diseno)
-                    for plataforma, diseno in zip(
-                        plataformas_nivel, disenos_plataformas
+            nuevo_grupo = generar_grupo_enemigos(
+                PUNTOS_GRUPO[proximo_grupo], proximo_grupo
+            )
+            enemigos_nivel.extend(nuevo_grupo)
+            proximo_grupo += 1
+        todos_los_grupos_generados = proximo_grupo == len(PUNTOS_GRUPO)
+        enemigos_pendientes = [e for e in enemigos_nivel if not enemigo_derrotado(e)]
+        entrada_tuneles_desbloqueada = (
+            proximo_grupo >= GRUPOS_PREVIOS_TUNELES
+            and not enemigos_pendientes
+        )
+        portal_liberado = todos_los_grupos_generados and not enemigos_pendientes
+        limite_max_x = HUECO_FIN if portal_liberado else HUECO_INICIO-40
+        en_puerta_tuneles = (
+            not puzzle_completado
+            and abs(heroe.pos_x - PUERTA_TUNELES_X) <= 115
+        )
+        mimico_cercano = next(
+            (
+                enemigo
+                for enemigo in enemigos_nivel
+                if isinstance(enemigo, MimicoCueva)
+                and enemigo.es_cofre_cerrado
+                and abs(heroe.pos_x - enemigo.rect.centerx) <= 145
+            ),
+            None,
+        )
+        if not puzzle_completado:
+            limite_max_x = min(limite_max_x, PUERTA_TUNELES_X)
+        en_zona_hueco = portal_liberado and HUECO_INICIO <= heroe.pos_x <= HUECO_FIN and not transicion_realizada
+
+        for evento in pygame.event.get():
+            if evento.type == pygame.QUIT:
+                ejecutando = False
+            elif (
+                evento.type == pygame.KEYDOWN
+                and evento.key == pygame.K_c
+                and en_puerta_tuneles
+                and entrada_tuneles_desbloqueada
+            ):
+                puzzle_completado = ejecutar_prueba_tuneles(pantalla, heroe)
+                if puzzle_completado:
+                    enemigos_nivel.clear()
+                    plataformas_restantes = [
+                        (plataforma, diseno)
+                        for plataforma, diseno in zip(
+                            plataformas_nivel, disenos_plataformas
+                        )
+                        if plataforma.left >= FIN_TRAMO_FONDO_TUNELES
+                    ]
+                    plataformas_nivel[:] = [
+                        plataforma for plataforma, _ in plataformas_restantes
+                    ]
+                    disenos_plataformas[:] = [
+                        diseno for _, diseno in plataformas_restantes
+                    ]
+                    heroe.plataformas = plataformas_nivel
+                    proximo_grupo = len(PUNTOS_GRUPO)
+                    mimicos_cofres = [
+                        MimicoCueva(LIMITE_POST_TUNELES_X + 650, POSICION_SUELO)
+                    ]
+                    enemigos_post_cofre_generados = False
+                    enemigos_nivel.extend(mimicos_cofres)
+                    heroe.pos_x = LIMITE_POST_TUNELES_X
+                    heroe.velocidad_x = 0
+                    limite_max_x = (
+                        HUECO_FIN if portal_liberado else HUECO_INICIO - 40
                     )
-                    if plataforma.left >= FIN_TRAMO_FONDO_TUNELES
-                ]
-                plataformas_nivel[:] = [
-                    plataforma for plataforma, _ in plataformas_restantes
-                ]
-                disenos_plataformas[:] = [
-                    diseno for _, diseno in plataformas_restantes
-                ]
-                heroe.plataformas = plataformas_nivel
-                proximo_grupo = len(PUNTOS_GRUPO)
-                mimicos_cofres = [
-                    MimicoCueva(LIMITE_POST_TUNELES_X + 650, POSICION_SUELO)
-                ]
-                enemigos_post_cofre_generados = False
-                enemigos_nivel.extend(mimicos_cofres)
-                heroe.pos_x = LIMITE_POST_TUNELES_X
-                heroe.velocidad_x = 0
-                limite_max_x = (
-                    HUECO_FIN if portal_liberado else HUECO_INICIO - 40
-                )
-                en_puerta_tuneles = False
-                heroe.rect.centerx = int(heroe.pos_x - scroll_x)
-                heroe.actualizar_hitboxes()
-            else:
+                    en_puerta_tuneles = False
+                    heroe.rect.centerx = int(heroe.pos_x - scroll_x)
+                    heroe.actualizar_hitboxes()
+                else:
+                    ejecutando = False
+                    break
+            elif (
+                evento.type == pygame.KEYDOWN
+                and evento.key == pygame.K_c
+                and mimico_cercano is not None
+            ):
+                for cofre in mimicos_cofres:
+                    cofre.abrir_cofre()
+            elif evento.type == pygame.KEYDOWN and evento.key == pygame.K_c and en_zona_hueco:
+                heroe.health = heroe.max_health
+                pantalla.blit(fondo_entrada_jefe, (0,0))
+                titulo = fuente_boss_title.render("Cíclope", True, (230,225,220))
+                subtitulo = fuente_boss_subtitle.render("El Portador de la Muerte", True, (205,190,175))
+                pantalla.blit(titulo, titulo.get_rect(center=(ANCHO//2,ALTO//2-25)))
+                pantalla.blit(subtitulo, subtitulo.get_rect(center=(ANCHO//2,ALTO//2+45)))
+                pygame.display.flip()
+                pygame.time.wait(2000)
+                transicion_realizada = True
+                ejecutar_batalla_ciclope(pantalla, heroe, fondo_batalla)
                 ejecutando = False
                 break
-        elif (
-            evento.type == pygame.KEYDOWN
-            and evento.key == pygame.K_c
-            and mimico_cercano is not None
-        ):
-            for cofre in mimicos_cofres:
-                cofre.abrir_cofre()
-        elif evento.type == pygame.KEYDOWN and evento.key == pygame.K_c and en_zona_hueco:
-            heroe.health = heroe.max_health
-            pantalla.blit(fondo_entrada_jefe, (0,0))
-            titulo = fuente_boss_title.render("Abbadon", True, (230,225,220))
-            subtitulo = fuente_boss_subtitle.render("El Senor Oscuro", True, (205,190,175))
-            pantalla.blit(titulo, titulo.get_rect(center=(ANCHO//2,ALTO//2-25)))
-            pantalla.blit(subtitulo, subtitulo.get_rect(center=(ANCHO//2,ALTO//2+45)))
-            pygame.display.flip()
-            pygame.time.wait(2000)
-            transicion_realizada = True
-            ejecutar_batalla_werewolf(pantalla, heroe, fondo_batalla)
-            ejecutando = False
+            else:
+                heroe.procesar_evento(evento)
+        if not ejecutando:
             break
-        else:
-            heroe.procesar_evento(evento)
-    if not ejecutando:
-        break
 
-    todos_los_sprites.update(
-        scroll_x,
-        transicion_realizada,
-        limite_max_x=limite_max_x,
-        limite_min_x=LIMITE_POST_TUNELES_X if puzzle_completado else None,
-    )
-    scroll_x = max(0,min(heroe.pos_x-ANCHO*0.4,ANCHO_MUNDO-ANCHO))
-    heroe.rect.centerx = int(heroe.pos_x-scroll_x)
-    heroe.actualizar_hitboxes()
-    vista_heroe.sync(scroll_x)
-
-    for enemigo in enemigos_nivel:
-        if enemigo.health <= 0 and not getattr(enemigo,"muerto_definitivo",False):
-            enemigo.update(vista_heroe,dt,width=ANCHO_MUNDO)
-    for enemigo in enemigos_nivel:
-        if enemigo_derrotado(enemigo):
-            continue
-        if getattr(enemigo,"esperando_jugador",False):
-            dx = abs(vista_heroe.pos_x-enemigo.rect.centerx)
-            dy = abs(vista_heroe.hurtbox.centery-enemigo.rect.centery)
-            if dx <= enemigo.distancia_vision and dy <= 300:
-                enemigo.esperando_jugador = False
-            else:
-                actualizar_animacion_idle(enemigo,dt)
-                continue
-        enemigo.allies = enemigos_nivel
-        enemigo.suelo_y = POSICION_SUELO
-        enemigo.plataformas = plataformas_nivel
-        enemigo.update(vista_heroe,dt,width=ANCHO_MUNDO)
-        if enemigo.health > 0:
-            if (
-                heroe.atacando
-                and not getattr(enemigo, "es_cofre_cerrado", False)
-                and enemigo not in heroe.enemigos_golpeados
-                and vista_heroe.hitbox.width > 0
-                and vista_heroe.hitbox.colliderect(enemigo.hurtbox)
-            ):
-                enemigo.take_damage(20)
-                heroe.enemigos_golpeados.add(enemigo)
-                heroe.has_hit = True
-            hb = getattr(enemigo,"hitbox",None)
-            if hb is not None and hb.width > 0 and not getattr(enemigo,"has_hit",False) and hb.colliderect(vista_heroe.hurtbox):
-                heroe.take_damage(getattr(enemigo,"dano_ataque",10))
-                enemigo.has_hit = True
-
-    if (
-        puzzle_completado
-        and mimicos_cofres
-        and mimicos_cofres[0].health <= 0
-        and not enemigos_post_cofre_generados
-    ):
-        enemigos_post_cofre = generar_grupo_enemigos(
-            mimicos_cofres[0].rect.centerx + 450
+        todos_los_sprites.update(
+            scroll_x,
+            transicion_realizada,
+            limite_max_x=limite_max_x,
+            limite_min_x=LIMITE_POST_TUNELES_X if puzzle_completado else None,
         )
-        enemigos_nivel.extend(enemigos_post_cofre)
-        enemigos_post_cofre_generados = True
+        scroll_x = max(0,min(heroe.pos_x-ANCHO*0.4,ANCHO_MUNDO-ANCHO))
+        heroe.rect.centerx = int(heroe.pos_x-scroll_x)
+        heroe.actualizar_hitboxes()
+        vista_heroe.sync(scroll_x)
 
-    cercanos = [
-        e for e in enemigos_nivel
-        if e.health > 0
-        and not getattr(e, "es_cofre_cerrado", False)
-        and not getattr(e, "esperando_jugador", False)
-        and not getattr(e, "muerto_definitivo", False)
-        and abs(e.rect.centerx - vista_heroe.pos_x) <= 175
-        and abs(e.rect.centery - vista_heroe.hurtbox.centery) <= 120
-    ]
-    if cercanos and all(not e.attacking and e.attack_cooldown<=0 for e in cercanos):
-        for enemigo in cercanos:
-            enemigo.attack()
-    separar_enemigos(enemigos_nivel,ANCHO_MUNDO)
-    if not puzzle_completado:
         for enemigo in enemigos_nivel:
-            if enemigo.rect.right > PUERTA_TUNELES_X:
-                desplazamiento = PUERTA_TUNELES_X - enemigo.rect.right
-                enemigo.rect.x += desplazamiento
-                enemigo.hitbox.x += desplazamiento
-                enemigo.hurtbox.x += desplazamiento
+            if enemigo.health <= 0 and not getattr(enemigo,"muerto_definitivo",False):
+                enemigo.update(vista_heroe,dt,width=ANCHO_MUNDO)
+        for enemigo in enemigos_nivel:
+            if enemigo_derrotado(enemigo):
+                continue
+            if getattr(enemigo,"esperando_jugador",False):
+                dx = abs(vista_heroe.pos_x-enemigo.rect.centerx)
+                dy = abs(vista_heroe.hurtbox.centery-enemigo.rect.centery)
+                if dx <= enemigo.distancia_vision and dy <= 300:
+                    enemigo.esperando_jugador = False
+                else:
+                    actualizar_animacion_idle(enemigo,dt)
+                    continue
+            enemigo.allies = enemigos_nivel
+            enemigo.suelo_y = POSICION_SUELO
+            enemigo.plataformas = plataformas_nivel
+            enemigo.update(vista_heroe,dt,width=ANCHO_MUNDO)
+            if enemigo.health > 0:
+                if (
+                    heroe.atacando
+                    and not getattr(enemigo, "es_cofre_cerrado", False)
+                    and enemigo not in heroe.enemigos_golpeados
+                    and vista_heroe.hitbox.width > 0
+                    and vista_heroe.hitbox.colliderect(enemigo.hurtbox)
+                ):
+                    enemigo.take_damage(20)
+                    heroe.enemigos_golpeados.add(enemigo)
+                    heroe.has_hit = True
+                hb = getattr(enemigo,"hitbox",None)
+                if hb is not None and hb.width > 0 and not getattr(enemigo,"has_hit",False) and hb.colliderect(vista_heroe.hurtbox):
+                    heroe.take_damage(getattr(enemigo,"dano_ataque",10))
+                    enemigo.has_hit = True
 
-    for tramo in range(ANCHO_MUNDO//ANCHO):
-        x = tramo*ANCHO-scroll_x
-        if -ANCHO < x < ANCHO:
-            if tramo == ANCHO_MUNDO // ANCHO - 1:
-                fondo = fondo_entrada_jefe
-            elif tramo == TRAMO_FONDO_TUNELES and not puzzle_completado:
-                fondo = fondo_tuneles
-            else:
-                fondo = fondos[tramo % len(fondos)]
-            pantalla.blit(fondo,(x,0))
-    dibujar_plataformas(pantalla,scroll_x,plataformas_nivel,disenos_plataformas)
-    todos_los_sprites.draw(pantalla)
-    for enemigo in enemigos_nivel:
-        if not getattr(enemigo,"muerto_definitivo",False):
-            x_original = enemigo.rect.x
-            enemigo.rect.x -= scroll_x
-            enemigo.draw(pantalla)
-            enemigo.rect.x = x_original
+        if (
+            puzzle_completado
+            and mimicos_cofres
+            and mimicos_cofres[0].health <= 0
+            and not enemigos_post_cofre_generados
+        ):
+            enemigos_post_cofre = generar_grupo_enemigos(
+                mimicos_cofres[0].rect.centerx + 450
+            )
+            enemigos_nivel.extend(enemigos_post_cofre)
+            enemigos_post_cofre_generados = True
 
-    dibujar_barra_jugador(pantalla,heroe)
-    progreso = min(100,int(heroe.pos_x*100/PORTAL_X))
-    if portal_liberado:
-        mensaje, color = "CAMINO DESPEJADO: ACERCATE A LA ENTRADA", (160,205,220)
-    elif enemigos_pendientes:
-        mensaje, color = f"RUMBO A ABBADON: {progreso}%  |  ENEMIGOS: {len(enemigos_pendientes)}", (215,205,190)
-    else:
-        mensaje, color = f"RUMBO A ABBADON: {progreso}%", (215,205,190)
-    sombra = fuente_progreso.render(mensaje,True,(0,0,0))
-    texto = fuente_progreso.render(mensaje,True,color)
-    rect = texto.get_rect(topright=(ANCHO-30,20))
-    pantalla.blit(sombra,(rect.x+2,rect.y+2))
-    pantalla.blit(texto,rect)
-    if en_puerta_tuneles:
-        texto_puerta = fuente_ui.render(
-            (
-                "PRESIONA C PARA ENTRAR A LA SALA"
-                if entrada_tuneles_desbloqueada
-                else "DERROTA A TODOS LOS ENEMIGOS PARA ENTRAR"
-            ),
-            True,
-            (255, 235, 190),
-        )
-        rect_puerta = texto_puerta.get_rect(
-            center=(ANCHO // 2, ALTO - 45)
-        )
-        pantalla.blit(texto_puerta, rect_puerta)
-    if mimico_cercano is not None:
-        texto_cofre = fuente_ui.render(
-            "PRESIONA C PARA ABRIR EL COFRE",
-            True,
-            (255, 235, 190),
-        )
-        rect_cofre = texto_cofre.get_rect(
-            center=(ANCHO // 2, ALTO - 75)
-        )
-        pantalla.blit(texto_cofre, rect_cofre)
-    if en_zona_hueco:
-        dibujar_boton_demoniaco(pantalla)
-    pygame.display.flip()
+        cercanos = [
+            e for e in enemigos_nivel
+            if e.health > 0
+            and not getattr(e, "es_cofre_cerrado", False)
+            and not getattr(e, "esperando_jugador", False)
+            and not getattr(e, "muerto_definitivo", False)
+            and abs(e.rect.centerx - vista_heroe.pos_x) <= 175
+            and abs(e.rect.centery - vista_heroe.hurtbox.centery) <= 120
+        ]
+        if cercanos and all(not e.attacking and e.attack_cooldown<=0 for e in cercanos):
+            for enemigo in cercanos:
+                enemigo.attack()
+        separar_enemigos(enemigos_nivel,ANCHO_MUNDO)
+        if not puzzle_completado:
+            for enemigo in enemigos_nivel:
+                if enemigo.rect.right > PUERTA_TUNELES_X:
+                    desplazamiento = PUERTA_TUNELES_X - enemigo.rect.right
+                    enemigo.rect.x += desplazamiento
+                    enemigo.hitbox.x += desplazamiento
+                    enemigo.hurtbox.x += desplazamiento
 
-pygame.quit()
-sys.exit()
+        for tramo in range(ANCHO_MUNDO//ANCHO):
+            x = tramo*ANCHO-scroll_x
+            if -ANCHO < x < ANCHO:
+                if tramo == ANCHO_MUNDO // ANCHO - 1:
+                    fondo = fondo_entrada_jefe
+                elif tramo == TRAMO_FONDO_TUNELES and not puzzle_completado:
+                    fondo = fondo_tuneles
+                else:
+                    fondo = fondos[tramo % len(fondos)]
+                pantalla.blit(fondo,(x,0))
+        dibujar_plataformas(pantalla,scroll_x,plataformas_nivel,disenos_plataformas)
+        todos_los_sprites.draw(pantalla)
+        for enemigo in enemigos_nivel:
+            if not getattr(enemigo,"muerto_definitivo",False):
+                x_original = enemigo.rect.x
+                enemigo.rect.x -= scroll_x
+                enemigo.draw(pantalla)
+                enemigo.rect.x = x_original
+
+        dibujar_barra_jugador(pantalla,heroe)
+        progreso = min(100,int(heroe.pos_x*100/PORTAL_X))
+        if portal_liberado:
+            mensaje, color = "CAMINO DESPEJADO: ACERCATE A LA ENTRADA", (160,205,220)
+        elif enemigos_pendientes:
+            mensaje, color = f"RUMBO A ABBADON: {progreso}%  |  ENEMIGOS: {len(enemigos_pendientes)}", (215,205,190)
+        else:
+            mensaje, color = f"RUMBO A ABBADON: {progreso}%", (215,205,190)
+        sombra = fuente_progreso.render(mensaje,True,(0,0,0))
+        texto = fuente_progreso.render(mensaje,True,color)
+        rect = texto.get_rect(topright=(ANCHO-30,20))
+        pantalla.blit(sombra,(rect.x+2,rect.y+2))
+        pantalla.blit(texto,rect)
+        if en_puerta_tuneles:
+            texto_puerta = fuente_ui.render(
+                (
+                    "PRESIONA C PARA ENTRAR A LA SALA"
+                    if entrada_tuneles_desbloqueada
+                    else "DERROTA A TODOS LOS ENEMIGOS PARA ENTRAR"
+                ),
+                True,
+                (255, 235, 190),
+            )
+            rect_puerta = texto_puerta.get_rect(
+                center=(ANCHO // 2, ALTO - 45)
+            )
+            pantalla.blit(texto_puerta, rect_puerta)
+        if mimico_cercano is not None:
+            texto_cofre = fuente_ui.render(
+                "PRESIONA C PARA ABRIR EL COFRE",
+                True,
+                (255, 235, 190),
+            )
+            rect_cofre = texto_cofre.get_rect(
+                center=(ANCHO // 2, ALTO - 75)
+            )
+            pantalla.blit(texto_cofre, rect_cofre)
+        if en_zona_hueco:
+            dibujar_boton_demoniaco(pantalla)
+        pygame.display.flip()
+
+    pygame.quit()
+    sys.exit()
