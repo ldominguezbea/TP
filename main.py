@@ -19,6 +19,7 @@ import animacion_menu
 from prologo import prologue
 from selector_niveles import LevelSelector
 from sonidos_selector_niveles import Audio
+from personajes import PERSONAJE_SELECCIONADO_ENV
 
 
 class _Nivel1Finalizado(Exception):
@@ -287,6 +288,7 @@ def main():
                         selected_char_index = (selected_char_index + 1) % len(characters)
                     elif event.key == pygame.K_RETURN:
                         chosen_char_name = characters[selected_char_index]["name"]
+                        os.environ[PERSONAJE_SELECCIONADO_ENV] = chosen_char_name
                         chosen_level = None
                         level_selector = LevelSelector(screen, audio)
                         game_state = "LEVEL_SELECT"

@@ -3,6 +3,7 @@ import sys
 import random
 import math
 import pygame
+from personajes import crear_jugador
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -1774,6 +1775,7 @@ def ejecutar_prueba_tuneles(screen, player):
 
     suelo_original = POSICION_SUELO
     POSICION_SUELO = 590
+    player.posicion_suelo = POSICION_SUELO
     player_world_x = player.pos_x
     player_scroll = player.scroll_x_actual
     player_platforms = player.plataformas
@@ -2089,12 +2091,19 @@ def ejecutar_prueba_tuneles(screen, player):
 
     finally:
         POSICION_SUELO = suelo_original
+        player.posicion_suelo = suelo_original
         player.plataformas = player_platforms
 
 
 if __name__ == "__main__":
     mostrar_comic_inicio(pantalla)
-    heroe = Jugador(200, POSICION_SUELO)
+    heroe = crear_jugador(
+        200,
+        POSICION_SUELO,
+        POSICION_SUELO,
+        ANCHO_MUNDO,
+        ANCHO,
+    )
     todos_los_sprites = pygame.sprite.Group(heroe)
     vista_heroe = VistaJugadorMundo(heroe)
     plataformas_nivel = generar_plataformas_nivel()
@@ -2317,6 +2326,9 @@ if __name__ == "__main__":
                 pantalla.blit(fondo,(x,0))
         dibujar_plataformas(pantalla,scroll_x,plataformas_nivel,disenos_plataformas)
         todos_los_sprites.draw(pantalla)
+        if hasattr(heroe, "proyectiles"):
+            heroe.proyectiles.draw(pantalla)
+
         for enemigo in enemigos_nivel:
             if not getattr(enemigo,"muerto_definitivo",False):
                 x_original = enemigo.rect.x

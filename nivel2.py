@@ -5,6 +5,7 @@ import math
 from array import array
 from types import SimpleNamespace
 import pygame
+from personajes import crear_jugador
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -1568,7 +1569,13 @@ def separar_enemigos(enemigos, ancho_mundo):
 
 mostrar_comic_inicio(pantalla)
 
-heroe = Jugador(200, POSICION_SUELO)
+heroe = crear_jugador(
+    200,
+    POSICION_SUELO,
+    POSICION_SUELO,
+    ANCHO_MUNDO,
+    ANCHO,
+)
 todos_los_sprites = pygame.sprite.Group(heroe)
 vista_heroe = VistaJugadorMundo(heroe)
 plataformas_nivel = generar_plataformas_nivel()
@@ -1843,6 +1850,8 @@ while ejecutando:
 
     # Renderizado de héroe y enemigos
     todos_los_sprites.draw(pantalla)
+    if hasattr(heroe, "proyectiles"):
+        heroe.proyectiles.draw(pantalla)
 
     for enemigo in enemigos_en_escena:
         if not getattr(enemigo, 'muerto_definitivo', False):

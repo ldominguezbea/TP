@@ -67,7 +67,7 @@ def resolver_nivel(script_name):
 tierra_levels = [
     {"id": "Nivel 2", "number": 2, "file": "nivel2.py", "lat": 0, "lon": -110, "boss": "2", "tag": "NIVEL", "big": "2"},
     {"id": "Nivel 1", "number": 1, "file": "nivel_1.py", "lat": 25, "lon": 0, "boss": "1", "tag": "NIVEL", "big": "1"},
-    {"id": "Nivel 3", "number": 3, "file": "nivel_3.py", "lat": 0, "lon": 110, "boss": "3", "tag": "NIVEL", "big": "3"},
+    {"id": "Nivel 3", "number": 3, "file": "Nivel3.py", "lat": 0, "lon": 110, "boss": "3", "tag": "NIVEL", "big": "3"},
 ]
 gehena_levels = [
     {"id": "Nivel 4", "number": 4, "file": "nivel_4.py", "lat": 20, "lon": -80, "boss": "4", "tag": "NIVEL", "big": "4"},
