@@ -13,6 +13,8 @@ from enemigos import (
 pygame.init()
 pygame.font.init()
 
+NIVEL_INTEGRADO = __name__ == "_nivel1_integrado"
+
 # 1. Configuración de pantalla y mundo
 ANCHO, ALTO = 1350, 700
 POSICION_SUELO = 620
@@ -28,8 +30,18 @@ ZONA_BIBLIOTECA_X = ANCHO * 3 + int(ANCHO * 0.75)
 ZONA_ENFERMERIA_X = ANCHO * 7 + int(ANCHO * 0.75)
 RADIO_INTERACCION_FONDO = 100
 
-pantalla = pygame.display.set_mode((ANCHO, ALTO))
+pantalla = pygame.display.get_surface()
+if pantalla is None:
+    pantalla = pygame.display.set_mode((ANCHO, ALTO))
 pygame.display.set_caption("Nivel 1 - Batalla de Jefe")
+
+
+def cerrar_nivel():
+    if NIVEL_INTEGRADO:
+        raise _Nivel1Finalizado
+    pygame.quit()
+    sys.exit()
+
 
 # Tamaño del sprite ajustado a escala humana
 ANCHO_HEROE, ALTO_HEROE = 300, 300
@@ -74,8 +86,7 @@ def mostrar_comic_inicio(screen):
     while esperando:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
-                pygame.quit()
-                sys.exit()
+                cerrar_nivel()
             if event.type == pygame.KEYDOWN and event.key == pygame.K_RETURN:
                 esperando = False
 
@@ -102,8 +113,7 @@ def mostrar_comic_final(screen):
     while esperando:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
-                pygame.quit()
-                sys.exit()
+                cerrar_nivel()
             if event.type == pygame.KEYDOWN:
                 esperando = False
 
@@ -599,8 +609,7 @@ def ejecutar_batalla_carnicero(screen, player, fondo_img):
 
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
-                pygame.quit()
-                sys.exit()
+                cerrar_nivel()
 
             player.procesar_evento(event)
 
@@ -1235,5 +1244,6 @@ while ejecutando:
 
     pygame.display.flip()
 
-pygame.quit()
-sys.exit()
+if not NIVEL_INTEGRADO:
+    pygame.quit()
+    sys.exit()

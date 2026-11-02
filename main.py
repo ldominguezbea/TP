@@ -1,6 +1,8 @@
 import pygame
 import sys
 import subprocess
+import runpy
+import os
 
 pygame.init()
 from config import SCREEN_WIDTH, SCREEN_HEIGHT, GAME_WIDTH, GAME_HEIGHT, BASE_DIR, abrir_archivo
@@ -17,6 +19,11 @@ import animacion_menu
 from prologo import prologue
 from selector_niveles import LevelSelector
 from sonidos_selector_niveles import Audio
+
+
+class _Nivel1Finalizado(Exception):
+    pass
+
 
 audio = Audio()
 level_selector = None
@@ -237,7 +244,7 @@ def render_character_select_high_res(time_counter):
 
 
 def main():
-    global selected_option, game_state, selected_char_index, chosen_char_name
+    global screen, selected_option, game_state, selected_char_index, chosen_char_name
     global prologue_images, prologue_image_index, level_selector, chosen_level
     time_counter = 0
     running = True
@@ -297,6 +304,24 @@ def main():
                         audio.update_ambient(0.0, active=False)
                         if level_path is None:
                             print(f"[NIVEL] No se encontró el archivo del nivel {chosen_level}.")
+                        elif chosen_level == 1:
+                            previous_cwd = os.getcwd()
+                            try:
+                                os.chdir(BASE_DIR)
+                                try:
+                                    runpy.run_path(
+                                        str(level_path),
+                                        run_name="_nivel1_integrado",
+                                        init_globals={
+                                            "_Nivel1Finalizado": _Nivel1Finalizado,
+                                        },
+                                    )
+                                except _Nivel1Finalizado:
+                                    pass
+                            finally:
+                                os.chdir(previous_cwd)
+                                screen = pygame.display.get_surface()
+                                pygame.display.set_caption("REQUIEM: El juicio final")
                         else:
                             subprocess.run(
                                 [sys.executable, level_path],
