@@ -1,4 +1,3 @@
-
 import pygame
 import os
 
@@ -48,6 +47,18 @@ class p_fuego(pygame.sprite.Sprite):
 
         self.dano_ataque_1 = 15
         self.golpe_aplicado = False
+
+        self.dano_ataque_aereo = 15
+        self.golpe_aereo_aplicado = False
+
+        self.dano_ataque_2 = 3
+        self.frames_golpe_ataque_2 = {}
+
+        self.dano_ataque_3 = 20
+        self.golpe_ataque_3_aplicado = False
+
+        self.dano_ataque_especial = 30
+        self.golpe_especial_aplicado = False
 
         # ====================================================
         # ANIMACIONES
@@ -387,6 +398,7 @@ class p_fuego(pygame.sprite.Sprite):
             self.rodando
             or self.defendiendo
             or self.inmune_dano
+            or (self.estado == "sp_atk" and self.atacando)
         ):
             return
 
@@ -419,38 +431,112 @@ class p_fuego(pygame.sprite.Sprite):
             self.estado = "take_hit"
 
     # ========================================================
-    # HITBOX DEL PRIMER ATAQUE
+    # HITBOX DE LOS ATAQUES
     # ========================================================
 
     def actualizar_hitbox(self):
 
         self.hitbox = pygame.Rect(0, 0, 0, 0)
 
-        if (
-            self.estado != "1_atk"
-            or not self.atacando
-        ):
-            return
+        # PRIMER ATAQUE: IMAGEN 5
+        if self.estado == "1_atk" and self.atacando:
 
-        if self.frame_index < 3:
+            if int(self.frame_index) == 4:
 
-            if self.mirando_derecha:
+                if self.mirando_derecha:
+                    self.hitbox = pygame.Rect(
+                        self.hurtbox.right - 5,
+                        self.hurtbox.centery - 10,
+                        80,
+                        30
+                    )
+                else:
+                    self.hitbox = pygame.Rect(
+                        self.hurtbox.left - 75,
+                        self.hurtbox.centery - 10,
+                        80,
+                        30
+                    )
 
-                self.hitbox = pygame.Rect(
-                    self.hurtbox.right - 5,
-                    self.hurtbox.centery - 10,
-                    80,
-                    30
-                )
+        # ATAQUE AÉREO: IMAGEN 4
+        elif self.estado == "air_atk" and self.atacando:
 
-            else:
+            if int(self.frame_index) == 3:
 
-                self.hitbox = pygame.Rect(
-                    self.hurtbox.left - 75,
-                    self.hurtbox.centery - 10,
-                    80,
-                    30
-                )
+                if self.mirando_derecha:
+                    self.hitbox = pygame.Rect(
+                        self.hurtbox.right - 5,
+                        self.hurtbox.centery - 10,
+                        80,
+                        30
+                    )
+                else:
+                    self.hitbox = pygame.Rect(
+                        self.hurtbox.left - 75,
+                        self.hurtbox.centery - 10,
+                        80,
+                        30
+                    )
+
+        # ATAQUE 2: IMÁGENES 11 A 15
+        elif self.estado == "2_atk" and self.atacando:
+
+            if int(self.frame_index) in (2, 3, 4, 5, 6):
+
+                if self.mirando_derecha:
+                    self.hitbox = pygame.Rect(
+                        self.hurtbox.right - 5,
+                        self.hurtbox.top,
+                        120,
+                        self.hurtbox.height
+                    )
+                else:
+                    self.hitbox = pygame.Rect(
+                        self.hurtbox.left - 115,
+                        self.hurtbox.top,
+                        120,
+                        self.hurtbox.height
+                    )
+
+        # ATAQUE 3: IMAGEN 24
+        elif self.estado == "3_atk" and self.atacando:
+
+            if int(self.frame_index) == 4:
+
+                if self.mirando_derecha:
+                    self.hitbox = pygame.Rect(
+                        self.hurtbox.right - 5,
+                        self.hurtbox.centery - 50,
+                        120,
+                        100
+                    )
+                else:
+                    self.hitbox = pygame.Rect(
+                        self.hurtbox.left - 115,
+                        self.hurtbox.centery - 50,
+                        120,
+                        100
+                    )
+
+        # ATAQUE ESPECIAL: IMAGEN 14
+        elif self.estado == "sp_atk" and self.atacando:
+
+            if int(self.frame_index) == 13:
+
+                if self.mirando_derecha:
+                    self.hitbox = pygame.Rect(
+                        self.hurtbox.right - 5,
+                        self.hurtbox.centery - 40,
+                        120,
+                        80
+                    )
+                else:
+                    self.hitbox = pygame.Rect(
+                        self.hurtbox.left - 115,
+                        self.hurtbox.centery - 40,
+                        120,
+                        80
+                    )
 
     def dibujar_hitbox(self, pantalla, scroll_x=0):
 
@@ -468,7 +554,7 @@ class p_fuego(pygame.sprite.Sprite):
 
     def comprobar_golpe(self, enemigo):
 
-        if self.golpe_aplicado or self.hitbox.width <= 0:
+        if self.hitbox.width <= 0:
             return
 
         hurtbox_enemigo = getattr(
@@ -480,30 +566,79 @@ class p_fuego(pygame.sprite.Sprite):
         if hurtbox_enemigo is None:
             return
 
-        if self.hitbox.colliderect(hurtbox_enemigo):
+        if not self.hitbox.colliderect(hurtbox_enemigo):
+            return
 
-            if hasattr(enemigo, "recibir_dano"):
+        # PRIMER ATAQUE
+        if self.estado == "1_atk":
 
-                enemigo.recibir_dano(
-                    self.dano_ataque_1
-                )
+            if self.golpe_aplicado:
+                return
 
-            elif hasattr(enemigo, "take_damage"):
-
-                enemigo.take_damage(
-                    self.dano_ataque_1
-                )
-
-            elif hasattr(enemigo, "vida"):
-
-                enemigo.vida = max(
-                    0,
-                    enemigo.vida - self.dano_ataque_1
-                )
-
+            dano = self.dano_ataque_1
             self.golpe_aplicado = True
 
-    # ========================================================
+        # ATAQUE AÉREO
+        elif self.estado == "air_atk":
+
+            if self.golpe_aereo_aplicado:
+                return
+
+            dano = self.dano_ataque_aereo
+            self.golpe_aereo_aplicado = True
+
+        # ATAQUE 2: 3 DE DAÑO EN CADA IMAGEN 11 A 15
+        elif self.estado == "2_atk":
+
+            frame_actual = int(self.frame_index)
+
+            if frame_actual not in (2, 3, 4, 5, 6):
+                return
+
+            id_enemigo = id(enemigo)
+
+            if id_enemigo not in self.frames_golpe_ataque_2:
+                self.frames_golpe_ataque_2[id_enemigo] = set()
+
+            if frame_actual in self.frames_golpe_ataque_2[id_enemigo]:
+                return
+
+            dano = self.dano_ataque_2
+            self.frames_golpe_ataque_2[id_enemigo].add(frame_actual)
+
+        # ATAQUE 3: IMAGEN 24
+        elif self.estado == "3_atk":
+
+            if self.golpe_ataque_3_aplicado:
+                return
+
+            dano = self.dano_ataque_3
+            self.golpe_ataque_3_aplicado = True
+
+        # ATAQUE ESPECIAL: IMAGEN 14
+        elif self.estado == "sp_atk":
+
+            if self.golpe_especial_aplicado:
+                return
+
+            dano = self.dano_ataque_especial
+            self.golpe_especial_aplicado = True
+
+        else:
+            return
+
+        if hasattr(enemigo, "recibir_dano"):
+
+            enemigo.recibir_dano(dano)
+
+        elif hasattr(enemigo, "take_damage"):
+
+            enemigo.take_damage(dano)
+
+        elif hasattr(enemigo, "vida"):
+
+            enemigo.vida = max(0, enemigo.vida - dano)
+        # ========================================================
     # EVENTOS DEL JUGADOR
     # ========================================================
 
@@ -590,6 +725,7 @@ class p_fuego(pygame.sprite.Sprite):
             self.atacando = True
             self.estado = "sp_atk"
             self.frame_index = 0
+            self.golpe_especial_aplicado = False
 
         # ====================================================
         # ATAQUE - CLICK IZQUIERDO
@@ -610,6 +746,7 @@ class p_fuego(pygame.sprite.Sprite):
                 self.atacando = True
                 self.estado = "air_atk"
                 self.frame_index = 0
+                self.golpe_aereo_aplicado = False
 
             # ATAQUE TERRESTRE
 
@@ -781,6 +918,7 @@ class p_fuego(pygame.sprite.Sprite):
 
                     self.estado = "2_atk"
                     self.frame_index = 0
+                    self.frames_golpe_ataque_2.clear()
                     self.combo_siguiente = False
                     self.golpe_aplicado = False
 
@@ -796,6 +934,7 @@ class p_fuego(pygame.sprite.Sprite):
 
                     self.estado = "3_atk"
                     self.frame_index = 0
+                    self.golpe_ataque_3_aplicado = False
                     self.combo_siguiente = False
                     self.golpe_aplicado = False
 

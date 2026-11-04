@@ -2,7 +2,7 @@ import os
 
 import pygame
 
-from jugador1 import p_viento
+from jugador1  import p_viento
 from jugador2 import p_tierra
 from jugador3 import p_fuego
 from jugador4 import p_planta
