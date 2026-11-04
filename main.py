@@ -20,7 +20,7 @@ from prologo import prologue
 from selector_niveles import LevelSelector
 from sonidos_selector_niveles import Audio
 from personajes import PERSONAJE_SELECCIONADO_ENV
-from intro import Intro
+from pergamino_controles import ControlsScroll
 
 
 class _Nivel1Finalizado(Exception):
@@ -32,6 +32,11 @@ level_selector = None
 chosen_level = None
 level_select_overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
 level_select_overlay.fill((0, 0, 0, 155))
+controls_overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+controls_overlay.fill((0, 0, 0, 110))
+controls_scroll = ControlsScroll(
+    (SCREEN_WIDTH, SCREEN_HEIGHT), BASE_DIR / "assets" / "pergamino_controles"
+)
 
 # Fuentes tipográficas vectoriales
 font_title = pygame.font.SysFont("Impact", 64)
@@ -42,8 +47,7 @@ font_ui_help = pygame.font.SysFont("Arial", 18, bold=True)
 
 menu_options = ["NEW GAME", "CONTINUE", "CONTROLS", "TROPHIES", "EXIT"]
 selected_option = 0
-game_state = "INTRO"
-intro = Intro(screen)
+game_state = "MENU"
 
 assets_chars = BASE_DIR / "assets" / "sprites" / "seleccion_personajes"
 
@@ -185,6 +189,13 @@ def render_menu(time_counter):
         screen.blit(info, (84, SCREEN_HEIGHT - 60))
 
 
+def render_controls(time_counter):
+    # Mantiene el menú animado visible y lo oscurece suavemente bajo el pergamino.
+    render_menu(time_counter)
+    screen.blit(controls_overlay, (0, 0))
+    controls_scroll.draw(screen)
+
+
 def render_prologue():
     screen.blit(prologue_images[prologue_image_index], (0, 0))
 
@@ -251,6 +262,7 @@ def main():
     global prologue_images, prologue_image_index, level_selector, chosen_level
     time_counter = 0
     running = True
+    enter_held = False
 
     while running:
         elapsed_ms = clock.tick(60)
@@ -259,20 +271,34 @@ def main():
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
+            elif event.type == pygame.KEYUP:
+                if event.key == pygame.K_RETURN:
+                    enter_held = False
             elif event.type == pygame.KEYDOWN:
+                fresh_enter = event.key == pygame.K_RETURN and not enter_held
+                if event.key == pygame.K_RETURN:
+                    enter_held = True
+
                 if game_state == "MENU":
                     if event.key == pygame.K_UP:
                         selected_option = (selected_option - 1) % len(menu_options)
                     elif event.key == pygame.K_DOWN:
                         selected_option = (selected_option + 1) % len(menu_options)
-                    elif event.key == pygame.K_RETURN:
+                    elif event.key == pygame.K_RETURN and fresh_enter:
                         option = menu_options[selected_option]
                         if option == "NEW GAME":
                             prologue_images = prologue()
                             prologue_image_index = 0
                             game_state = "PROLOGUE"
+                        elif option == "CONTROLS":
+                            controls_scroll.reset()
+                            game_state = "CONTROLS"
                         elif option == "EXIT":
                             running = False
+
+                elif game_state == "CONTROLS":
+                    if event.key == pygame.K_RETURN and fresh_enter:
+                        controls_scroll.handle_enter()
 
                 elif game_state == "PROLOGUE":
                     if event.key in (pygame.K_RETURN, pygame.K_SPACE):
@@ -333,18 +359,18 @@ def main():
                                 check=False,
                             )
                         chosen_level = None
+
         if game_state == "LEVEL_SELECT":
             level_selector.update(elapsed_ms)
-        elif game_state == "INTRO":
-            intro.update(elapsed_ms)
-            if intro.finished:
+        elif game_state == "CONTROLS":
+            if controls_scroll.update(elapsed_ms / 1000):
                 game_state = "MENU"
 
         # --- DIBUJO ---
-        if game_state == "INTRO":
-            intro.draw()
-        elif game_state == "MENU":
+        if game_state == "MENU":
             render_menu(time_counter)
+        elif game_state == "CONTROLS":
+            render_controls(time_counter)
         elif game_state == "PROLOGUE":
             render_prologue()
         elif game_state == "CHARACTER_SELECT":
