@@ -20,6 +20,7 @@ from prologo import prologue
 from selector_niveles import LevelSelector
 from sonidos_selector_niveles import Audio
 from personajes import PERSONAJE_SELECCIONADO_ENV
+from intro import Intro
 
 
 class _Nivel1Finalizado(Exception):
@@ -41,7 +42,8 @@ font_ui_help = pygame.font.SysFont("Arial", 18, bold=True)
 
 menu_options = ["NEW GAME", "CONTINUE", "CONTROLS", "TROPHIES", "EXIT"]
 selected_option = 0
-game_state = "MENU"
+game_state = "INTRO"
+intro = Intro(screen)
 
 assets_chars = BASE_DIR / "assets" / "sprites" / "seleccion_personajes"
 
@@ -331,12 +333,17 @@ def main():
                                 check=False,
                             )
                         chosen_level = None
-
         if game_state == "LEVEL_SELECT":
             level_selector.update(elapsed_ms)
+        elif game_state == "INTRO":
+            intro.update(elapsed_ms)
+            if intro.finished:
+                game_state = "MENU"
 
         # --- DIBUJO ---
-        if game_state == "MENU":
+        if game_state == "INTRO":
+            intro.draw()
+        elif game_state == "MENU":
             render_menu(time_counter)
         elif game_state == "PROLOGUE":
             render_prologue()
