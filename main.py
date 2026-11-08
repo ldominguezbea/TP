@@ -301,6 +301,9 @@ def main():
                     if event.key == pygame.K_RETURN and fresh_enter:
                         controls_scroll.handle_enter()
 
+                elif game_state == "INTRO" and intro_cinematic is not None:
+                    intro_cinematic.handle_event(event)
+
                 elif game_state == "PROLOGUE":
                     if event.key in (pygame.K_RETURN, pygame.K_SPACE):
                         if prologue_image_index < len(prologue_images) - 1:
