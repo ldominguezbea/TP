@@ -7,20 +7,36 @@ from config import BASE_DIR, SCREEN_HEIGHT, SCREEN_WIDTH
 
 
 class Intro:
-    TITLE_IMAGE = BASE_DIR / "assets" / "fondos" / "Imagen_titulo.png"
-    TITLE_TRACK = BASE_DIR / "musica" / "when_the_shadows_first_lengthened.ogg"
+    TITLE_IMAGE = BASE_DIR / "assets" / "fondos" / "Imagen_titulo.jpg"
+    TITLE_TRACK = BASE_DIR / "musica" / "title_music.mp3"
+    BROADCAST_AUDIO = (
+        BASE_DIR / "musica" / "ElevenLabs_2026-11-08T19_38_54_VEGA_gen_s50_sim75_v4.mp3"
+    )
     STUDIO_PHASE_END_MS = 10_000
     ENGINE_PHASE_END_MS = 20_000
     TITLE_PHASE_START_MS = 33_000
     PARTICLE_COUNT = 180
     FADE_DURATION_MS = 2_000
+    MUSIC_VOLUME = 0.7
+    DUCKED_MUSIC_VOLUME = 0.2
+    TITLE_MUSIC_VOLUME = 0.8
+    BACKGROUND_COLOR = (0, 0, 0)
 
     def __init__(self, screen):
         self.screen = screen
         screen_width, screen_height = screen.get_size()
         title_image = pygame.image.load(str(self.TITLE_IMAGE)).convert()
-        self.title_background = pygame.transform.smoothscale(
-            title_image, (screen_width, screen_height)
+        scale = min(
+            screen_width / title_image.get_width(),
+            screen_height / title_image.get_height(),
+        )
+        title_size = (
+            round(title_image.get_width() * scale),
+            round(title_image.get_height() * scale),
+        )
+        self.title_image = pygame.transform.smoothscale(title_image, title_size)
+        self.title_rect = self.title_image.get_rect(
+            center=(screen_width // 2, screen_height // 2)
         )
         self.particle_layer = pygame.Surface(
             (screen_width, screen_height), pygame.SRCALPHA
@@ -42,26 +58,45 @@ class Intro:
 
         if not pygame.mixer.get_init():
             pygame.mixer.init()
+        self.broadcast_audio = pygame.mixer.Sound(str(self.BROADCAST_AUDIO))
         pygame.mixer.music.load(str(self.TITLE_TRACK))
-        pygame.mixer.music.play()
+        pygame.mixer.music.set_volume(self.MUSIC_VOLUME)
+        pygame.mixer.music.play(-1)
 
         self.elapsed_ms = 0
         self.timeline_ms = 0
         self.phase = "STUDIO"
+        self.broadcast_started = False
+        self.title_started = False
         self.finished = False
 
     def handle_event(self, event):
         if event.type == pygame.KEYDOWN and self.phase == "TITLE":
             pygame.mixer.music.stop()
+            self.broadcast_audio.stop()
             self.finished = True
 
     def update(self, elapsed_ms):
         self.elapsed_ms += max(0, elapsed_ms)
         music_position = pygame.mixer.music.get_pos()
-        if music_position >= 0:
-            self.timeline_ms = max(self.timeline_ms, music_position)
-        else:
-            self.timeline_ms = max(self.timeline_ms, self.elapsed_ms)
+        self.timeline_ms = max(
+            self.timeline_ms, self.elapsed_ms, music_position, 0
+        )
+
+        if (
+            not self.broadcast_started
+            and self.timeline_ms >= self.STUDIO_PHASE_END_MS
+        ):
+            self.broadcast_audio.play()
+            pygame.mixer.music.set_volume(self.DUCKED_MUSIC_VOLUME)
+            self.broadcast_started = True
+
+        if (
+            not self.title_started
+            and self.timeline_ms >= self.TITLE_PHASE_START_MS
+        ):
+            pygame.mixer.music.set_volume(self.TITLE_MUSIC_VOLUME)
+            self.title_started = True
 
         if self.timeline_ms < self.STUDIO_PHASE_END_MS:
             self.phase = "STUDIO"
@@ -128,14 +163,11 @@ class Intro:
 
     def draw(self):
         screen_width, screen_height = self.screen.get_size()
-        self.screen.fill((0, 0, 0))
+        self.screen.fill(self.BACKGROUND_COLOR)
 
         if self.phase == "STUDIO":
             self._draw_credit(
-                (
-                    ("IRONBOUND STUDIOS", self.studio_font, (245, 245, 245)),
-                    ("PRESENTS", self.credit_font, (170, 35, 40)),
-                ),
+                (("IRONBOUND STUDIOS", self.studio_font, (245, 245, 245)),),
                 self.timeline_ms,
             )
         elif self.phase == "ENGINE":
@@ -151,7 +183,7 @@ class Intro:
                 screen_width, screen_height, ash_progress, title_mode=False
             )
         elif self.phase == "TITLE":
-            self.screen.blit(self.title_background, (0, 0))
+            self.screen.blit(self.title_image, self.title_rect)
             self._draw_particles(
                 screen_width, screen_height, 1.0, title_mode=True
             )

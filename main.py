@@ -16,7 +16,6 @@ clock = pygame.time.Clock()
 import random
 import math
 import animacion_menu
-from intro import Intro
 from prologo import prologue
 from selector_niveles import LevelSelector
 from sonidos_selector_niveles import Audio
@@ -264,7 +263,7 @@ def main():
     time_counter = 0
     running = True
     enter_held = False
-    intro_cinematic = None
+    game_state = "MENU"
 
     while running:
         elapsed_ms = clock.tick(60)
@@ -289,8 +288,9 @@ def main():
                     elif event.key == pygame.K_RETURN and fresh_enter:
                         option = menu_options[selected_option]
                         if option == "NEW GAME":
-                            intro_cinematic = Intro(screen)
-                            game_state = "INTRO"
+                            prologue_images = prologue()
+                            prologue_image_index = 0
+                            game_state = "PROLOGUE"
                         elif option == "CONTROLS":
                             controls_scroll.reset()
                             game_state = "CONTROLS"
@@ -300,9 +300,6 @@ def main():
                 elif game_state == "CONTROLS":
                     if event.key == pygame.K_RETURN and fresh_enter:
                         controls_scroll.handle_enter()
-
-                elif game_state == "INTRO" and intro_cinematic is not None:
-                    intro_cinematic.handle_event(event)
 
                 elif game_state == "PROLOGUE":
                     if event.key in (pygame.K_RETURN, pygame.K_SPACE):
@@ -366,13 +363,6 @@ def main():
 
         if game_state == "LEVEL_SELECT":
             level_selector.update(elapsed_ms)
-        elif game_state == "INTRO" and intro_cinematic is not None:
-            intro_cinematic.update(elapsed_ms)
-            if intro_cinematic.finished:
-                prologue_images = prologue()
-                prologue_image_index = 0
-                intro_cinematic = None
-                game_state = "PROLOGUE"
         elif game_state == "CONTROLS":
             if controls_scroll.update(elapsed_ms / 1000):
                 game_state = "MENU"
@@ -380,8 +370,6 @@ def main():
         # --- DIBUJO ---
         if game_state == "MENU":
             render_menu(time_counter)
-        elif game_state == "INTRO" and intro_cinematic is not None:
-            intro_cinematic.draw()
         elif game_state == "CONTROLS":
             render_controls(time_counter)
         elif game_state == "PROLOGUE":
