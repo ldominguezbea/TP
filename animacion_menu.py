@@ -101,10 +101,10 @@ def draw_flying_demon(surface, x, y, direction, time, offset):
     eye_x = ix if direction < 0 else ix + 3
     surface.set_at((eye_x, iy - 1), (255, 255, 0))
 
-def draw_giant_demon(surface, time):
+def draw_giant_demon(surface, time, offset_x=0, offset_y=0):
     float_y = math.sin(time * 1.5) * 2
-    gx = 118
-    gy = int(-2 + float_y)
+    gx = 118 + offset_x
+    gy = int(-2 + float_y) + offset_y
 
     giant_surf = pygame.Surface((100, 140), pygame.SRCALPHA)
     pygame.draw.polygon(giant_surf, (20, 3, 3), [(25, 50), (55, 50), (75, 140), (5, 140)])
@@ -129,13 +129,21 @@ def draw_giant_demon(surface, time):
 
     surface.blit(giant_surf, (gx, gy))
 
-def draw_scenery(surface, time):
+def draw_scenery(surface, time, parallax=(0.0, 0.0)):
     surface.fill((10, 2, 2))
     glow = pygame.Surface((GAME_WIDTH, 90), pygame.SRCALPHA)
     pygame.draw.rect(glow, (140, 25, 0, 45), (0, 0, GAME_WIDTH, 90))
     surface.blit(glow, (0, GAME_HEIGHT - 90))
 
-    draw_giant_demon(surface, time)
+    parallax_x, parallax_y = parallax
+    draw_giant_demon(
+        surface,
+        time,
+        round(parallax_x * 5),
+        round(parallax_y * 3),
+    )
+    building_offset_x = round(parallax_x * 3)
+    building_offset_y = round(parallax_y * 2)
 
     buildings = [
         {"x": 60, "y": 40, "w": 45, "h": 100, "antenna": True},
@@ -146,7 +154,9 @@ def draw_scenery(surface, time):
     ]
 
     for b in buildings:
-        bx, by, bw, bh = b["x"], b["y"], b["w"], b["h"]
+        bx = b["x"] + building_offset_x
+        by = b["y"] + building_offset_y
+        bw, bh = b["w"], b["h"]
         pygame.draw.rect(surface, (18, 6, 6), (bx, by, bw, bh))
         pygame.draw.rect(surface, (45, 12, 12), (bx, by, bw, bh), 1)
         pygame.draw.rect(surface, (30, 8, 8), (bx - 2, by - 2, bw + 4, 3))
@@ -168,10 +178,6 @@ def draw_scenery(surface, time):
     pygame.draw.rect(surface, (22, 18, 18), (0, 152, GAME_WIDTH, GAME_HEIGHT - 152))
     pygame.draw.line(surface, (45, 35, 35), (0, 140), (GAME_WIDTH, 140), 1)
     pygame.draw.line(surface, (38, 28, 28), (0, 152), (GAME_WIDTH, 152), 1)
-
-    pygame.draw.line(surface, (255, 60, 0), (30, 165), (55, 168), 1)
-    pygame.draw.line(surface, (255, 60, 0), (140, 146), (160, 148), 1)
-    pygame.draw.line(surface, (255, 60, 0), (230, 160), (255, 163), 1)
 
     for fx in range(0, GAME_WIDTH, 8):
         fh = int(abs(math.sin(fx * 0.3 + time * 4) * 5) + abs(math.cos(fx * 0.1 + time * 3) * 3))

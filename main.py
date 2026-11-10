@@ -3,6 +3,8 @@ import sys
 import subprocess
 import runpy
 import os
+import json
+import array
 
 pygame.init()
 from config import SCREEN_WIDTH, SCREEN_HEIGHT, GAME_WIDTH, GAME_HEIGHT, BASE_DIR, abrir_archivo
@@ -45,9 +47,17 @@ font_char_name = pygame.font.SysFont("Impact", 42)
 font_desc = pygame.font.SysFont("Arial", 16, bold=False)
 font_ui_help = pygame.font.SysFont("Arial", 18, bold=True)
 
-menu_options = ["NEW GAME", "CONTINUE", "CONTROLS", "TROPHIES", "EXIT"]
+menu_options = ["NEW GAME", "CONTINUE", "CONTROLS", "EXIT"]
 selected_option = 0
 game_state = "MENU"
+SAVE_FILE = BASE_DIR / "savegame.json"
+MENU_AUDIO_VOLUME = 0.45
+MENU_CUE_FILES = {
+    "NEW GAME": ("New_game.mp3", 0, 3500),
+    "CONTINUE": ("continue.mp3", 0, 6000),
+    "CONTROLS": ("Controls.mp3", 3000, 3000),
+    "EXIT": ("Exit.mp3", 0, 3000),
+}
 
 assets_chars = BASE_DIR / "assets" / "sprites" / "seleccion_personajes"
 
@@ -91,6 +101,176 @@ archivos_ya_abiertos = set()
 
 prologue_images = []
 prologue_image_index = 0
+menu_notice = ""
+
+
+class MenuAtmosphere:
+    PARTICLE_COUNT = 180
+
+    def __init__(self, size):
+        self.width, self.height = size
+        self.particle_layer = pygame.Surface(size, pygame.SRCALPHA)
+        rng = random.Random(1604)
+        self.particles = tuple(
+            (
+                rng.randrange(self.width),
+                rng.randrange(self.height),
+                rng.uniform(8.0, 28.0),
+                rng.random() * math.tau,
+                rng.choice((1, 1, 1, 2)),
+            )
+            for _ in range(self.PARTICLE_COUNT)
+        )
+        self.elapsed_ms = 0
+
+    def update(self, elapsed_ms):
+        self.elapsed_ms += max(0, elapsed_ms)
+
+    def draw(self, target):
+        self.particle_layer.fill((0, 0, 0, 0))
+        elapsed_seconds = self.elapsed_ms / 1000
+        for start_x, start_y, speed, phase, size in self.particles:
+            y = round(
+                (start_y - elapsed_seconds * speed) % (self.height + size)
+            ) - size
+            x = round(start_x + math.sin(elapsed_seconds * 0.35 + phase) * 5)
+            flicker = 0.65 + 0.35 * math.sin(elapsed_seconds * 1.6 + phase)
+            color = (255, 75 + round(110 * flicker), 18 + round(35 * flicker))
+            alpha = round(95 + 140 * flicker)
+            pygame.draw.circle(
+                self.particle_layer,
+                (*color, alpha),
+                (x % self.width, y),
+                size,
+            )
+        target.blit(
+            self.particle_layer,
+            (0, 0),
+            special_flags=pygame.BLEND_RGBA_ADD,
+        )
+
+def create_navigation_sound():
+    mixer_settings = pygame.mixer.get_init()
+    if mixer_settings is None:
+        raise RuntimeError("El mezclador de pygame no está inicializado.")
+    sample_rate, sample_format, channels = mixer_settings
+    if sample_format != -16:
+        raise RuntimeError(
+            "El sonido de navegación requiere audio PCM firmado de 16 bits."
+        )
+
+    samples = array.array("h")
+    noise = random.Random(501)
+    previous_sample = 0.0
+    sample_count = round(sample_rate * 0.18)
+    for index in range(sample_count):
+        progress = index / sample_count
+        cutoff = 7200 - 6100 * progress
+        filter_amount = 1 - math.exp(-math.tau * cutoff / sample_rate)
+        previous_sample += filter_amount * (noise.uniform(-1, 1) - previous_sample)
+        attack = min(1.0, index / (sample_rate * 0.004))
+        envelope = attack * (1 - progress) ** 2.4
+        value = round(15000 * previous_sample * envelope)
+        samples.extend([value] * channels)
+    return pygame.mixer.Sound(buffer=samples.tobytes())
+
+
+navigation_sound = create_navigation_sound()
+navigation_sound.set_volume(MENU_AUDIO_VOLUME)
+menu_atmosphere = MenuAtmosphere((SCREEN_WIDTH, SCREEN_HEIGHT))
+
+
+def make_sound_segment(sound, start_ms, duration_ms):
+    mixer_settings = pygame.mixer.get_init()
+    if mixer_settings is None:
+        raise RuntimeError("El mezclador de pygame no está inicializado.")
+    sample_rate, sample_format, channels = mixer_settings
+    frame_size = (abs(sample_format) // 8) * channels
+    raw = sound.get_raw()
+    start_frame = round(sample_rate * start_ms / 1000)
+    end_frame = round(sample_rate * (start_ms + duration_ms) / 1000)
+    segment = raw[start_frame * frame_size:end_frame * frame_size]
+    if len(segment) != (end_frame - start_frame) * frame_size:
+        raise ValueError("El audio no contiene la duración solicitada.")
+    return pygame.mixer.Sound(buffer=segment)
+
+
+def play_menu_cue(option):
+    filename, offset_ms, duration_ms = MENU_CUE_FILES[option]
+    sound = pygame.mixer.Sound(str(BASE_DIR / "musica" / filename))
+    if offset_ms:
+        sound = make_sound_segment(sound, offset_ms, duration_ms)
+    sound.set_volume(MENU_AUDIO_VOLUME)
+    sound.play(maxtime=duration_ms)
+    return pygame.time.get_ticks() + duration_ms, sound
+
+
+def save_game(character_name, level_number):
+    data = {"character": character_name, "level": level_number}
+    SAVE_FILE.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def load_game():
+    try:
+        data = json.loads(SAVE_FILE.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        print(f"[PARTIDA] No existe una partida guardada en {SAVE_FILE}.")
+        return None
+    except json.JSONDecodeError as error:
+        print(f"[PARTIDA] El archivo guardado no es válido: {error}")
+        return None
+
+    valid_characters = {character["name"] for character in characters}
+    if not isinstance(data, dict):
+        print(f"[PARTIDA] Datos inválidos en {SAVE_FILE}.")
+        return None
+
+    character_name = data.get("character")
+    level_number = data.get("level")
+    if (
+        not isinstance(character_name, str)
+        or character_name not in valid_characters
+        or type(level_number) is not int
+        or level_number not in (1, 2, 3, 4, 5)
+    ):
+        print(f"[PARTIDA] Datos inválidos en {SAVE_FILE}.")
+        return None
+    return data
+
+
+def launch_level(level_number):
+    global screen, level_selector
+    if level_selector is None:
+        level_selector = LevelSelector(screen, audio)
+    level_path = level_selector.get_level_path(level_number)
+    audio.update_ambient(0.0, active=False)
+    if level_path is None:
+        print(f"[NIVEL] No se encontró el archivo del nivel {level_number}.")
+        return False
+
+    if level_number == 1:
+        previous_cwd = os.getcwd()
+        try:
+            os.chdir(BASE_DIR)
+            try:
+                runpy.run_path(
+                    str(level_path),
+                    run_name="_nivel1_integrado",
+                    init_globals={"_Nivel1Finalizado": _Nivel1Finalizado},
+                )
+            except _Nivel1Finalizado:
+                pass
+        finally:
+            os.chdir(previous_cwd)
+            screen = pygame.display.get_surface()
+            pygame.display.set_caption("REQUIEM: El juicio final")
+    else:
+        subprocess.run(
+            [sys.executable, level_path],
+            cwd=BASE_DIR,
+            check=False,
+        )
+    return True
 
 
 def buscar_imagen(nombre_archivo):
@@ -169,8 +349,14 @@ def draw_character_artwork(surface, name, cx, cy):
 
 
 def render_menu(time_counter):
-    animacion_menu.draw_scenery(canvas, time_counter)
+    mouse_x, mouse_y = pygame.mouse.get_pos()
+    parallax_x = (mouse_x / SCREEN_WIDTH - 0.5) * 2
+    parallax_y = (mouse_y / SCREEN_HEIGHT - 0.5) * 2
+    animacion_menu.draw_scenery(
+        canvas, time_counter, (parallax_x, parallax_y)
+    )
     pygame.transform.scale(canvas, (SCREEN_WIDTH, SCREEN_HEIGHT), screen)
+    menu_atmosphere.draw(screen)
 
     title_surf = font_title.render("REQUIEM", True, (230, 40, 40))
     screen.blit(title_surf, (80, 60))
@@ -181,12 +367,24 @@ def render_menu(time_counter):
         activa = i == selected_option
         color = (255, 255, 255) if activa else (150, 130, 130)
         texto = ("> " if activa else "  ") + option
+        position = (84, 230 + i * 42)
+        if activa:
+            flicker = 0.65 + 0.35 * math.sin(time_counter * 31)
+            glow = font_menu.render(texto, True, (255, 0, 0))
+            glow.set_alpha(round(120 + 100 * flicker))
+            jitter = 2 if math.sin(time_counter * 47) > 0.94 else 0
+            for dx, dy in ((-2, 0), (2, 0), (0, -2), (0, 2)):
+                screen.blit(glow, (position[0] + dx + jitter, position[1] + dy))
+            color = (255, round(80 + 120 * flicker), round(60 + 100 * flicker))
         surf = font_menu.render(texto, True, color)
-        screen.blit(surf, (84, 230 + i * 42))
+        screen.blit(surf, position)
 
     if chosen_char_name:
         info = font_ui_help.render(f"Héroe elegido: {chosen_char_name}", True, (235, 185, 40))
         screen.blit(info, (84, SCREEN_HEIGHT - 60))
+    if menu_notice:
+        notice_surf = font_ui_help.render(menu_notice, True, (255, 125, 90))
+        screen.blit(notice_surf, (84, SCREEN_HEIGHT - 32))
 
 
 def render_controls(time_counter):
@@ -260,9 +458,12 @@ def render_character_select_high_res(time_counter):
 def main():
     global screen, selected_option, game_state, selected_char_index, chosen_char_name
     global prologue_images, prologue_image_index, level_selector, chosen_level
+    global menu_notice
     time_counter = 0
     running = True
     enter_held = False
+    menu_music_playing = False
+    pending_menu_action = None
     game_state = "MENU"
 
     while running:
@@ -280,22 +481,17 @@ def main():
                 if event.key == pygame.K_RETURN:
                     enter_held = True
 
-                if game_state == "MENU":
+                if game_state == "MENU" and pending_menu_action is None:
                     if event.key == pygame.K_UP:
                         selected_option = (selected_option - 1) % len(menu_options)
+                        navigation_sound.play()
                     elif event.key == pygame.K_DOWN:
                         selected_option = (selected_option + 1) % len(menu_options)
+                        navigation_sound.play()
                     elif event.key == pygame.K_RETURN and fresh_enter:
                         option = menu_options[selected_option]
-                        if option == "NEW GAME":
-                            prologue_images = prologue()
-                            prologue_image_index = 0
-                            game_state = "PROLOGUE"
-                        elif option == "CONTROLS":
-                            controls_scroll.reset()
-                            game_state = "CONTROLS"
-                        elif option == "EXIT":
-                            running = False
+                        deadline, cue_sound = play_menu_cue(option)
+                        pending_menu_action = (option, deadline, cue_sound)
 
                 elif game_state == "CONTROLS":
                     if event.key == pygame.K_RETURN and fresh_enter:
@@ -331,41 +527,71 @@ def main():
                         game_state = "CHARACTER_SELECT"
                     elif isinstance(result, int):
                         chosen_level = result
-                        level_path = level_selector.get_level_path(chosen_level)
-                        audio.update_ambient(0.0, active=False)
-                        if level_path is None:
-                            print(f"[NIVEL] No se encontró el archivo del nivel {chosen_level}.")
-                        elif chosen_level == 1:
-                            previous_cwd = os.getcwd()
-                            try:
-                                os.chdir(BASE_DIR)
-                                try:
-                                    runpy.run_path(
-                                        str(level_path),
-                                        run_name="_nivel1_integrado",
-                                        init_globals={
-                                            "_Nivel1Finalizado": _Nivel1Finalizado,
-                                        },
-                                    )
-                                except _Nivel1Finalizado:
-                                    pass
-                            finally:
-                                os.chdir(previous_cwd)
-                                screen = pygame.display.get_surface()
-                                pygame.display.set_caption("REQUIEM: El juicio final")
-                        else:
-                            subprocess.run(
-                                [sys.executable, level_path],
-                                cwd=BASE_DIR,
-                                check=False,
-                            )
+                        save_game(chosen_char_name, chosen_level)
+                        launch_level(chosen_level)
                         chosen_level = None
+
+        if (
+            pending_menu_action is not None
+            and pygame.time.get_ticks() >= pending_menu_action[1]
+        ):
+            option, _, _cue_sound = pending_menu_action
+            pending_menu_action = None
+            if option == "NEW GAME":
+                prologue_images = prologue()
+                prologue_image_index = 0
+                game_state = "PROLOGUE"
+                menu_notice = ""
+            elif option == "CONTINUE":
+                saved_game = load_game()
+                if saved_game is None:
+                    menu_notice = "No hay una partida guardada válida."
+                else:
+                    chosen_char_name = saved_game["character"]
+                    selected_char_index = next(
+                        index
+                        for index, character in enumerate(characters)
+                        if character["name"] == chosen_char_name
+                    )
+                    os.environ[PERSONAJE_SELECCIONADO_ENV] = chosen_char_name
+                    chosen_level = saved_game["level"]
+                    level_selector = LevelSelector(screen, audio)
+                    if level_selector.get_level_path(chosen_level) is None:
+                        menu_notice = (
+                            "El nivel guardado ya no está disponible."
+                        )
+                    else:
+                        if menu_music_playing:
+                            pygame.mixer.music.stop()
+                            menu_music_playing = False
+                        game_state = "LEVEL_SELECT"
+                        launch_level(chosen_level)
+                        chosen_level = None
+                        menu_notice = ""
+            elif option == "CONTROLS":
+                controls_scroll.reset()
+                game_state = "CONTROLS"
+                menu_notice = ""
+            elif option == "EXIT":
+                running = False
 
         if game_state == "LEVEL_SELECT":
             level_selector.update(elapsed_ms)
         elif game_state == "CONTROLS":
             if controls_scroll.update(elapsed_ms / 1000):
                 game_state = "MENU"
+
+        if game_state in ("MENU", "CONTROLS"):
+            menu_atmosphere.update(elapsed_ms)
+
+        if game_state == "MENU" and not menu_music_playing:
+            pygame.mixer.music.load(str(BASE_DIR / "musica" / "Menu_theme.mp3"))
+            pygame.mixer.music.set_volume(MENU_AUDIO_VOLUME)
+            pygame.mixer.music.play(-1)
+            menu_music_playing = True
+        elif game_state != "MENU" and menu_music_playing:
+            pygame.mixer.music.stop()
+            menu_music_playing = False
 
         # --- DIBUJO ---
         if game_state == "MENU":
