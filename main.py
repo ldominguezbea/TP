@@ -1,9 +1,6 @@
 import pygame
 import sys
-import subprocess
-import runpy
 import os
-import json
 import array
 import random
 import math
