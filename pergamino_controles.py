@@ -1,132 +1,124 @@
-from enum import Enum, auto
 from pathlib import Path
 
 import pygame
 
 
-class ScrollState(Enum):
-    CLOSED = auto()
-    OPENING = auto()
-    OPEN = auto()
-    CLOSING = auto()
-
-
-class ControlsScroll:
-    """Controla el spritesheet y la interacción del pergamino de controles."""
-
-    COLUMNS = 4
-    ROWS = 2
-    FRAME_DURATION = 0.075
+class ControlsBook:
+    """Draws the static two-page controls book and its key mappings."""
 
     def __init__(self, screen_size, assets_dir: Path):
         self.screen_size = screen_size
-        self.state = ScrollState.CLOSED
-        self.frame_index = 0
-        self.frame_timer = 0.0
-        self.frames = []
-        self.frame_offsets = []
+        self.book = pygame.image.load(str(assets_dir / "LIbro.png")).convert_alpha()
+        book_width, book_height = self.book.get_size()
+        self.scale = min(
+            screen_size[0] * 0.94 / book_width, screen_size[1] * 0.92 / book_height
+        )
+        self.book_size = (
+            round(book_width * self.scale),
+            round(book_height * self.scale),
+        )
+        self.book_image = pygame.transform.smoothscale(self.book, self.book_size)
+        self.book_rect = self.book_image.get_rect(
+            center=(screen_size[0] // 2, screen_size[1] // 2)
+        )
 
-        # Carga los recursos y separa el spritesheet en celdas ordenadas por filas.
-        sheet = pygame.image.load(
-            str(assets_dir / "Sprite de pergaminos antiguos.png")
-        ).convert_alpha()
-        frame_width = sheet.get_width() // self.COLUMNS
-        frame_height = sheet.get_height() // self.ROWS
-        self.frame_size = (frame_width, frame_height)
-        if (
-            sheet.get_width() % self.COLUMNS
-            or sheet.get_height() % self.ROWS
-        ):
-            raise ValueError("El spritesheet del pergamino no tiene una cuadrícula válida.")
-
-        for row in range(self.ROWS):
-            for column in range(self.COLUMNS):
-                cell = sheet.subsurface(
-                    (
-                        column * frame_width,
-                        row * frame_height,
-                        frame_width,
-                        frame_height,
-                    )
-                ).copy()
-                if row == 0 and column == self.COLUMNS - 1:
-                    # El cuarto fotograma incluye parte del pergamino de la fila inferior.
-                    cell = cell.subsurface((0, 0, frame_width, 420)).copy()
-                bounds = cell.get_bounding_rect(min_alpha=1)
-                if bounds.width == 0 or bounds.height == 0:
-                    raise ValueError("El spritesheet contiene un fotograma vacío.")
-                self.frames.append(cell.subsurface(bounds).copy())
-                self.frame_offsets.append((bounds.x, bounds.y))
-
-    def reset(self):
-        """Vuelve al pergamino cerrado al entrar de nuevo en Controls."""
-        self.state = ScrollState.CLOSED
-        self.frame_index = 0
-        self.frame_timer = 0.0
-
-    def handle_enter(self):
-        # Solo acepta ENTER en estados estables para evitar interrupciones.
-        if self.state == ScrollState.CLOSED:
-            self.state = ScrollState.OPENING
-            self.frame_index = 0
-            self.frame_timer = 0.0
-        elif self.state == ScrollState.OPEN:
-            self.state = ScrollState.CLOSING
-            self.frame_index = len(self.frames) - 1
-            self.frame_timer = 0.0
-
-    def update(self, dt):
-        """Avanza los fotogramas usando segundos y reporta el fin del cierre."""
-        if self.state not in (ScrollState.OPENING, ScrollState.CLOSING):
-            return False
-
-        self.frame_timer += max(0.0, dt)
-        while self.frame_timer >= self.FRAME_DURATION:
-            self.frame_timer -= self.FRAME_DURATION
-
-            if self.state == ScrollState.OPENING:
-                if self.frame_index < len(self.frames) - 1:
-                    self.frame_index += 1
-                else:
-                    self.state = ScrollState.OPEN
-                    self.frame_timer = 0.0
-                    break
-            else:
-                if self.frame_index > 0:
-                    self.frame_index -= 1
-                else:
-                    self.state = ScrollState.CLOSED
-                    self.frame_timer = 0.0
-                    return True
-
-        return False
+        self.page = self.book.copy()
+        self.header_font = pygame.font.SysFont("Georgia", 28, bold=True)
+        self.key_font = pygame.font.SysFont("Georgia", 19, bold=True)
+        self.action_font = pygame.font.SysFont("Georgia", 17, bold=True)
+        self.footer_font = pygame.font.SysFont("Georgia", 18, bold=True)
+        self._draw_contents()
+        self.book_image = pygame.transform.smoothscale(self.page, self.book_size)
 
     def draw(self, surface):
-        # CLOSED usa el fotograma 1 y OPEN el fotograma 8 del spritesheet.
-        screen_width, screen_height = self.screen_size
-        # Todos los fotogramas comparten escala y ancla; solo cambia el dibujo del sprite.
-        frame_width, frame_height = self.frame_size
-        scale = min(
-            screen_width * 0.78 / frame_width,
-            screen_height * 0.88 / frame_height,
+        surface.blit(self.book_image, self.book_rect)
+
+    def _draw_contents(self):
+        image_width, image_height = self.page.get_size()
+        ink = (79, 45, 22)
+        arrow_ink = (133, 83, 37)
+
+        for label, center_x in (("[ MOVIMIENTO ]", 280), ("[ COMBATE ]", 780)):
+            title = self.header_font.render(label, True, ink)
+            self.page.blit(title, title.get_rect(center=(center_x, 145)))
+
+        left_rows = (
+            ("[ A / D ]", "MOVIMIENTO", 230),
+            ("[ W ]", "SALTO", 305),
+            ("[ S ]", "BAJAR (PLATAFORMA)", 380),
+            ("[ Q ]", "RODAR", 455),
         )
-        frame = self.frames[
-            0 if self.state == ScrollState.CLOSED else self.frame_index
-        ]
-        offset_x, offset_y = self.frame_offsets[
-            0 if self.state == ScrollState.CLOSED else self.frame_index
-        ]
-        image = pygame.transform.smoothscale(
-            frame,
-            (
-                max(1, round(frame.get_width() * scale)),
-                max(1, round(frame.get_height() * scale)),
-            ),
+        right_rows = (
+            ("[ E ]", "ATAQUE ESPECIAL", 255),
+            ("[ CLICK IZQ ]", "ATAQUE", 345),
+            ("[ CLICK DER ]", "BLOQUEO", 435),
+            ("[ ESC ]", "VOLVER AL MENÚ", 525),
         )
-        image_rect = image.get_rect(
-            topleft=(
-                round(screen_width / 2 + (offset_x - frame_width / 2) * scale),
-                round(screen_height / 2 + (offset_y - frame_height / 2) * scale),
+
+        for key, action, row_y in left_rows:
+            self._draw_mapping(
+                key,
+                action,
+                row_y,
+                key_x=75,
+                action_x=245,
+                page_right=493,
+                key_font=self.key_font,
+                action_font=self.action_font,
+                ink=ink,
+                arrow_ink=arrow_ink,
             )
+        for row_index, (key, action, row_y) in enumerate(right_rows):
+            self._draw_mapping(
+                key,
+                action,
+                row_y,
+                key_x=570,
+                action_x=745,
+                page_right=986,
+                key_font=self.footer_font if row_index == 3 else self.key_font,
+                action_font=self.footer_font if row_index == 3 else self.action_font,
+                ink=ink,
+                arrow_ink=arrow_ink,
+            )
+
+    def _draw_mapping(
+        self,
+        key,
+        action,
+        row_y,
+        key_x,
+        action_x,
+        page_right,
+        key_font,
+        action_font,
+        ink,
+        arrow_ink,
+    ):
+        key_surface = key_font.render(key, True, ink)
+        action_surface = action_font.render(action, True, ink)
+        if action_x + action_surface.get_width() > page_right:
+            action_font = pygame.font.SysFont(
+                "Georgia", max(13, action_font.get_height() - 3), bold=True
+            )
+            action_surface = action_font.render(action, True, ink)
+
+        self.page.blit(key_surface, (key_x, row_y - key_surface.get_height() // 2))
+        arrow_start = key_x + key_surface.get_width() + 8
+        arrow_end = action_x - 10
+        if arrow_end > arrow_start + 6:
+            pygame.draw.line(
+                self.page, arrow_ink, (arrow_start, row_y), (arrow_end, row_y), 2
+            )
+            pygame.draw.polygon(
+                self.page,
+                arrow_ink,
+                (
+                    (arrow_end, row_y),
+                    (arrow_end - 7, row_y - 4),
+                    (arrow_end - 7, row_y + 4),
+                ),
+            )
+        self.page.blit(
+            action_surface, (action_x, row_y - action_surface.get_height() // 2)
         )
-        surface.blit(image, image_rect)
