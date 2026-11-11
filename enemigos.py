@@ -819,12 +819,14 @@ class OjoVolador(Enemigo):
         self.distancia_disparo = 350
         self.objetivo_ataque = None
         self.flank_side = 1
-        self.preferred_distance = random.randint(255, 285)
+        self.preferred_distance = random.randint(180, 220)
         self.strafe_timer = 1.0
         self.strafe_direction = 1
         self.altura_orbita = random.randint(-50, 45)
         self.velocidad_vuelo = 180
-        self.distancia_minima_vuelo = 170
+        self.velocidad_retiro = 90
+        self.distancia_minima_vuelo = 90
+        self.distancia_minima_disparo = 170
 
         self.actualizar_hurtbox()
  
@@ -943,11 +945,13 @@ class OjoVolador(Enemigo):
  
                 jugador_real = getattr(player, "jugador", player)
                 desplazamiento_x = 0
+                velocidad = self.velocidad_vuelo
                 if distancia < self.distancia_minima_vuelo:
                     desplazamiento_x = -1 if dx > 0 else 1
+                    velocidad = self.velocidad_retiro
                 elif distancia > self.preferred_distance + 25:
                     desplazamiento_x = 1 if dx > 0 else -1
-                self.rect.x += round(desplazamiento_x * self.velocidad_vuelo * dt)
+                self.rect.x += round(desplazamiento_x * velocidad * dt)
 
                 altura_objetivo = max(
                     190,
@@ -960,7 +964,9 @@ class OjoVolador(Enemigo):
                 self.rect.centery += max(-3, min(3, delta_y))
  
                 if (
-                    self.distancia_minima_vuelo <= distancia <= self.distancia_disparo
+                    self.distancia_minima_disparo
+                    <= distancia
+                    <= self.distancia_disparo
                     and self.cooldown_ataque <= 0
                 ):
                     self.objetivo_ataque = jugador_real

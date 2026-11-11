@@ -996,12 +996,20 @@ def separar_enemigos(enemigos, ancho_mundo):
     enemigos_activos = [
         enemigo for enemigo in enemigos
         if enemigo.health > 0 and not getattr(enemigo, "muerto_definitivo", False)
-        and not getattr(enemigo, "esperando_jugador", False)
     ]
 
     for _ in range(3):
         for indice, primero in enumerate(enemigos_activos):
             for segundo in enemigos_activos[indice + 1:]:
+                distancia_vertical = abs(
+                    primero.rect.centery - segundo.rect.centery
+                )
+                distancia_vertical_minima = (
+                    primero.rect.height + segundo.rect.height
+                ) // 2 + 20
+                if distancia_vertical >= distancia_vertical_minima:
+                    continue
+
                 if not primero.rect.inflate(0, 20).colliderect(
                     segundo.rect.inflate(0, 20)
                 ):
@@ -1171,9 +1179,11 @@ while ejecutando:
             continue
 
         # Ataque héroe a enemigo
-        if (heroe.atacando and not heroe.has_hit and vista_heroe.hitbox.width > 0
+        if (heroe.atacando and enemigo not in heroe.enemigos_golpeados
+                and vista_heroe.hitbox.width > 0
                 and vista_heroe.hitbox.colliderect(enemigo.hurtbox)):
             enemigo.take_damage(20)
+            heroe.enemigos_golpeados.add(enemigo)
             heroe.has_hit = True
 
         # Ataque enemigo a héroe
