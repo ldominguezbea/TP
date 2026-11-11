@@ -885,7 +885,7 @@ def dibujar_plataformas(screen, scroll_x, plataformas, disenos):
 def crear_enemigo(clase, x):
     """Instancia un enemigo. OrcoRojo y Karasu_tengu se alinean con el suelo; OjoVolador flota."""
     if clase is OrcoRojo:
-        enemigo = OrcoRojo(x=x, y=POSICION_SUELO, escala=2.0)
+        enemigo = OrcoRojo(x=x, y=POSICION_SUELO, escala=1.0)
         enemigo.dano_ataque = 10
     elif clase is Karasu_tengu:
         enemigo = Karasu_tengu(x=x, y=POSICION_SUELO)
@@ -899,6 +899,9 @@ def crear_enemigo(clase, x):
     if isinstance(enemigo, (OrcoRojo, Karasu_tengu)):
         enemigo.rect.bottom = POSICION_SUELO
         enemigo.jump_force = -15
+        enemigo.velocity_y = 0
+        enemigo.on_ground = True
+        enemigo.hurtbox.topleft = enemigo.rect.topleft
     return enemigo
 
 
@@ -977,8 +980,9 @@ def generar_grupo_enemigos(posicion, indice_grupo=0):
         if usa_plataforma:
             enemigo.rect.centerx = plataforma_enemigo.centerx
             enemigo.rect.bottom = plataforma_enemigo.top
-            enemigo.on_ground = True
+        if clase is not OjoVolador:
             enemigo.velocity_y = 0
+            enemigo.on_ground = True
             enemigo.hurtbox.topleft = enemigo.rect.topleft
         enemigo.jump_cooldown = random.uniform(0.4, 1.4)
         enemigo.speed = random.randint(3, 5)
