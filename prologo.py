@@ -11,7 +11,6 @@ def prologue():
         "3.png",
         "4.png",
         "5.png",
-        "Pag_6.png",
     )
     imagenes = []
 

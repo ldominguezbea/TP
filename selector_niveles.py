@@ -37,7 +37,7 @@ def crear_ventana():
 screen = pygame.Surface((WIDTH, HEIGHT))
 clock = pygame.time.Clock()
 audio = None
- 
+
 WHITE = (255, 255, 255)
 GOLD = (255, 215, 0)
  
