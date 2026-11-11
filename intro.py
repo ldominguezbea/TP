@@ -8,6 +8,7 @@ from config import BASE_DIR, SCREEN_HEIGHT, SCREEN_WIDTH
 
 class Intro:
     TITLE_IMAGE = BASE_DIR / "assets" / "fondos" / "Imagen_titulo.jpg"
+    LOGO_IMAGE = BASE_DIR / "assets" / "barras de vida" / "LOGO.png"
     TITLE_TRACK = BASE_DIR / "musica" / "title_music.mp3"
     BROADCAST_AUDIO = (
         BASE_DIR / "musica" / "ElevenLabs_2026-11-08T19_38_54_VEGA_gen_s50_sim75_v4.mp3"
@@ -38,11 +39,13 @@ class Intro:
         self.title_rect = self.title_image.get_rect(
             center=(screen_width // 2, screen_height // 2)
         )
+        logo = pygame.image.load(str(self.LOGO_IMAGE)).convert_alpha()
+        self.studio_logo = pygame.transform.scale(logo, (210, 226))
         self.particle_layer = pygame.Surface(
             (screen_width, screen_height), pygame.SRCALPHA
         )
-        self.studio_font = pygame.font.SysFont("Arial", 34, bold=True)
-        self.credit_font = pygame.font.SysFont("Arial", 24, bold=True)
+        self.studio_font = pygame.font.SysFont("Georgia", 36, bold=True)
+        self.credit_font = pygame.font.SysFont("Georgia", 24, bold=True)
 
         rng = random.Random(1604)
         self.particles = tuple(
@@ -131,6 +134,36 @@ class Intro:
                 (self.screen.get_width() // 2 - rendered.get_width() // 2, y),
             )
 
+    def _draw_studio_credit(self):
+        phase_duration_ms = self.STUDIO_PHASE_END_MS
+        alpha = min(
+            255,
+            round(
+                255
+                * min(
+                    self.timeline_ms / self.FADE_DURATION_MS,
+                    (phase_duration_ms - self.timeline_ms)
+                    / self.FADE_DURATION_MS,
+                    1,
+                )
+            ),
+        )
+        rendered = self.studio_font.render("IRONBOUND STUDIOS", True, (245, 245, 245))
+        rendered.set_alpha(alpha)
+        self.studio_logo.set_alpha(alpha)
+
+        group_height = self.studio_logo.get_height() + 18 + rendered.get_height()
+        top = (self.screen.get_height() - group_height) // 2
+        center_x = self.screen.get_width() // 2
+        self.screen.blit(
+            self.studio_logo,
+            self.studio_logo.get_rect(midtop=(center_x, top)),
+        )
+        self.screen.blit(
+            rendered,
+            (center_x - rendered.get_width() // 2, top + self.studio_logo.get_height() + 18),
+        )
+
     def _draw_particles(self, screen_width, screen_height, intensity, title_mode):
         self.particle_layer.fill((0, 0, 0, 0))
         elapsed_seconds = self.timeline_ms / 1000
@@ -166,10 +199,7 @@ class Intro:
         self.screen.fill(self.BACKGROUND_COLOR)
 
         if self.phase == "STUDIO":
-            self._draw_credit(
-                (("IRONBOUND STUDIOS", self.studio_font, (245, 245, 245)),),
-                self.timeline_ms,
-            )
+            self._draw_studio_credit()
         elif self.phase == "ENGINE":
             self._draw_credit(
                 (("POWERED BY PYGAME-CE", self.credit_font, (245, 245, 245)),),
