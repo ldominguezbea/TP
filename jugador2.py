@@ -2,6 +2,7 @@
 import pygame
 import os
 
+
 # ============================================================
 # PERSONAJE P_TIERRA
 # ============================================================
@@ -122,21 +123,45 @@ class p_tierra(pygame.sprite.Sprite):
         self.combo_siguiente = False
 
         # ====================================================
-        # DAÑO DEL PRIMER ATAQUE
+        # DAÑO DE LOS ATAQUES
         # ====================================================
 
+        # ATAQUE 1
         self.dano_ataque_1 = 15
+        self.golpe_aplicado = False
+
+        # ATAQUE 2
+        self.dano_ataque_2 = 8
+
+        # Archivos 2_atk_6 y 2_atk_9.
+        self.frames_golpe_ataque_2 = {0, 3}
+        self.frames_ataque_2_que_danaron = set()
+
+        # ATAQUE AÉREO
+        self.dano_ataque_aereo = 15
+        self.golpe_aereo_aplicado = False
+        self.frame_golpe_aereo = 3
+
+        # ATAQUE 3
+        self.dano_ataque_3 = 25
+        self.frame_golpe_ataque_3 = 7
+        self.golpe_tercer_ataque_aplicado = False
+
+        # ATAQUE ESPECIAL
+        self.dano_ataque_especial = 30
+        self.frame_golpe_ataque_especial = 18
+        self.enemigos_golpeados_sp_atk = set()
 
         # ====================================================
         # HITBOX DEL ATAQUE
         # ====================================================
 
         self.hitbox = pygame.Rect(0, 0, 0, 0)
+
         self.hitbox_activa = False
 
-        self.golpe_aplicado = False
+        self.color_hitbox = (255, 0, 0)
 
-        # Actualizar la hurtbox inicial
         self.actualizar_hurtbox()
 
     # ========================================================
@@ -156,9 +181,7 @@ class p_tierra(pygame.sprite.Sprite):
             "P_tierra"
         )
 
-        # ----------------------------------------------------
         # IDLE
-        # ----------------------------------------------------
 
         for i in range(1, 7):
 
@@ -170,16 +193,10 @@ class p_tierra(pygame.sprite.Sprite):
                 )
             ).convert_alpha()
 
-            img = pygame.transform.scale(
-                img,
-                escala
-            )
-
+            img = pygame.transform.scale(img, escala)
             self.animaciones["idle"].append(img)
 
-        # ----------------------------------------------------
         # RUN
-        # ----------------------------------------------------
 
         for i in range(1, 9):
 
@@ -191,16 +208,10 @@ class p_tierra(pygame.sprite.Sprite):
                 )
             ).convert_alpha()
 
-            img = pygame.transform.scale(
-                img,
-                escala
-            )
-
+            img = pygame.transform.scale(img, escala)
             self.animaciones["run"].append(img)
 
-        # ----------------------------------------------------
         # ROLL
-        # ----------------------------------------------------
 
         for i in range(1, 7):
 
@@ -212,16 +223,10 @@ class p_tierra(pygame.sprite.Sprite):
                 )
             ).convert_alpha()
 
-            img = pygame.transform.scale(
-                img,
-                escala
-            )
-
+            img = pygame.transform.scale(img, escala)
             self.animaciones["roll"].append(img)
 
-        # ----------------------------------------------------
         # SALTO
-        # ----------------------------------------------------
 
         for i in range(1, 4):
 
@@ -233,16 +238,10 @@ class p_tierra(pygame.sprite.Sprite):
                 )
             ).convert_alpha()
 
-            img = pygame.transform.scale(
-                img,
-                escala
-            )
-
+            img = pygame.transform.scale(img, escala)
             self.animaciones["j_up"].append(img)
 
-        # ----------------------------------------------------
         # DEFENSA
-        # ----------------------------------------------------
 
         for i in range(1, 14):
 
@@ -254,16 +253,10 @@ class p_tierra(pygame.sprite.Sprite):
                 )
             ).convert_alpha()
 
-            img = pygame.transform.scale(
-                img,
-                escala
-            )
-
+            img = pygame.transform.scale(img, escala)
             self.animaciones["defend"].append(img)
 
-        # ----------------------------------------------------
         # ATAQUE 1
-        # ----------------------------------------------------
 
         for i in range(1, 7):
 
@@ -275,16 +268,10 @@ class p_tierra(pygame.sprite.Sprite):
                 )
             ).convert_alpha()
 
-            img = pygame.transform.scale(
-                img,
-                escala
-            )
-
+            img = pygame.transform.scale(img, escala)
             self.animaciones["1_atk"].append(img)
 
-        # ----------------------------------------------------
         # ATAQUE 2
-        # ----------------------------------------------------
 
         for i in range(6, 13):
 
@@ -296,16 +283,10 @@ class p_tierra(pygame.sprite.Sprite):
                 )
             ).convert_alpha()
 
-            img = pygame.transform.scale(
-                img,
-                escala
-            )
-
+            img = pygame.transform.scale(img, escala)
             self.animaciones["2_atk"].append(img)
 
-        # ----------------------------------------------------
         # ATAQUE AÉREO
-        # ----------------------------------------------------
 
         for i in range(1, 8):
 
@@ -317,16 +298,10 @@ class p_tierra(pygame.sprite.Sprite):
                 )
             ).convert_alpha()
 
-            img = pygame.transform.scale(
-                img,
-                escala
-            )
-
+            img = pygame.transform.scale(img, escala)
             self.animaciones["air_atk"].append(img)
 
-        # ----------------------------------------------------
         # ATAQUE ESPECIAL
-        # ----------------------------------------------------
 
         for i in range(1, 26):
 
@@ -338,16 +313,10 @@ class p_tierra(pygame.sprite.Sprite):
                 )
             ).convert_alpha()
 
-            img = pygame.transform.scale(
-                img,
-                escala
-            )
-
+            img = pygame.transform.scale(img, escala)
             self.animaciones["sp_atk"].append(img)
 
-        # ----------------------------------------------------
         # ATAQUE 3
-        # ----------------------------------------------------
 
         for i in range(11, 24):
 
@@ -359,16 +328,10 @@ class p_tierra(pygame.sprite.Sprite):
                 )
             ).convert_alpha()
 
-            img = pygame.transform.scale(
-                img,
-                escala
-            )
-
+            img = pygame.transform.scale(img, escala)
             self.animaciones["3_atk"].append(img)
 
-        # ----------------------------------------------------
-        # ANIMACIÓN HIT: 6 IMÁGENES
-        # ----------------------------------------------------
+        # ANIMACIÓN HIT
 
         for i in range(1, 7):
 
@@ -380,16 +343,10 @@ class p_tierra(pygame.sprite.Sprite):
                 )
             ).convert_alpha()
 
-            img = pygame.transform.scale(
-                img,
-                escala
-            )
-
+            img = pygame.transform.scale(img, escala)
             self.animaciones["take_hit"].append(img)
 
-        # ----------------------------------------------------
-        # ANIMACIÓN DE MUERTE: 19 IMÁGENES
-        # ----------------------------------------------------
+        # ANIMACIÓN DE MUERTE
 
         for i in range(1, 19):
 
@@ -401,11 +358,7 @@ class p_tierra(pygame.sprite.Sprite):
                 )
             ).convert_alpha()
 
-            img = pygame.transform.scale(
-                img,
-                escala
-            )
-
+            img = pygame.transform.scale(img, escala)
             self.animaciones["death"].append(img)
 
     # ========================================================
@@ -417,20 +370,21 @@ class p_tierra(pygame.sprite.Sprite):
         if self.vida <= 0 or self.muerto:
             return
 
+        # INVULNERABILIDAD DURANTE TODO EL ATAQUE ESPECIAL
+        if self.estado == "sp_atk" and self.atacando:
+            return
+
         if self.recibiendo_dano or self.inmune_dano:
             return
 
-        # Rodar y defenderse conservan su protección.
         if self.rodando or self.defendiendo:
             return
 
-        # Reducir la vida.
         self.vida = max(
             0,
             self.vida - cantidad
         )
 
-        # Si la vida llega a cero, iniciar la muerte.
         if self.vida <= 0:
 
             self.muerto = True
@@ -451,18 +405,15 @@ class p_tierra(pygame.sprite.Sprite):
 
             return
 
-        # Iniciar la animación de daño.
         self.recibiendo_dano = True
         self.estado = "take_hit"
         self.frame_index = 0
 
-        # Detener el movimiento y cancelar el ataque actual.
         self.velocidad_x = 0
         self.atacando = False
         self.combo_siguiente = False
         self.hitbox_activa = False
 
-        # Evitar recibir golpes consecutivos inmediatamente.
         self.inmune_dano = True
         self.tiempo_inmunidad = pygame.time.get_ticks()
 
@@ -510,25 +461,37 @@ class p_tierra(pygame.sprite.Sprite):
         )
 
     # ========================================================
+    # DIBUJAR HITBOX ROJA
+    # ========================================================
+
+    def dibujar_hitbox(self, pantalla):
+
+        if not self.hitbox_activa or self.muerto:
+            return
+
+        pygame.draw.rect(
+            pantalla,
+            self.color_hitbox,
+            self.hitbox,
+            2
+        )
+
+    # ========================================================
     # EVENTOS DEL JUGADOR
     # ========================================================
 
     def procesar_evento(self, evento):
 
-        # No permitir acciones si recibe daño o está muerto.
         if self.recibiendo_dano or self.muerto:
             return
 
-        # Aceptar teclado y mouse
         if evento.type not in (
             pygame.KEYDOWN,
             pygame.MOUSEBUTTONDOWN
         ):
             return
 
-        # ====================================================
         # SALTO - W
-        # ====================================================
 
         if (
             evento.type == pygame.KEYDOWN
@@ -544,9 +507,7 @@ class p_tierra(pygame.sprite.Sprite):
             self.velocidad_y = self.fuerza_salto
             self.en_suelo = False
 
-        # ====================================================
         # RODAR - Q
-        # ====================================================
 
         elif (
             evento.type == pygame.KEYDOWN
@@ -562,9 +523,7 @@ class p_tierra(pygame.sprite.Sprite):
             self.rodando = True
             self.frame_index = 0
 
-        # ====================================================
         # DEFENDER - CLICK DERECHO
-        # ====================================================
 
         elif (
             evento.type == pygame.MOUSEBUTTONDOWN
@@ -580,9 +539,7 @@ class p_tierra(pygame.sprite.Sprite):
             self.defendiendo = True
             self.frame_index = 0
 
-        # ====================================================
         # ATAQUE ESPECIAL - E
-        # ====================================================
 
         elif (
             evento.type == pygame.KEYDOWN
@@ -598,19 +555,16 @@ class p_tierra(pygame.sprite.Sprite):
             self.atacando = True
             self.estado = "sp_atk"
             self.frame_index = 0
+            self.enemigos_golpeados_sp_atk.clear()
 
-        # ====================================================
         # ATAQUE - CLICK IZQUIERDO
-        # ====================================================
 
         elif (
             evento.type == pygame.MOUSEBUTTONDOWN
             and evento.button == pygame.BUTTON_LEFT
         ):
 
-            # ------------------------------------------------
             # ATAQUE AÉREO
-            # ------------------------------------------------
 
             if (
                 not self.en_suelo
@@ -621,9 +575,9 @@ class p_tierra(pygame.sprite.Sprite):
                 self.estado = "air_atk"
                 self.frame_index = 0
 
-            # ------------------------------------------------
+                self.golpe_aereo_aplicado = False
+
             # ATAQUE TERRESTRE
-            # ------------------------------------------------
 
             elif (
                 self.en_suelo
@@ -638,6 +592,7 @@ class p_tierra(pygame.sprite.Sprite):
                     self.atacando = True
                     self.estado = "1_atk"
                     self.frame_index = 0
+
                     self.combo_siguiente = False
                     self.golpe_aplicado = False
 
@@ -647,8 +602,7 @@ class p_tierra(pygame.sprite.Sprite):
                 ]:
 
                     self.combo_siguiente = True
-
-    # ========================================================
+        # ========================================================
     # MOVIMIENTO CONTINUO
     # ========================================================
 
@@ -656,7 +610,6 @@ class p_tierra(pygame.sprite.Sprite):
 
         teclas = pygame.key.get_pressed()
 
-        # Bloquear movimiento durante acciones.
         if (
             self.muerto
             or self.recibiendo_dano
@@ -673,18 +626,10 @@ class p_tierra(pygame.sprite.Sprite):
 
         self.velocidad_x = 0
 
-        # ----------------------------------------------------
-        # IZQUIERDA - A
-        # ----------------------------------------------------
-
         if teclas[pygame.K_a]:
 
             self.velocidad_x = -self.velocidad_movimiento
             self.mirando_derecha = False
-
-        # ----------------------------------------------------
-        # DERECHA - D
-        # ----------------------------------------------------
 
         if teclas[pygame.K_d]:
 
@@ -697,12 +642,10 @@ class p_tierra(pygame.sprite.Sprite):
 
     def actualizar_estado(self):
 
-        # La muerte tiene prioridad.
         if self.muerto:
 
             self.estado = "death"
 
-        # La animación de daño tiene prioridad.
         elif self.recibiendo_dano:
 
             self.estado = "take_hit"
@@ -737,17 +680,12 @@ class p_tierra(pygame.sprite.Sprite):
 
     def animar(self):
 
-        # ----------------------------------------------------
-        # ANIMACIÓN DE MUERTE
-        # ----------------------------------------------------
-
         if self.muerto:
 
             anim = self.animaciones["death"]
 
             self.frame_index += self.velocidad_animacion
 
-            # Reproducir la muerte una sola vez.
             if self.frame_index >= len(anim):
 
                 self.kill()
@@ -775,34 +713,26 @@ class p_tierra(pygame.sprite.Sprite):
 
         self.frame_index += self.velocidad_animacion
 
-        # ----------------------------------------------------
         # FINAL DE ANIMACIÓN
-        # ----------------------------------------------------
 
         if self.frame_index >= len(anim):
 
             self.frame_index = 0
 
-            # Animación de daño.
             if self.recibiendo_dano:
 
                 self.recibiendo_dano = False
                 self.estado = "idle"
                 self.velocidad_x = 0
 
-                anim = self.animaciones["idle"]
-
-            # Roll
             elif self.rodando:
 
                 self.rodando = False
 
-            # Defensa
             elif self.defendiendo:
 
                 self.defendiendo = False
 
-            # Ataques que terminan
             elif self.estado in [
                 "air_atk",
                 "sp_atk",
@@ -811,7 +741,6 @@ class p_tierra(pygame.sprite.Sprite):
 
                 self.atacando = False
 
-            # Ataque 1
             elif self.estado == "1_atk":
 
                 if self.combo_siguiente:
@@ -819,11 +748,12 @@ class p_tierra(pygame.sprite.Sprite):
                     self.estado = "2_atk"
                     self.combo_siguiente = False
 
+                    self.frames_ataque_2_que_danaron.clear()
+
                 else:
 
                     self.atacando = False
 
-            # Ataque 2
             elif self.estado == "2_atk":
 
                 if self.combo_siguiente:
@@ -831,22 +761,18 @@ class p_tierra(pygame.sprite.Sprite):
                     self.estado = "3_atk"
                     self.combo_siguiente = False
 
+                    self.golpe_tercer_ataque_aplicado = False
+
                 else:
 
                     self.atacando = False
 
-        # ----------------------------------------------------
-        # FRAME ACTUAL
-        # ----------------------------------------------------
-
-        # Volver a obtener la animación si cambió el estado.
         anim = self.animaciones[self.estado]
 
         frame_actual = anim[
             min(int(self.frame_index), len(anim) - 1)
         ]
 
-        # Girar personaje.
         if not self.mirando_derecha:
 
             self.image = pygame.transform.flip(
@@ -869,10 +795,6 @@ class p_tierra(pygame.sprite.Sprite):
 
         self.rect.y += self.velocidad_y
 
-        # ----------------------------------------------------
-        # SUELO
-        # ----------------------------------------------------
-
         if self.rect.bottom >= self.posicion_suelo:
 
             self.rect.bottom = self.posicion_suelo
@@ -892,34 +814,183 @@ class p_tierra(pygame.sprite.Sprite):
 
         self.hitbox_activa = False
 
-        if self.estado != "1_atk" or not self.atacando:
+        if (
+            self.muerto
+            or self.recibiendo_dano
+            or not self.atacando
+        ):
             return
 
-        # Ventana de impacto: primera imagen de la animación.
-        if int(self.frame_index) != 0 or self.golpe_aplicado:
-            return
+        frame_actual = int(self.frame_index)
 
-        ancho_hitbox = 80
-        alto_hitbox = 30
-        y_hitbox = self.rect.top + 100
+        # ====================================================
+        # ATAQUE 1
+        # ====================================================
 
-        if self.mirando_derecha:
+        if self.estado == "1_atk":
 
-            self.hitbox = pygame.Rect(
-                self.rect.right - 20,
-                y_hitbox,
-                ancho_hitbox,
-                alto_hitbox
+            if (
+                frame_actual != 0
+                or self.golpe_aplicado
+            ):
+                return
+
+            ancho_hitbox = 80
+            alto_hitbox = 30
+
+            y_hitbox = (
+                self.hurtbox.centery
+                - alto_hitbox // 2
             )
+
+            if self.mirando_derecha:
+
+                x_hitbox = self.hurtbox.right
+
+            else:
+
+                x_hitbox = (
+                    self.hurtbox.left
+                    - ancho_hitbox
+                )
+
+        # ====================================================
+        # ATAQUE 2
+        # IMÁGENES 6 Y 9
+        # ====================================================
+
+        elif self.estado == "2_atk":
+
+            if frame_actual not in self.frames_golpe_ataque_2:
+                return
+
+            if frame_actual in self.frames_ataque_2_que_danaron:
+                return
+
+            ancho_hitbox = 80
+            alto_hitbox = 30
+
+            y_hitbox = (
+                self.hurtbox.centery
+                - alto_hitbox // 2
+            )
+
+            if self.mirando_derecha:
+
+                x_hitbox = self.hurtbox.right
+
+            else:
+
+                x_hitbox = (
+                    self.hurtbox.left
+                    - ancho_hitbox
+                )
+
+        # ====================================================
+        # ATAQUE AÉREO
+        # IMAGEN 4
+        # ====================================================
+
+        elif self.estado == "air_atk":
+
+            if frame_actual != self.frame_golpe_aereo:
+                return
+
+            if self.golpe_aereo_aplicado:
+                return
+
+            ancho_hitbox = 90
+            alto_hitbox = 35
+
+            y_hitbox = (
+                self.hurtbox.centery
+                - alto_hitbox // 2
+            )
+
+            if self.mirando_derecha:
+
+                x_hitbox = self.hurtbox.right
+
+            else:
+
+                x_hitbox = (
+                    self.hurtbox.left
+                    - ancho_hitbox
+                )
+
+        # ====================================================
+        # ATAQUE 3
+        # ROCA - IMAGEN 18
+        # ====================================================
+
+        elif self.estado == "3_atk":
+
+            if frame_actual != self.frame_golpe_ataque_3:
+                return
+
+            if self.golpe_tercer_ataque_aplicado:
+                return
+
+            ancho_hitbox = 100
+            alto_hitbox = 70
+
+            y_hitbox = (
+                self.hurtbox.bottom
+                - alto_hitbox
+            )
+
+            if self.mirando_derecha:
+
+                x_hitbox = self.hurtbox.right
+
+            else:
+
+                x_hitbox = (
+                    self.hurtbox.left
+                    - ancho_hitbox
+                )
+
+        # ====================================================
+        # ATAQUE ESPECIAL
+        # PUÑO DE ROCA - IMAGEN 19
+        # ====================================================
+
+        elif self.estado == "sp_atk":
+
+            if frame_actual != self.frame_golpe_ataque_especial:
+                return
+
+            ancho_hitbox = 160
+            alto_hitbox = 140
+
+            y_hitbox = (
+                self.hurtbox.centery
+                - alto_hitbox // 2
+            )
+
+            if self.mirando_derecha:
+
+                x_hitbox = self.hurtbox.right
+
+            else:
+
+                x_hitbox = (
+                    self.hurtbox.left
+                    - ancho_hitbox
+                )
 
         else:
 
-            self.hitbox = pygame.Rect(
-                self.rect.left - ancho_hitbox + 20,
-                y_hitbox,
-                ancho_hitbox,
-                alto_hitbox
-            )
+            return
+
+        # CREAR HITBOX
+
+        self.hitbox = pygame.Rect(
+            x_hitbox,
+            y_hitbox,
+            ancho_hitbox,
+            alto_hitbox
+        )
 
         self.hitbox_activa = True
 
@@ -932,18 +1003,112 @@ class p_tierra(pygame.sprite.Sprite):
         if self.muerto or enemigo is None:
             return
 
-        if not self.hitbox_activa or self.golpe_aplicado:
+        if not self.hitbox_activa:
             return
 
         if not enemigo.alive() or enemigo.vida <= 0:
             return
 
-        if self.hitbox.colliderect(enemigo.hurtbox):
+        if not self.hitbox.colliderect(enemigo.hurtbox):
+            return
 
-            enemigo.recibir_dano(self.dano_ataque_1)
+        frame_actual = int(self.frame_index)
+
+        # ====================================================
+        # ATAQUE 1
+        # ====================================================
+
+        if self.estado == "1_atk":
+
+            if self.golpe_aplicado:
+                return
+
+            enemigo.recibir_dano(
+                self.dano_ataque_1
+            )
 
             self.golpe_aplicado = True
             self.hitbox_activa = False
+
+        # ====================================================
+        # ATAQUE 2
+        # ====================================================
+
+        elif self.estado == "2_atk":
+
+            if frame_actual not in self.frames_golpe_ataque_2:
+                return
+
+            if frame_actual in self.frames_ataque_2_que_danaron:
+                return
+
+            enemigo.recibir_dano(
+                self.dano_ataque_2
+            )
+
+            self.frames_ataque_2_que_danaron.add(
+                frame_actual
+            )
+
+            self.hitbox_activa = False
+
+        # ====================================================
+        # ATAQUE AÉREO
+        # ====================================================
+
+        elif self.estado == "air_atk":
+
+            if frame_actual != self.frame_golpe_aereo:
+                return
+
+            if self.golpe_aereo_aplicado:
+                return
+
+            enemigo.recibir_dano(
+                self.dano_ataque_aereo
+            )
+
+            self.golpe_aereo_aplicado = True
+            self.hitbox_activa = False
+
+        # ====================================================
+        # ATAQUE 3
+        # ====================================================
+
+        elif self.estado == "3_atk":
+
+            if frame_actual != self.frame_golpe_ataque_3:
+                return
+
+            if self.golpe_tercer_ataque_aplicado:
+                return
+
+            enemigo.recibir_dano(
+                self.dano_ataque_3
+            )
+
+            self.golpe_tercer_ataque_aplicado = True
+            self.hitbox_activa = False
+
+        # ====================================================
+        # ATAQUE ESPECIAL
+        # ====================================================
+
+        elif self.estado == "sp_atk":
+
+            if frame_actual != self.frame_golpe_ataque_especial:
+                return
+
+            if id(enemigo) in self.enemigos_golpeados_sp_atk:
+                return
+
+            enemigo.recibir_dano(
+                self.dano_ataque_especial
+            )
+
+            self.enemigos_golpeados_sp_atk.add(
+                id(enemigo)
+            )
 
     # ========================================================
     # ACTUALIZAR JUGADOR
@@ -955,20 +1120,16 @@ class p_tierra(pygame.sprite.Sprite):
         ancho_mundo
     ):
 
-        # Si está muerto, solo reproducir la animación de muerte.
         if self.muerto:
 
             self.animar()
             return
 
-        # Actualizar inmunidad.
         self.actualizar_inmunidad()
 
         self.manejar_movimiento_continuo()
 
-        # ----------------------------------------------------
         # VELOCIDAD AL RODAR
-        # ----------------------------------------------------
 
         if self.rodando and not self.recibiendo_dano:
 
@@ -980,15 +1141,11 @@ class p_tierra(pygame.sprite.Sprite):
                 else -1
             )
 
-        # ----------------------------------------------------
         # POSICIÓN GLOBAL
-        # ----------------------------------------------------
 
         self.pos_x += self.velocidad_x
 
-        # ----------------------------------------------------
         # LÍMITES DEL MUNDO
-        # ----------------------------------------------------
 
         limite_izquierdo = scroll_x + 80
 
@@ -1000,34 +1157,28 @@ class p_tierra(pygame.sprite.Sprite):
             )
         )
 
-        # ----------------------------------------------------
         # POSICIÓN EN PANTALLA
-        # ----------------------------------------------------
 
         self.rect.centerx = int(
             self.pos_x - scroll_x
         )
 
-        # ----------------------------------------------------
         # FÍSICA
-        # ----------------------------------------------------
 
         self.aplicar_gravedad()
 
-        # Actualizar hurtbox.
+        # ACTUALIZAR HURTBOX
+
         self.actualizar_hurtbox()
 
-        # ----------------------------------------------------
         # ESTADO
-        # ----------------------------------------------------
 
         self.actualizar_estado()
 
-        # ----------------------------------------------------
         # ANIMACIÓN
-        # ----------------------------------------------------
 
         self.animar()
 
-        # Actualizar hitbox.
+        # HITBOX
+
         self.actualizar_hitbox(scroll_x)
