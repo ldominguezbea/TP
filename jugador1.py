@@ -78,19 +78,21 @@ class p_viento(pygame.sprite.Sprite):
         self.dano_ataque_1 = 15
         self.golpe_aplicado = False
 
-        self.dano_ataque_2 = 3
+        self.dano_ataque_2 = 6
         self.frames_golpe_ataque_2 = {3, 4, 5, 6, 7}
-        self.frames_que_ya_danaron = set()
+        self.frames_que_ya_danaron = {}
 
-        self.dano_ataque_3 = 20
-        self.golpe_tercer_ataque_aplicado = False
+        self.dano_ataque_3 = 38
+        self.enemigos_golpeados_ataque_3 = set()
 
         self.dano_ataque_aereo = 15
         self.golpe_aereo_aplicado = False
 
-        self.dano_ataque_especial = 10
+        self.dano_ataque_especial = 12
         self.frames_golpe_especial = {11, 17, 19}
-        self.frames_especial_que_danaron = set()
+        self.frames_especial_que_danaron = {}
+        self.origen_especial_x = self.pos_x
+        self.origen_especial_y = self.hurtbox.centery
 
         # HITBOX
         self.hitbox = pygame.Rect(0, 0, 0, 0)
@@ -157,11 +159,13 @@ class p_viento(pygame.sprite.Sprite):
         if (
             self.rodando
             or self.defendiendo
-            or self.estado == "sp_atk"
+            or (self.estado == "sp_atk" and self.atacando)
         ):
             return
 
         self.vida = max(0, self.vida - cantidad)
+        self.inmune_dano = True
+        self.tiempo_inmunidad = pygame.time.get_ticks()
 
         if self.vida <= 0:
 
@@ -182,18 +186,6 @@ class p_viento(pygame.sprite.Sprite):
             self.hitbox_activa = False
 
             return
-
-        self.recibiendo_dano = True
-        self.estado = "take_hit"
-        self.frame_index = 0
-
-        self.velocidad_x = 0
-        self.atacando = False
-        self.combo_siguiente = False
-        self.hitbox_activa = False
-
-        self.inmune_dano = True
-        self.tiempo_inmunidad = pygame.time.get_ticks()
 
     def actualizar_inmunidad(self):
 
@@ -294,6 +286,8 @@ class p_viento(pygame.sprite.Sprite):
             self.frame_index = 0
 
             self.frames_especial_que_danaron.clear()
+            self.origen_especial_x = self.pos_x
+            self.origen_especial_y = self.hurtbox.centery
 
         elif (
             evento.type == pygame.MOUSEBUTTONDOWN
@@ -465,7 +459,7 @@ class p_viento(pygame.sprite.Sprite):
                     self.frame_index = 0
                     self.combo_siguiente = False
 
-                    self.golpe_tercer_ataque_aplicado = False
+                    self.enemigos_golpeados_ataque_3.clear()
 
                 else:
                     self.atacando = False
@@ -529,16 +523,13 @@ class p_viento(pygame.sprite.Sprite):
             if frame_actual not in self.frames_golpe_ataque_2:
                 return
 
-            if frame_actual in self.frames_que_ya_danaron:
-                return
+            ancho_hitbox = 140
+            alto_hitbox = 90
 
         # ATAQUE 3
         elif self.estado == "3_atk":
 
             if frame_actual not in (6, 7, 8):
-                return
-
-            if self.golpe_tercer_ataque_aplicado:
                 return
 
             ancho_hitbox = 150
@@ -562,11 +553,23 @@ class p_viento(pygame.sprite.Sprite):
             if frame_actual not in self.frames_golpe_especial:
                 return
 
-            if frame_actual in self.frames_especial_que_danaron:
-                return
+            ancho_hitbox = 500
+            alto_hitbox = self.posicion_suelo + self.hurtbox.height
 
-            ancho_hitbox = 150
-            alto_hitbox = 100
+            centro_especial_x = round(
+                self.origen_especial_x - scroll_x
+            )
+            x_hitbox = centro_especial_x - ancho_hitbox // 2
+            y_hitbox = 0
+
+            self.hitbox = pygame.Rect(
+                x_hitbox,
+                y_hitbox,
+                ancho_hitbox,
+                alto_hitbox
+            )
+            self.hitbox_activa = True
+            return
 
         else:
             return
@@ -628,10 +631,22 @@ class p_viento(pygame.sprite.Sprite):
         if not self.hitbox_activa:
             return
 
-        if not enemigo.alive() or enemigo.vida <= 0:
+        esta_vivo = getattr(enemigo, "alive", None)
+        if callable(esta_vivo) and not esta_vivo():
             return
 
-        if not self.hitbox.colliderect(enemigo.hurtbox):
+        vida_enemigo = getattr(enemigo, "health", getattr(enemigo, "vida", None))
+        if getattr(enemigo, "muerto_definitivo", False) or (
+            vida_enemigo is not None and vida_enemigo <= 0
+        ):
+            return
+
+        hurtbox_enemigo = getattr(
+            enemigo,
+            "hurtbox",
+            getattr(enemigo, "rect", None),
+        )
+        if hurtbox_enemigo is None or not self.hitbox.colliderect(hurtbox_enemigo):
             return
 
         frame_actual = int(self.frame_index)
@@ -641,7 +656,7 @@ class p_viento(pygame.sprite.Sprite):
             if self.golpe_aplicado:
                 return
 
-            enemigo.recibir_dano(self.dano_ataque_1)
+            dano = self.dano_ataque_1
 
             self.golpe_aplicado = True
             self.hitbox_activa = False
@@ -651,26 +666,27 @@ class p_viento(pygame.sprite.Sprite):
             if frame_actual not in self.frames_golpe_ataque_2:
                 return
 
-            if frame_actual in self.frames_que_ya_danaron:
+            id_enemigo = id(enemigo)
+            if frame_actual in self.frames_que_ya_danaron.get(id_enemigo, set()):
                 return
 
-            enemigo.recibir_dano(self.dano_ataque_2)
-
-            self.frames_que_ya_danaron.add(frame_actual)
-            self.hitbox_activa = False
+            dano = self.dano_ataque_2
+            self.frames_que_ya_danaron.setdefault(id_enemigo, set()).add(
+                frame_actual
+            )
 
         elif self.estado == "3_atk":
 
             if frame_actual not in (6, 7, 8):
                 return
 
-            if self.golpe_tercer_ataque_aplicado:
+            id_enemigo = id(enemigo)
+            if id_enemigo in self.enemigos_golpeados_ataque_3:
                 return
 
-            enemigo.recibir_dano(self.dano_ataque_3)
+            dano = self.dano_ataque_3
 
-            self.golpe_tercer_ataque_aplicado = True
-            self.hitbox_activa = False
+            self.enemigos_golpeados_ataque_3.add(id_enemigo)
 
         elif self.estado == "air_atk":
 
@@ -680,7 +696,7 @@ class p_viento(pygame.sprite.Sprite):
             if self.golpe_aereo_aplicado:
                 return
 
-            enemigo.recibir_dano(self.dano_ataque_aereo)
+            dano = self.dano_ataque_aereo
 
             self.golpe_aereo_aplicado = True
             self.hitbox_activa = False
@@ -690,15 +706,27 @@ class p_viento(pygame.sprite.Sprite):
             if frame_actual not in self.frames_golpe_especial:
                 return
 
-            if frame_actual in self.frames_especial_que_danaron:
+            id_enemigo = id(enemigo)
+            if frame_actual in self.frames_especial_que_danaron.get(id_enemigo, set()):
                 return
 
-            enemigo.recibir_dano(self.dano_ataque_especial)
+            dano = self.dano_ataque_especial
 
-            self.frames_especial_que_danaron.add(frame_actual)
-            self.hitbox_activa = False
+            self.frames_especial_que_danaron.setdefault(id_enemigo, set()).add(
+                frame_actual
+            )
 
-    
+        else:
+            return
+
+        if hasattr(enemigo, "recibir_dano"):
+            enemigo.recibir_dano(dano)
+        elif hasattr(enemigo, "take_damage"):
+            enemigo.take_damage(dano)
+        elif hasattr(enemigo, "health"):
+            enemigo.health = max(0, enemigo.health - dano)
+        elif hasattr(enemigo, "vida"):
+            enemigo.vida = max(0, enemigo.vida - dano)
 
     def update(
         self,

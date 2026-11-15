@@ -687,29 +687,9 @@ def ejecutar_batalla_carnicero(screen, player, fondo_img):
             tiempo_en_hitbox_jefe = 0.0
             setattr(jefe, 'has_hit', False)
 
-        if not getattr(jefe, 'muerto_definitivo', False) and player.atacando:
-            if player.estado == 'sp_atk':
-                num_imagen = int(player.frame_index) + 1
-                if num_imagen in (12, 18, 20):
-                    if not player.has_hit:
-                        if player.hitbox.colliderect(jefe.hurtbox):
-                            jefe.take_damage(18)
-                            player.has_hit = True
-                else:
-                    player.has_hit = False
-            else:
-                if not player.has_hit:
-                    if player.hitbox.colliderect(jefe.hurtbox):
-                        dano_basico = 10
-                        if player.estado == '2_atk':
-                            dano_basico = 12
-                        elif player.estado == '3_atk':
-                            dano_basico = 16
-                        elif player.estado == 'air_atk':
-                            dano_basico = 12
-
-                        jefe.take_damage(dano_basico)
-                        player.has_hit = True
+        if not getattr(jefe, 'muerto_definitivo', False):
+            player.comprobar_golpe(jefe)
+            player.comprobar_golpes_proyectiles((jefe,))
 
         screen.blit(fondo_img, (0, 0))
         screen.blit(player.image, player.rect)
@@ -1103,30 +1083,9 @@ def ejecutar_batalla_ciclope(screen, player, fondo_img):
                     jefe.rect.bottom = POSICION_SUELO
                     jefe.hurtbox = jefe.rect.copy()
 
-        if (
-            not transicion_fase
-            and jefe.health > 0
-            and player.atacando
-            and not demonios_activos
-        ):
-            if player.estado == "sp_atk":
-                num_imagen = int(player.frame_index) + 1
-                if num_imagen in (12, 18, 20) and not player.has_hit:
-                    if player.hitbox.colliderect(jefe.hurtbox):
-                        jefe.take_damage(18)
-                        player.has_hit = True
-                elif num_imagen not in (12, 18, 20):
-                    player.has_hit = False
-            elif not player.has_hit and player.hitbox.colliderect(jefe.hurtbox):
-                dano = 10
-                if player.estado == "2_atk":
-                    dano = 12
-                elif player.estado == "3_atk":
-                    dano = 16
-                elif player.estado == "air_atk":
-                    dano = 12
-                jefe.take_damage(dano)
-                player.has_hit = True
+        if not transicion_fase and jefe.health > 0 and not demonios_activos:
+            player.comprobar_golpe(jefe)
+            player.comprobar_golpes_proyectiles((jefe,))
 
         if jefe.health <= 0:
             cancelar_fase_al_morir()
@@ -1460,8 +1419,8 @@ class MimicoCueva(Enemigo):
         self.rect.bottom = y
         self.direction = "left"
         self.hurtbox = self.rect.copy()
-        self.health = 90
-        self.max_health = 90
+        self.health = 40
+        self.max_health = 40
         self.attack_range = 155
         self.attack_cooldown_time = 1.2
         self.gravity = 0.5
@@ -1656,7 +1615,7 @@ def dibujar_plataformas(screen, scroll_x, plataformas, disenos):
 
 def crear_enemigo(clase, x):
     enemigo = clase(x=x, y=POSICION_SUELO)
-    enemigo.health = enemigo.max_health = 60
+    enemigo.health = enemigo.max_health = 40
     enemigo.dano_ataque = 7
     enemigo.suelo_y = POSICION_SUELO
     enemigo.rect.bottom = POSICION_SUELO
@@ -1978,16 +1937,8 @@ def ejecutar_prueba_tuneles(screen, player):
                         continue
                     enemigo.allies = enemigos_sala
                     enemigo.update(vista_jugador, dt, width=ANCHO)
-                    if (
-                        enemigo.health > 0
-                        and player.atacando
-                        and enemigo not in player.enemigos_golpeados
-                        and vista_jugador.hitbox.width > 0
-                        and vista_jugador.hitbox.colliderect(enemigo.hurtbox)
-                    ):
-                        enemigo.take_damage(20)
-                        player.enemigos_golpeados.add(enemigo)
-                        player.has_hit = True
+                    if enemigo.health > 0:
+                        player.comprobar_golpe(enemigo)
                     hitbox_enemigo = getattr(enemigo, "hitbox", None)
                     if (
                         enemigo.health > 0
@@ -2000,6 +1951,8 @@ def ejecutar_prueba_tuneles(screen, player):
                             getattr(enemigo, "dano_ataque", 10)
                         )
                         enemigo.has_hit = True
+
+            player.comprobar_golpes_proyectiles(enemigos_sala)
 
             fondo = fondo_tuneles if escena == "pasillo" else fondos[0]
             screen.blit(fondo, (0, 0))
@@ -2266,20 +2219,14 @@ if __name__ == "__main__":
             enemigo.plataformas = plataformas_nivel
             enemigo.update(vista_heroe,dt,width=ANCHO_MUNDO)
             if enemigo.health > 0:
-                if (
-                    heroe.atacando
-                    and not getattr(enemigo, "es_cofre_cerrado", False)
-                    and enemigo not in heroe.enemigos_golpeados
-                    and vista_heroe.hitbox.width > 0
-                    and vista_heroe.hitbox.colliderect(enemigo.hurtbox)
-                ):
-                    enemigo.take_damage(20)
-                    heroe.enemigos_golpeados.add(enemigo)
-                    heroe.has_hit = True
+                if not getattr(enemigo, "es_cofre_cerrado", False):
+                    heroe.comprobar_golpe(enemigo)
                 hb = getattr(enemigo,"hitbox",None)
                 if hb is not None and hb.width > 0 and not getattr(enemigo,"has_hit",False) and hb.colliderect(vista_heroe.hurtbox):
                     heroe.take_damage(getattr(enemigo,"dano_ataque",10))
                     enemigo.has_hit = True
+
+        heroe.comprobar_golpes_proyectiles(enemigos_nivel)
 
         if (
             puzzle_completado

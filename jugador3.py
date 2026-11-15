@@ -51,14 +51,14 @@ class p_fuego(pygame.sprite.Sprite):
         self.dano_ataque_aereo = 15
         self.golpe_aereo_aplicado = False
 
-        self.dano_ataque_2 = 3
+        self.dano_ataque_2 = 7
         self.frames_golpe_ataque_2 = {}
 
-        self.dano_ataque_3 = 20
-        self.golpe_ataque_3_aplicado = False
+        self.dano_ataque_3 = 40
+        self.enemigos_golpeados_ataque_3 = set()
 
-        self.dano_ataque_especial = 30
-        self.golpe_especial_aplicado = False
+        self.dano_ataque_especial = 55
+        self.enemigos_golpeados_especial = set()
 
         # ====================================================
         # ANIMACIONES
@@ -410,25 +410,11 @@ class p_fuego(pygame.sprite.Sprite):
         self.inmune_dano = True
         self.tiempo_ultimo_dano = pygame.time.get_ticks()
 
-        self.velocidad_x = 0
-
-        self.atacando = False
-        self.combo_siguiente = False
-        self.rodando = False
-        self.defendiendo = False
-
-        self.frame_index = 0
-
         if self.vida <= 0:
 
             self.muerto = True
             self.recibiendo_dano = False
             self.estado = "11_death"
-
-        else:
-
-            self.recibiendo_dano = True
-            self.estado = "take_hit"
 
     # ========================================================
     # HITBOX DE LOS ATAQUES
@@ -518,25 +504,22 @@ class p_fuego(pygame.sprite.Sprite):
                         100
                     )
 
-        # ATAQUE ESPECIAL: IMAGEN 14
+        # ATAQUE ESPECIAL: EXPLOSION ALREDEDOR DEL GOLPE DE ESPADA
         elif self.estado == "sp_atk" and self.atacando:
 
             if int(self.frame_index) == 13:
 
-                if self.mirando_derecha:
-                    self.hitbox = pygame.Rect(
-                        self.hurtbox.right - 5,
-                        self.hurtbox.centery - 40,
-                        120,
-                        80
-                    )
-                else:
-                    self.hitbox = pygame.Rect(
-                        self.hurtbox.left - 115,
-                        self.hurtbox.centery - 40,
-                        120,
-                        80
-                    )
+                ancho_explosion = 300
+                alto_explosion = 240
+                centro_impacto_x = self.hurtbox.centerx + (
+                    80 if self.mirando_derecha else -80
+                )
+                self.hitbox = pygame.Rect(
+                    centro_impacto_x - ancho_explosion // 2,
+                    self.hurtbox.centery - alto_explosion // 2,
+                    ancho_explosion,
+                    alto_explosion,
+                )
 
     def dibujar_hitbox(self, pantalla, scroll_x=0):
 
@@ -554,7 +537,16 @@ class p_fuego(pygame.sprite.Sprite):
 
     def comprobar_golpe(self, enemigo):
 
-        if self.hitbox.width <= 0:
+        if self.muerto or enemigo is None or self.hitbox.width <= 0:
+            return
+
+        esta_vivo = getattr(enemigo, "alive", None)
+        vida_enemigo = getattr(enemigo, "health", getattr(enemigo, "vida", None))
+        if (
+            (callable(esta_vivo) and not esta_vivo())
+            or getattr(enemigo, "muerto_definitivo", False)
+            or (vida_enemigo is not None and vida_enemigo <= 0)
+        ):
             return
 
         hurtbox_enemigo = getattr(
@@ -587,7 +579,7 @@ class p_fuego(pygame.sprite.Sprite):
             dano = self.dano_ataque_aereo
             self.golpe_aereo_aplicado = True
 
-        # ATAQUE 2: 3 DE DAÑO EN CADA IMAGEN 11 A 15
+        # ATAQUE 2: DAÑO POR IMPACTO EN CADA IMAGEN DE LA RÁFAGA
         elif self.estado == "2_atk":
 
             frame_actual = int(self.frame_index)
@@ -609,20 +601,21 @@ class p_fuego(pygame.sprite.Sprite):
         # ATAQUE 3: IMAGEN 24
         elif self.estado == "3_atk":
 
-            if self.golpe_ataque_3_aplicado:
+            id_enemigo = id(enemigo)
+            if id_enemigo in self.enemigos_golpeados_ataque_3:
                 return
 
             dano = self.dano_ataque_3
-            self.golpe_ataque_3_aplicado = True
+            self.enemigos_golpeados_ataque_3.add(id_enemigo)
 
         # ATAQUE ESPECIAL: IMAGEN 14
         elif self.estado == "sp_atk":
 
-            if self.golpe_especial_aplicado:
+            if enemigo in self.enemigos_golpeados_especial:
                 return
 
             dano = self.dano_ataque_especial
-            self.golpe_especial_aplicado = True
+            self.enemigos_golpeados_especial.add(enemigo)
 
         else:
             return
@@ -638,6 +631,10 @@ class p_fuego(pygame.sprite.Sprite):
         elif hasattr(enemigo, "vida"):
 
             enemigo.vida = max(0, enemigo.vida - dano)
+
+        elif hasattr(enemigo, "health"):
+
+            enemigo.health = max(0, enemigo.health - dano)
         # ========================================================
     # EVENTOS DEL JUGADOR
     # ========================================================
@@ -725,7 +722,7 @@ class p_fuego(pygame.sprite.Sprite):
             self.atacando = True
             self.estado = "sp_atk"
             self.frame_index = 0
-            self.golpe_especial_aplicado = False
+            self.enemigos_golpeados_especial.clear()
 
         # ====================================================
         # ATAQUE - CLICK IZQUIERDO
@@ -934,7 +931,7 @@ class p_fuego(pygame.sprite.Sprite):
 
                     self.estado = "3_atk"
                     self.frame_index = 0
-                    self.golpe_ataque_3_aplicado = False
+                    self.enemigos_golpeados_ataque_3.clear()
                     self.combo_siguiente = False
                     self.golpe_aplicado = False
 

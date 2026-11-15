@@ -256,7 +256,7 @@ class FlechaHorizontal(pygame.sprite.Sprite):
         self.frame_index = 0
         self.velocidad_animacion = 0.25
 
-        self.dano = 20
+        self.dano = 32
 
         ruta_flecha = os.path.join(
             BASE_EFECTOS,
@@ -363,6 +363,12 @@ class FlechaHorizontal(pygame.sprite.Sprite):
                 enemigo.vida = max(
                     0,
                     enemigo.vida - self.dano
+                )
+
+            elif hasattr(enemigo, "health"):
+                enemigo.health = max(
+                    0,
+                    enemigo.health - self.dano
                 )
 
             self.kill()
@@ -478,7 +484,7 @@ class RafagaFlechas(pygame.sprite.Sprite):
         self.frame_index = 0
         self.velocidad_animacion = 0.25
 
-        self.dano_por_frame = 4
+        self.dano_por_frame = 7
 
         self.ultimo_frame_golpeado = 0
         self.enemigos_golpeados_frame = set()
@@ -577,6 +583,12 @@ class RafagaFlechas(pygame.sprite.Sprite):
                     enemigo.vida - self.dano_por_frame
                 )
 
+            elif hasattr(enemigo, "health"):
+                enemigo.health = max(
+                    0,
+                    enemigo.health - self.dano_por_frame
+                )
+
             self.enemigos_golpeados_frame.add(enemigo)
 
             return True
@@ -662,7 +674,9 @@ class p_planta(pygame.sprite.Sprite):
         self.dano_ataque_1 = 15
         self.golpe_aplicado = False
 
-        self.dano_ataque_especial = 30
+        self.dano_ataque_3 = 42
+        self.dano_ataque_especial = 55
+        self.enemigos_golpeados_ataque_3 = set()
         self.enemigos_golpeados_especial = set()
 
         # ====================================================
@@ -890,24 +904,11 @@ class p_planta(pygame.sprite.Sprite):
         self.inmune_dano = True
         self.tiempo_ultimo_dano = pygame.time.get_ticks()
 
-        self.velocidad_x = 0
-        self.atacando = False
-        self.combo_siguiente = False
-        self.rodando = False
-        self.defendiendo = False
-
-        self.frame_index = 0
-
         if self.vida <= 0:
 
             self.muerto = True
             self.recibiendo_dano = False
             self.estado = "death"
-
-        else:
-
-            self.recibiendo_dano = True
-            self.estado = "take_hit"
         # ========================================================
     # HITBOX DEL PRIMER ATAQUE Y ATAQUE ESPECIAL
     # ========================================================
@@ -946,8 +947,8 @@ class p_planta(pygame.sprite.Sprite):
 
             if int(self.frame_index) == 9:
 
-                ancho_rayo = 730
-                alto_rayo = 85
+                ancho_rayo = 900
+                alto_rayo = 110
 
                 centro_y_rayo = self.hurtbox.centery - 80
 
@@ -975,7 +976,16 @@ class p_planta(pygame.sprite.Sprite):
 
     def comprobar_golpe(self, enemigo):
 
-        if self.hitbox.width <= 0:
+        if self.muerto or enemigo is None or self.hitbox.width <= 0:
+            return
+
+        esta_vivo = getattr(enemigo, "alive", None)
+        vida_enemigo = getattr(enemigo, "health", getattr(enemigo, "vida", None))
+        if (
+            (callable(esta_vivo) and not esta_vivo())
+            or getattr(enemigo, "muerto_definitivo", False)
+            or (vida_enemigo is not None and vida_enemigo <= 0)
+        ):
             return
 
         hurtbox_enemigo = getattr(
@@ -1011,6 +1021,12 @@ class p_planta(pygame.sprite.Sprite):
             dano = self.dano_ataque_1
             self.golpe_aplicado = True
 
+        elif self.estado == "3_atk":
+            if enemigo in self.enemigos_golpeados_ataque_3:
+                return
+            dano = self.dano_ataque_3
+            self.enemigos_golpeados_ataque_3.add(enemigo)
+
         else:
             return
 
@@ -1027,6 +1043,13 @@ class p_planta(pygame.sprite.Sprite):
             enemigo.vida = max(
                 0,
                 enemigo.vida - dano
+            )
+
+        elif hasattr(enemigo, "health"):
+
+            enemigo.health = max(
+                0,
+                enemigo.health - dano
             )
 
     # ========================================================
@@ -1400,6 +1423,7 @@ class p_planta(pygame.sprite.Sprite):
                     self.combo_siguiente = False
                     self.flecha_horizontal_creada = False
                     self.golpe_aplicado = False
+                    self.enemigos_golpeados_especial.clear()
 
                 else:
 
@@ -1414,6 +1438,7 @@ class p_planta(pygame.sprite.Sprite):
                     self.estado = "3_atk"
                     self.frame_index = 0
                     self.rafaga_creada = False
+                    self.enemigos_golpeados_ataque_3.clear()
                     self.combo_siguiente = False
 
                 else:

@@ -728,29 +728,9 @@ def ejecutar_batalla_carnicero(screen, player, fondo_img):
             tiempo_en_hitbox_jefe = 0.0
             setattr(jefe, 'has_hit', False)
 
-        if not getattr(jefe, 'muerto_definitivo', False) and player.atacando:
-            if player.estado == 'sp_atk':
-                num_imagen = int(player.frame_index) + 1
-                if num_imagen in (12, 18, 20):
-                    if not player.has_hit:
-                        if player.hitbox.colliderect(jefe.hurtbox):
-                            jefe.take_damage(18)
-                            player.has_hit = True
-                else:
-                    player.has_hit = False
-            else:
-                if not player.has_hit:
-                    if player.hitbox.colliderect(jefe.hurtbox):
-                        dano_basico = 10
-                        if player.estado == '2_atk':
-                            dano_basico = 12
-                        elif player.estado == '3_atk':
-                            dano_basico = 16
-                        elif player.estado == 'air_atk':
-                            dano_basico = 12
-
-                        jefe.take_damage(dano_basico)
-                        player.has_hit = True
+        if not getattr(jefe, 'muerto_definitivo', False):
+            player.comprobar_golpe(jefe)
+            player.comprobar_golpes_proyectiles((jefe,))
 
         screen.blit(fondo_img, (0, 0))
         screen.blit(player.image, player.rect)
@@ -1100,30 +1080,9 @@ def ejecutar_batalla_werewolf(screen, player, fondo_img):
                     jefe.rect.bottom = POSICION_SUELO
                     jefe.hurtbox = jefe.rect.copy()
 
-        if (
-            not transicion_fase
-            and jefe.health > 0
-            and player.atacando
-            and not demonios_activos
-        ):
-            if player.estado == "sp_atk":
-                num_imagen = int(player.frame_index) + 1
-                if num_imagen in (12, 18, 20) and not player.has_hit:
-                    if player.hitbox.colliderect(jefe.hurtbox):
-                        jefe.take_damage(18)
-                        player.has_hit = True
-                elif num_imagen not in (12, 18, 20):
-                    player.has_hit = False
-            elif not player.has_hit and player.hitbox.colliderect(jefe.hurtbox):
-                dano = 10
-                if player.estado == "2_atk":
-                    dano = 12
-                elif player.estado == "3_atk":
-                    dano = 16
-                elif player.estado == "air_atk":
-                    dano = 12
-                jefe.take_damage(dano)
-                player.has_hit = True
+        if not transicion_fase and jefe.health > 0 and not demonios_activos:
+            player.comprobar_golpe(jefe)
+            player.comprobar_golpes_proyectiles((jefe,))
 
         if jefe.health <= 0:
             cancelar_fase_al_morir()
@@ -1400,8 +1359,8 @@ def crear_enemigo(clase, x):
     """Instancia un enemigo y lo alinea con el suelo."""
     if clase in (HombreLoboRojo, HombreLoboNegro, Mushroom):
         enemigo = clase(x=x, y=POSICION_SUELO)
-        enemigo.health = 60
-        enemigo.max_health = 60
+        enemigo.health = 40
+        enemigo.max_health = 40
         enemigo.dano_ataque = 5
 
     enemigo.suelo_y = POSICION_SUELO
@@ -1446,8 +1405,8 @@ def crear_enemigo_autobus(indice):
     )
     enemigo.rect.centerx = posicion_salida
     enemigo.hurtbox.topleft = enemigo.rect.topleft
-    enemigo.health = 60
-    enemigo.max_health = 60
+    enemigo.health = 40
+    enemigo.max_health = 40
     enemigo.dano_ataque = 7
     enemigo.attack_range = 1
     enemigo.preferred_distance = 0
@@ -1779,13 +1738,7 @@ while ejecutando:
         enemigo.update(objetivo, dt, width=ANCHO_MUNDO)
 
         if enemigo.health > 0:
-            if (heroe.atacando and enemigo not in heroe.enemigos_golpeados
-                    and vista_heroe.hitbox.width > 0
-                    and vista_heroe.hitbox.colliderect(enemigo.hurtbox)):
-                enemigo.take_damage(20)
-                heroe.enemigos_golpeados.add(enemigo)
-                heroe.has_hit = True
-
+            heroe.comprobar_golpe(enemigo)
             hb = getattr(enemigo, 'hitbox', None)
             if hb is not None and hb.width > 0 and not getattr(enemigo, 'has_hit', False):
                 if hb.colliderect(vista_heroe.hurtbox):
@@ -1799,6 +1752,8 @@ while ejecutando:
         ):
             autobus_perdido = True
             autobus_activo = False
+
+    heroe.comprobar_golpes_proyectiles(enemigos_en_escena)
 
     if (
         autobus_activo

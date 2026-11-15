@@ -49,6 +49,29 @@ class _AdaptadorJugadorNivel:
     def take_damage(self, damage):
         self.recibir_dano(damage)
 
+    def comprobar_golpe(self, enemigo):
+        hitbox = self.hitbox
+        self.hitbox = hitbox.move(self.scroll_x_actual, 0)
+        try:
+            return super().comprobar_golpe(enemigo)
+        finally:
+            self.hitbox = hitbox
+
+    def comprobar_golpes_proyectiles(self, enemigos):
+        proyectiles = getattr(self, "proyectiles", None)
+        if proyectiles is None:
+            return
+
+        for proyectil in list(proyectiles):
+            comprobar_golpe = getattr(proyectil, "comprobar_golpe", None)
+            if not callable(comprobar_golpe):
+                continue
+
+            for enemigo in enemigos:
+                if proyectil not in proyectiles:
+                    break
+                comprobar_golpe(enemigo)
+
     def procesar_evento(self, evento):
         if (
             evento.type == pygame.KEYDOWN

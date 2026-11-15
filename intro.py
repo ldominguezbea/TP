@@ -22,6 +22,24 @@ class Intro:
     DUCKED_MUSIC_VOLUME = 0.2
     TITLE_MUSIC_VOLUME = 0.8
     BACKGROUND_COLOR = (0, 0, 0)
+    SUBTITLE_CUES = (
+        (0, 1_600, "Advertencia."),
+        (1_600, 4_100, "Red de defensa global fuera de línea."),
+        (4_100, 6_900, "Más del 60 % de la población ha perecido."),
+        (
+            6_900,
+            10_600,
+            "Las fuerzas militares se desmoronan\n"
+            "ante interminables hordas demoníacas.",
+        ),
+        (10_600, 11_900, "Estamos desbordados."),
+        (11_900, 12_750, "Mayday."),
+        (12_750, 15_700, "Baliza de socorro automática activada."),
+        (15_700, 17_700, "¿Alguien me escucha?"),
+        (17_700, 19_600, "¿Alguien puede leerme?"),
+        (19_600, 21_200, "¿Hay alguien ahí fuera?"),
+        (21_200, 22_439, "Que Dios nos ayude."),
+    )
 
     def __init__(self, screen):
         self.screen = screen
@@ -46,6 +64,8 @@ class Intro:
         )
         self.studio_font = pygame.font.SysFont("Georgia", 36, bold=True)
         self.credit_font = pygame.font.SysFont("Georgia", 24, bold=True)
+        self.subtitle_font = pygame.font.SysFont("Arial", 30, bold=True)
+        self.subtitle = None
 
         rng = random.Random(1604)
         self.particles = tuple(
@@ -62,6 +82,8 @@ class Intro:
         if not pygame.mixer.get_init():
             pygame.mixer.init()
         self.broadcast_audio = pygame.mixer.Sound(str(self.BROADCAST_AUDIO))
+        self.broadcast_channel = None
+        self.broadcast_started_ticks = None
         pygame.mixer.music.load(str(self.TITLE_TRACK))
         pygame.mixer.music.set_volume(self.MUSIC_VOLUME)
         pygame.mixer.music.play(-1)
@@ -90,7 +112,8 @@ class Intro:
             not self.broadcast_started
             and self.timeline_ms >= self.STUDIO_PHASE_END_MS
         ):
-            self.broadcast_audio.play()
+            self.broadcast_channel = self.broadcast_audio.play()
+            self.broadcast_started_ticks = pygame.time.get_ticks()
             pygame.mixer.music.set_volume(self.DUCKED_MUSIC_VOLUME)
             self.broadcast_started = True
 
@@ -109,6 +132,59 @@ class Intro:
             self.phase = "ASH"
         else:
             self.phase = "TITLE"
+
+        self.subtitle = None
+        if (
+            self.broadcast_channel is not None
+            and self.broadcast_started_ticks is not None
+            and self.broadcast_channel.get_busy()
+        ):
+            audio_position_ms = (
+                pygame.time.get_ticks() - self.broadcast_started_ticks
+            )
+            self.subtitle = next(
+                (
+                    text
+                    for start_ms, end_ms, text in self.SUBTITLE_CUES
+                    if start_ms <= audio_position_ms < end_ms
+                ),
+                None,
+            )
+
+    def _draw_subtitle(self):
+        if self.subtitle is None:
+            return
+
+        lines = self.subtitle.splitlines()
+        rendered_lines = [
+            self.subtitle_font.render(line, True, (255, 255, 255))
+            for line in lines
+        ]
+        padding_x = 28
+        padding_y = 14
+        line_spacing = 4
+        box_width = max(line.get_width() for line in rendered_lines) + padding_x * 2
+        box_height = (
+            sum(line.get_height() for line in rendered_lines)
+            + line_spacing * (len(rendered_lines) - 1)
+            + padding_y * 2
+        )
+        box = pygame.Surface((box_width, box_height), pygame.SRCALPHA)
+        pygame.draw.rect(
+            box,
+            (0, 0, 0, 190),
+            box.get_rect(),
+            border_radius=8,
+        )
+        box_rect = box.get_rect(
+            midbottom=(self.screen.get_width() // 2, self.screen.get_height() - 28)
+        )
+        self.screen.blit(box, box_rect)
+
+        y = box_rect.top + padding_y
+        for line in rendered_lines:
+            self.screen.blit(line, line.get_rect(midtop=(box_rect.centerx, y)))
+            y += line.get_height() + line_spacing
 
     def _draw_credit(self, lines, phase_elapsed_ms):
         phase_duration_ms = self.ENGINE_PHASE_END_MS - self.STUDIO_PHASE_END_MS
@@ -217,6 +293,8 @@ class Intro:
             self._draw_particles(
                 screen_width, screen_height, 1.0, title_mode=True
             )
+
+        self._draw_subtitle()
 
 
 def run_intro():

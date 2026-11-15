@@ -657,29 +657,9 @@ def ejecutar_batalla_carnicero(screen, player, fondo_img):
             tiempo_en_hitbox_jefe = 0.0
             setattr(jefe, 'has_hit', False)
 
-        if not getattr(jefe, 'muerto_definitivo', False) and player.atacando:
-            if player.estado == 'sp_atk':
-                num_imagen = int(player.frame_index) + 1
-                if num_imagen in (12, 18, 20):
-                    if not player.has_hit:
-                        if player.hitbox.colliderect(jefe.hurtbox):
-                            jefe.take_damage(18)
-                            player.has_hit = True
-                else:
-                    player.has_hit = False
-            else:
-                if not player.has_hit:
-                    if player.hitbox.colliderect(jefe.hurtbox):
-                        dano_basico = 10
-                        if player.estado == '2_atk':
-                            dano_basico = 12
-                        elif player.estado == '3_atk':
-                            dano_basico = 16
-                        elif player.estado == 'air_atk':
-                            dano_basico = 12
-
-                        jefe.take_damage(dano_basico)
-                        player.has_hit = True
+        if not getattr(jefe, 'muerto_definitivo', False):
+            player.comprobar_golpe(jefe)
+            player.comprobar_golpes_proyectiles((jefe,))
 
         screen.blit(fondo_img, (0, 0))
         screen.blit(player.image, player.rect)
@@ -895,6 +875,8 @@ def crear_enemigo(clase, x):
         enemigo = OjoVolador(x=x, y=POSICION_SUELO, suelo_y=POSICION_SUELO)
         enemigo.DANO_PROYECTIL = 10
 
+    enemigo.health = 40
+    enemigo.max_health = 40
     enemigo.suelo_y = POSICION_SUELO
     if isinstance(enemigo, (OrcoRojo, Karasu_tengu)):
         enemigo.rect.bottom = POSICION_SUELO
@@ -1183,12 +1165,8 @@ while ejecutando:
             continue
 
         # Ataque héroe a enemigo
-        if (heroe.atacando and enemigo not in heroe.enemigos_golpeados
-                and vista_heroe.hitbox.width > 0
-                and vista_heroe.hitbox.colliderect(enemigo.hurtbox)):
-            enemigo.take_damage(20)
-            heroe.enemigos_golpeados.add(enemigo)
-            heroe.has_hit = True
+        if not getattr(enemigo, "es_cofre_cerrado", False):
+            heroe.comprobar_golpe(enemigo)
 
         # Ataque enemigo a héroe
         hb = getattr(enemigo, 'hitbox', None)
@@ -1196,6 +1174,8 @@ while ejecutando:
             if hb.colliderect(vista_heroe.hurtbox):
                 heroe.take_damage(getattr(enemigo, 'dano_ataque', 10))
                 enemigo.has_hit = True
+
+    heroe.comprobar_golpes_proyectiles(enemigos_nivel)
 
     enemigos_cercanos = [
         enemigo for enemigo in enemigos_nivel
