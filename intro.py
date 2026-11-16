@@ -41,7 +41,7 @@ class Intro:
         (21_200, 22_439, "Que Dios nos ayude."),
     )
 
-    def __init__(self, screen):
+    def __init__(self, screen, audio_enabled=True):
         self.screen = screen
         screen_width, screen_height = screen.get_size()
         title_image = pygame.image.load(str(self.TITLE_IMAGE)).convert()
@@ -65,6 +65,21 @@ class Intro:
         self.studio_font = pygame.font.SysFont("Georgia", 36, bold=True)
         self.credit_font = pygame.font.SysFont("Georgia", 24, bold=True)
         self.subtitle_font = pygame.font.SysFont("Arial", 30, bold=True)
+        self.instruction_font = pygame.font.SysFont("Arial", 22, bold=True)
+        self.instruction = self.instruction_font.render(
+            'press "esc" to continue', True, (255, 255, 255)
+        )
+        self.instruction_background = pygame.Surface(
+            (self.instruction.get_width() + 28, self.instruction.get_height() + 20),
+            pygame.SRCALPHA,
+        )
+        pygame.draw.rect(
+            self.instruction_background,
+            (0, 0, 0, 175),
+            self.instruction_background.get_rect(),
+            border_radius=6,
+        )
+        self.instruction_rect = self.instruction_background.get_rect(topleft=(24, 24))
         self.subtitle = None
 
         rng = random.Random(1604)
@@ -79,14 +94,21 @@ class Intro:
             for _ in range(self.PARTICLE_COUNT)
         )
 
-        if not pygame.mixer.get_init():
-            pygame.mixer.init()
-        self.broadcast_audio = pygame.mixer.Sound(str(self.BROADCAST_AUDIO))
+        self.audio_enabled = audio_enabled
+        self.broadcast_audio = None
         self.broadcast_channel = None
         self.broadcast_started_ticks = None
-        pygame.mixer.music.load(str(self.TITLE_TRACK))
-        pygame.mixer.music.set_volume(self.MUSIC_VOLUME)
-        pygame.mixer.music.play(-1)
+        if self.audio_enabled:
+            try:
+                if not pygame.mixer.get_init():
+                    pygame.mixer.init()
+                self.broadcast_audio = pygame.mixer.Sound(str(self.BROADCAST_AUDIO))
+                pygame.mixer.music.load(str(self.TITLE_TRACK))
+                pygame.mixer.music.set_volume(self.MUSIC_VOLUME)
+                pygame.mixer.music.play(-1)
+            except (pygame.error, OSError) as error:
+                print(f"[AUDIO] No se pudo iniciar el audio de la intro: {error}")
+                self.audio_enabled = False
 
         self.elapsed_ms = 0
         self.timeline_ms = 0
@@ -96,20 +118,22 @@ class Intro:
         self.finished = False
 
     def handle_event(self, event):
-        if event.type == pygame.KEYDOWN and self.phase == "TITLE":
-            pygame.mixer.music.stop()
-            self.broadcast_audio.stop()
+        if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+            if self.audio_enabled:
+                pygame.mixer.music.stop()
+                self.broadcast_audio.stop()
             self.finished = True
 
     def update(self, elapsed_ms):
         self.elapsed_ms += max(0, elapsed_ms)
-        music_position = pygame.mixer.music.get_pos()
+        music_position = pygame.mixer.music.get_pos() if self.audio_enabled else -1
         self.timeline_ms = max(
             self.timeline_ms, self.elapsed_ms, music_position, 0
         )
 
         if (
-            not self.broadcast_started
+            self.audio_enabled
+            and not self.broadcast_started
             and self.timeline_ms >= self.STUDIO_PHASE_END_MS
         ):
             self.broadcast_channel = self.broadcast_audio.play()
@@ -118,7 +142,8 @@ class Intro:
             self.broadcast_started = True
 
         if (
-            not self.title_started
+            self.audio_enabled
+            and not self.title_started
             and self.timeline_ms >= self.TITLE_PHASE_START_MS
         ):
             pygame.mixer.music.set_volume(self.TITLE_MUSIC_VOLUME)
@@ -295,15 +320,23 @@ class Intro:
             )
 
         self._draw_subtitle()
+        self.screen.blit(self.instruction_background, self.instruction_rect)
+        self.screen.blit(
+            self.instruction,
+            (self.instruction_rect.x + 14, self.instruction_rect.y + 10),
+        )
 
 
-def run_intro():
-    pygame.init()
+def run_intro(screen=None, audio_enabled=True):
+    owns_display = screen is None
+    if owns_display:
+        pygame.init()
     try:
-        screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
-        pygame.display.set_caption("REQUIEM: El juicio final")
+        if owns_display:
+            screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+            pygame.display.set_caption("REQUIEM: El juicio final")
         clock = pygame.time.Clock()
-        intro = Intro(screen)
+        intro = Intro(screen, audio_enabled=audio_enabled)
         running = True
 
         while running and not intro.finished:
@@ -319,7 +352,9 @@ def run_intro():
                 intro.draw()
                 pygame.display.flip()
     finally:
-        pygame.quit()
+        if owns_display:
+            pygame.quit()
+    return running
 
 
 if __name__ == "__main__":

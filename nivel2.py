@@ -6,6 +6,7 @@ from array import array
 from types import SimpleNamespace
 import pygame
 from personajes import crear_jugador
+from menu_pausa import pausar_juego
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -682,6 +683,9 @@ def ejecutar_batalla_carnicero(screen, player, fondo_img):
             if event.type == pygame.QUIT:
                 pygame.quit()
                 sys.exit()
+            elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                pausar_juego(screen)
+                continue
 
             player.procesar_evento(event)
 
@@ -955,6 +959,9 @@ def ejecutar_batalla_werewolf(screen, player, fondo_img):
             if event.type == pygame.QUIT:
                 pygame.quit()
                 sys.exit()
+            elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                pausar_juego(screen)
+                continue
             if not transicion_fase:
                 player.procesar_evento(event)
 
@@ -1620,6 +1627,9 @@ while ejecutando:
     for evento in pygame.event.get():
         if evento.type == pygame.QUIT:
             ejecutando = False
+        elif evento.type == pygame.KEYDOWN and evento.key == pygame.K_ESCAPE:
+            pausar_juego(pantalla)
+            continue
 
         if autobus_perdido:
             if evento.type == pygame.KEYDOWN:

@@ -27,11 +27,13 @@ except pygame.error as e:
 from config import SCREEN_WIDTH, SCREEN_HEIGHT, GAME_WIDTH, GAME_HEIGHT, BASE_DIR, abrir_archivo
 
 import animacion_menu
+from intro import run_intro
 from prologo import prologue
 from selector_niveles import LevelSelector
 from sonidos_selector_niveles import Audio
 from personajes import PERSONAJE_SELECCIONADO_ENV
 from pergamino_controles import ControlsScroll
+from menu_pausa import EXIT_GAME_EXIT_CODE, RETURN_TO_MENU_EXIT_CODE
 
 
 # ============================================================
@@ -43,6 +45,7 @@ screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
 pygame.display.set_caption("REQUIEM: El juicio final")
 
 clock = pygame.time.Clock()
+
 
 class _Nivel1Finalizado(Exception):
     pass
@@ -463,7 +466,7 @@ menu_atmosphere = MenuAtmosphere(
 
 def launch_level(level_number):
 
-    global screen, level_selector
+    global screen, level_selector, game_state
 
     if level_selector is None:
         level_selector = LevelSelector(screen, audio)
@@ -489,8 +492,7 @@ def launch_level(level_number):
             os.chdir(BASE_DIR)
 
             try:
-
-                runpy.run_path(
+                resultado_nivel = runpy.run_path(
                     str(level_path),
                     run_name="_nivel1_integrado",
                     init_globals={
@@ -500,6 +502,18 @@ def launch_level(level_number):
 
             except _Nivel1Finalizado:
                 pass
+            except SystemExit as error:
+                if error.code == RETURN_TO_MENU_EXIT_CODE:
+                    game_state = "MENU"
+                elif error.code == EXIT_GAME_EXIT_CODE:
+                    game_state = "EXIT"
+                else:
+                    raise
+            else:
+                if resultado_nivel.get("accion_cierre_nivel") == "menu":
+                    game_state = "MENU"
+                elif resultado_nivel.get("accion_cierre_nivel") == "exit":
+                    game_state = "EXIT"
 
         finally:
 
@@ -513,11 +527,15 @@ def launch_level(level_number):
 
     else:
 
-        subprocess.run(
+        result = subprocess.run(
             [sys.executable, level_path],
             cwd=BASE_DIR,
             check=False,
         )
+        if result.returncode == RETURN_TO_MENU_EXIT_CODE:
+            game_state = "MENU"
+        elif result.returncode == EXIT_GAME_EXIT_CODE:
+            game_state = "EXIT"
 
     return True
 
@@ -1146,6 +1164,8 @@ def main():
 
     game_state = "MENU"
 
+    running = run_intro(screen, audio_enabled=audio_disponible)
+
     while running:
 
         elapsed_ms = clock.tick(60)
@@ -1421,6 +1441,10 @@ def main():
             elif option == "EXIT":
 
                 running = False
+
+        if game_state == "EXIT":
+            running = False
+            continue
 
         # ====================================================
         # ACTUALIZACIÓN DE ESTADOS

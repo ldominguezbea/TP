@@ -2,6 +2,7 @@ import os
 import sys
 import re
 import pygame
+from menu_pausa import pausar_juego
 
 WIDTH, HEIGHT = 1280, 720
 SUELO_Y = 610
@@ -155,6 +156,9 @@ def ejecutar_batalla_carnicero(screen, player, img_bar=None):
             if event.type == pygame.QUIT:
                 pygame.quit()
                 sys.exit()
+            elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                pausar_juego(screen)
+                continue
 
             if hasattr(player, "manejar_evento"):
                 player.manejar_evento(event)
