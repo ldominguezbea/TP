@@ -142,9 +142,6 @@ def draw_scenery(surface, time, parallax=(0.0, 0.0)):
         round(parallax_x * 5),
         round(parallax_y * 3),
     )
-    building_offset_x = round(parallax_x * 3)
-    building_offset_y = round(parallax_y * 2)
-
     buildings = [
         {"x": 60, "y": 40, "w": 45, "h": 100, "antenna": True},
         {"x": 110, "y": 25, "w": 55, "h": 115, "antenna": False},
@@ -154,8 +151,8 @@ def draw_scenery(surface, time, parallax=(0.0, 0.0)):
     ]
 
     for b in buildings:
-        bx = b["x"] + building_offset_x
-        by = b["y"] + building_offset_y
+        bx = b["x"]
+        by = b["y"]
         bw, bh = b["w"], b["h"]
         pygame.draw.rect(surface, (18, 6, 6), (bx, by, bw, bh))
         pygame.draw.rect(surface, (45, 12, 12), (bx, by, bw, bh), 1)

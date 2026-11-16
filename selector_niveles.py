@@ -1,3 +1,5 @@
+
+
 import pygame
 import sys
 import math
@@ -881,7 +883,9 @@ def sun_state(rot_deg):
  
 def draw_sun(sx, sy, theta, ticks, env):
     sc = (0.8 + 0.25 * math.cos(theta)) * (1 + 0.02 * math.sin(ticks * 0.003))
-    alpha = int(255 * (1 - 0.6 * env))
+    alpha = int(255 * (1 - env))
+    if alpha <= 0:
+        return
     size = max(8, int(300 * sc))
     rays = pygame.transform.rotozoom(SUN_RAYS, ticks * 0.008, sc)
     rays.set_alpha(alpha)
@@ -1109,6 +1113,7 @@ class LevelSelector:
         self.target_surface = target_surface
         self.audio = audio_manager
         audio = audio_manager
+        self._start_map_audio()
         current_planet = "TIERRA"
         active_levels = tierra_levels
         current_index = 1
@@ -1124,6 +1129,25 @@ class LevelSelector:
         par_x = par_y = 0.0
         bubbles.clear()
         self._dt = FRAME_MS
+
+    def _start_map_audio(self):
+        stop_ambient = getattr(self.audio, "stop_ambient", None)
+        if stop_ambient is not None:
+            stop_ambient()
+        if not pygame.mixer.get_init():
+            return
+        pygame.mixer.music.stop()
+        music_path = os.path.join(BASE_DIR, "musica", "Space.mp3")
+        try:
+            pygame.mixer.music.load(music_path)
+            pygame.mixer.music.set_volume(0.32)
+            pygame.mixer.music.play(-1)
+        except (pygame.error, OSError) as error:
+            print(f"[MAPA] No se pudo iniciar Space.mp3: {error}")
+
+    def close(self):
+        if pygame.mixer.get_init():
+            pygame.mixer.music.stop()
 
     def update(self, elapsed_ms):
         self._dt = max(1, min(50, elapsed_ms))
@@ -1292,6 +1316,7 @@ class LevelSelector:
 
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_ESCAPE:
+                self.close()
                 return "back"
             if event.key in (pygame.K_a, pygame.K_LEFT):
                 set_index(current_index - 1)
@@ -1299,6 +1324,7 @@ class LevelSelector:
                 set_index(current_index + 1)
             elif event.key in (pygame.K_RETURN, pygame.K_SPACE):
                 if intentar_lanzar(active_levels[current_index]):
+                    self.close()
                     return numero_nivel(active_levels[current_index])
             elif event.key == pygame.K_F11:
                 try:
@@ -1324,6 +1350,7 @@ class LevelSelector:
                         if idx != current_index:
                             set_index(idx)
                         elif intentar_lanzar(active_levels[idx]):
+                            self.close()
                             return numero_nivel(active_levels[idx])
                         break
         return None
@@ -1356,6 +1383,7 @@ def run_selector():
         pygame.display.flip()
         clock.tick(60)
 
+    selector.close()
     pygame.quit()
 
 

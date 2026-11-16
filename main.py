@@ -32,7 +32,7 @@ from prologo import prologue
 from selector_niveles import LevelSelector
 from sonidos_selector_niveles import Audio
 from personajes import PERSONAJE_SELECCIONADO_ENV
-from pergamino_controles import ControlsScroll
+from pergamino_controles import ControlsBook
 from menu_pausa import EXIT_GAME_EXIT_CODE, RETURN_TO_MENU_EXIT_CODE
 
 
@@ -55,7 +55,7 @@ class _Nivel1Finalizado(Exception):
 # SISTEMA DE AUDIO
 # ============================================================
 
-MENU_AUDIO_VOLUME = 0.45
+MENU_AUDIO_VOLUME = 0.55
 
 MENU_CUE_FILES = {
     "NEW GAME": ("New_game.mp3", 0, 3500),
@@ -273,16 +273,14 @@ level_select_overlay = pygame.Surface(
 
 level_select_overlay.fill((0, 0, 0, 155))
 
-controls_overlay = pygame.Surface(
+controls_book = ControlsBook(
     (SCREEN_WIDTH, SCREEN_HEIGHT),
-    pygame.SRCALPHA
-)
-
-controls_overlay.fill((0, 0, 0, 110))
-
-controls_scroll = ControlsScroll(
-    (SCREEN_WIDTH, SCREEN_HEIGHT),
-    BASE_DIR / "assets" / "pergamino_controles"
+    BASE_DIR
+    / "assets"
+    / "sprites"
+    / "Heroes"
+    / "p_fuego"
+    / "fire_knight",
 )
 
 
@@ -311,7 +309,7 @@ menu_options = [
 selected_option = 0
 game_state = "MENU"
 
-MENU_AUDIO_VOLUME = 0.45
+MENU_AUDIO_VOLUME = 0.55
 
 assets_chars = BASE_DIR / "assets" / "sprites" / "seleccion_personajes"
 
@@ -370,8 +368,7 @@ archivos_imagenes = {
 imagenes_chars = {}
 archivos_ya_abiertos = set()
 
-prologue_images = []
-prologue_image_index = 0
+prologue_viewer = None
 
 menu_notice = ""
 # ============================================================
@@ -916,15 +913,7 @@ def render_menu(time_counter):
 # ============================================================
 
 def render_controls(time_counter):
-
-    render_menu(time_counter)
-
-    screen.blit(
-        controls_overlay,
-        (0, 0)
-    )
-
-    controls_scroll.draw(screen)
+    controls_book.draw(screen)
 
 
 # ============================================================
@@ -932,11 +921,7 @@ def render_controls(time_counter):
 # ============================================================
 
 def render_prologue():
-
-    screen.blit(
-        prologue_images[prologue_image_index],
-        (0, 0)
-    )
+    prologue_viewer.draw(screen)
 
 
 # ============================================================
@@ -1147,8 +1132,7 @@ def main():
     global game_state
     global selected_char_index
     global chosen_char_name
-    global prologue_images
-    global prologue_image_index
+    global prologue_viewer
     global level_selector
     global chosen_level
     global menu_notice
@@ -1181,6 +1165,10 @@ def main():
             if event.type == pygame.QUIT:
 
                 running = False
+
+            elif event.type == pygame.MOUSEBUTTONDOWN and game_state == "PROLOGUE":
+
+                prologue_viewer.handle_click(event.pos)
 
             elif event.type == pygame.KEYUP:
 
@@ -1238,31 +1226,18 @@ def main():
                 # ============================================
 
                 elif game_state == "CONTROLS":
-
-                    if event.key == pygame.K_RETURN and fresh_enter:
-                        controls_scroll.handle_enter()
+                    if controls_book.handle_key(event.key):
+                        game_state = "MENU"
 
                 # ============================================
                 # PRÓLOGO
                 # ============================================
 
                 elif game_state == "PROLOGUE":
-
-                    if event.key in (
-                        pygame.K_RETURN,
-                        pygame.K_SPACE
-                    ):
-
-                        if prologue_image_index < len(prologue_images) - 1:
-
-                            prologue_image_index += 1
-
-                        else:
-
-                            game_state = "CHARACTER_SELECT"
-
-                    elif event.key == pygame.K_ESCAPE:
-
+                    action = prologue_viewer.handle_key(event.key)
+                    if action == "finished":
+                        game_state = "CHARACTER_SELECT"
+                    elif action == "menu":
                         game_state = "MENU"
 
                 # ============================================
@@ -1354,10 +1329,7 @@ def main():
             # ================================================
 
             if option == "NEW GAME":
-
-                prologue_images = prologue()
-
-                prologue_image_index = 0
+                prologue_viewer = prologue()
 
                 game_state = "PROLOGUE"
 
@@ -1416,6 +1388,7 @@ def main():
 
                         game_state = "LEVEL_SELECT"
 
+                        level_selector.close()
                         launch_level(chosen_level)
 
                         chosen_level = None
@@ -1428,7 +1401,7 @@ def main():
 
             elif option == "CONTROLS":
 
-                controls_scroll.reset()
+                controls_book.reset()
 
                 game_state = "CONTROLS"
 
@@ -1455,9 +1428,19 @@ def main():
             level_selector.update(elapsed_ms)
 
         elif game_state == "CONTROLS":
+            controls_book.update(elapsed_ms / 1000)
 
-            if controls_scroll.update(elapsed_ms / 1000):
-                game_state = "MENU"
+        elif game_state == "PROLOGUE":
+            prologue_viewer.update(elapsed_ms / 1000)
+            if prologue_viewer.consume_action() == "skip":
+                if chosen_char_name is None:
+                    chosen_char_name = characters[selected_char_index]["name"]
+                os.environ[PERSONAJE_SELECCIONADO_ENV] = chosen_char_name
+                level_selector = LevelSelector(screen, audio)
+                level_selector.close()
+                game_state = "LEVEL_SELECT"
+                if not launch_level(1):
+                    game_state = "CHARACTER_SELECT"
 
         # ====================================================
         # ACTUALIZACIÓN DE PARTÍCULAS
