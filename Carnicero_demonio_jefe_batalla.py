@@ -23,13 +23,13 @@ for r in rutas_sun_spirit:
     if os.path.exists(r):
         try:
             IMG_SUN_SPIRIT = pygame.image.load(r).convert_alpha()
-            print(f"✅ Textura 'sun_spirit.png' cargada con éxito desde: {r}")
+            print(f"[OK] Textura 'sun_spirit.png' cargada desde: {r}")
             break
         except Exception as e:
-            print(f"❌ Error al cargar {r}: {e}")
+            print(f"[ERROR] Error al cargar {r}: {e}")
 
 if IMG_SUN_SPIRIT is None:
-    print("⚠️ ADVERTENCIA: No se encontró 'sun_spirit.png' en 'assets/barras de vida/'.")
+    print("[ADVERTENCIA] No se encontró 'sun_spirit.png' en 'assets/barras de vida/'.")
 
 
 def cargar_animacion_con_altura_maxima(folder_path, altura_max):

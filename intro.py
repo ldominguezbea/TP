@@ -98,6 +98,7 @@ class Intro:
         self.broadcast_audio = None
         self.broadcast_channel = None
         self.broadcast_started_ticks = None
+        self.audio_started = False
         if self.audio_enabled:
             try:
                 if not pygame.mixer.get_init():
@@ -106,6 +107,7 @@ class Intro:
                 pygame.mixer.music.load(str(self.TITLE_TRACK))
                 pygame.mixer.music.set_volume(self.MUSIC_VOLUME)
                 pygame.mixer.music.play(-1)
+                self.audio_started = True
             except (pygame.error, OSError) as error:
                 print(f"[AUDIO] No se pudo iniciar el audio de la intro: {error}")
                 self.audio_enabled = False
@@ -119,10 +121,17 @@ class Intro:
 
     def handle_event(self, event):
         if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
-            if self.audio_enabled:
-                pygame.mixer.music.stop()
-                self.broadcast_audio.stop()
+            self.stop_audio()
             self.finished = True
+
+    def stop_audio(self):
+        if self.broadcast_channel is not None:
+            self.broadcast_channel.stop()
+        if self.broadcast_audio is not None:
+            self.broadcast_audio.stop()
+        if self.audio_started and pygame.mixer.get_init():
+            pygame.mixer.music.stop()
+            self.audio_started = False
 
     def update(self, elapsed_ms):
         self.elapsed_ms += max(0, elapsed_ms)
@@ -329,6 +338,7 @@ class Intro:
 
 def run_intro(screen=None, audio_enabled=True):
     owns_display = screen is None
+    intro = None
     if owns_display:
         pygame.init()
     try:
@@ -352,6 +362,8 @@ def run_intro(screen=None, audio_enabled=True):
                 intro.draw()
                 pygame.display.flip()
     finally:
+        if intro is not None:
+            intro.stop_audio()
         if owns_display:
             pygame.quit()
     return running

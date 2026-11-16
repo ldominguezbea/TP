@@ -4,7 +4,7 @@ import random
 import math
 import pygame
 from personajes import crear_jugador
-from menu_pausa import pausar_juego
+from menu_pausa import NivelIntegradoFinalizado, pausar_juego
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -15,6 +15,8 @@ from enemigos import (
 
 pygame.init()
 pygame.font.init()
+NIVEL_INTEGRADO = __name__ == "_nivel3_integrado"
+nivel_completado = False
 
 # 1. Configuración de pantalla y mundo
 ANCHO, ALTO = 1350, 700
@@ -30,8 +32,17 @@ PUERTA_TUNELES_X = TRAMO_FONDO_TUNELES * ANCHO
 FIN_TRAMO_FONDO_TUNELES = PUERTA_TUNELES_X + ANCHO
 LIMITE_POST_TUNELES_X = FIN_TRAMO_FONDO_TUNELES + 80
 
-pantalla = pygame.display.set_mode((ANCHO, ALTO))
+pantalla = pygame.display.get_surface()
+if pantalla is None:
+    pantalla = pygame.display.set_mode((ANCHO, ALTO))
 pygame.display.set_caption("Nivel 3 - Cueva y Batalla de Jefe")
+
+
+def cerrar_nivel(action="exit"):
+    if NIVEL_INTEGRADO:
+        raise NivelIntegradoFinalizado(nivel_completado, action)
+    pygame.quit()
+    sys.exit()
 
 # Tamaño del sprite ajustado a escala humana
 ANCHO_HEROE, ALTO_HEROE = 300, 300
@@ -92,8 +103,7 @@ def mostrar_comic_inicio(screen):
     while esperando:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
-                pygame.quit()
-                sys.exit()
+                cerrar_nivel()
             if event.type == pygame.KEYDOWN and event.key == pygame.K_RETURN:
                 esperando = False
         screen.blit(img_inicio, (0, 0))
@@ -166,8 +176,7 @@ def mostrar_comic_final(screen):
     while opcion is None:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
-                pygame.quit()
-                sys.exit()
+                cerrar_nivel()
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_1:
                     opcion = 1
@@ -198,8 +207,7 @@ def mostrar_comic_final(screen):
     while esperando:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
-                pygame.quit()
-                sys.exit()
+                cerrar_nivel()
             if event.type == pygame.KEYDOWN:
                 esperando = False
         screen.blit(imagen_final, (0, 0))
@@ -640,10 +648,14 @@ def ejecutar_batalla_carnicero(screen, player, fondo_img):
 
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
-                pygame.quit()
-                sys.exit()
+                cerrar_nivel()
             elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
-                pausar_juego(screen)
+                action = pausar_juego(
+                    screen,
+                    devolver_accion=NIVEL_INTEGRADO,
+                )
+                if NIVEL_INTEGRADO and action in ("menu", "exit"):
+                    cerrar_nivel(action)
                 continue
 
             player.procesar_evento(event)
@@ -796,7 +808,10 @@ def ejecutar_batalla_carnicero(screen, player, fondo_img):
 
 
 def ejecutar_batalla_ciclope(screen, player, fondo_img):
+    global nivel_completado
+
     from Jefes_enemigos import CiclopeBoss
+    from ciclope_combate import CiclopeCombatController
 
     clock = pygame.time.Clock()
     jefe = CiclopeBoss(x=920, y=POSICION_SUELO - 180)
@@ -804,11 +819,7 @@ def ejecutar_batalla_ciclope(screen, player, fondo_img):
     jefe.health = jefe.max_health
     jefe.rect.bottom = POSICION_SUELO
     jefe.hurtbox = jefe.rect.copy()
-    sombra_base = pygame.image.load(
-        os.path.join(BASE_DIR, "assets", "Jefes", "Ciclope", "sombra.png")
-    ).convert_alpha()
-    proyectiles_sombra = []
-    temporizador_corte_sombra = 2.0
+    combate = CiclopeCombatController(jefe, ANCHO, POSICION_SUELO)
 
     player.health = player.max_health
     player.pos_x = 180.0
@@ -832,325 +843,57 @@ def ejecutar_batalla_ciclope(screen, player, fondo_img):
     player.actualizar_hitboxes()
     player.animar()
 
-    fase = 1
-    fase2_activada = False
-    transicion_fase = False
-    transicion_timer = 0.0
-    tiempo_congelado_transicion = None
-    demonios_activos = False
-    demonios_timer = 0.0
-    demonios_cooldown = 7.8
-    demonios = []
-    proyectiles_demonio = []
-    proyectiles_demonio_timer = 0.0
-    bolas_fuego = []
-    bola_fuego_timer = 0.0
     timer_muerte_jefe = 0.0
     en_batalla = True
     fuente_legend = pygame.font.SysFont("Georgia", 64, bold=True)
     fuente_nombre_jefe = pygame.font.SysFont("Georgia", 18, bold=True)
 
-    def crear_demonios():
-        return [
-            {"x": 250, "y": 210, "fase": 0},
-            {"x": ANCHO // 2, "y": 150, "fase": 2},
-            {"x": 1100, "y": 210, "fase": 4},
-        ]
-
-    def dibujar_demonio(demonio, tiempo):
-        x = int(demonio["x"])
-        y = int(demonio["y"] + math.sin(tiempo * 3 + demonio["fase"]) * 8)
-        aura = pygame.Surface((110, 110), pygame.SRCALPHA)
-        pygame.draw.circle(aura, (150, 30, 255, 35), (55, 55), 50)
-        pygame.draw.circle(aura, (210, 60, 255, 25), (55, 55), 40)
-        screen.blit(aura, (x - 55, y - 55))
-        pygame.draw.polygon(screen, (70, 20, 100), [(x - 18, y - 5), (x - 48, y - 25), (x - 38, y + 18), (x - 12, y + 12)])
-        pygame.draw.polygon(screen, (70, 20, 100), [(x + 18, y - 5), (x + 48, y - 25), (x + 38, y + 18), (x + 12, y + 12)])
-        pygame.draw.polygon(screen, (75, 15, 110), [(x, y - 30), (x - 25, y - 5), (x - 18, y + 30), (x, y + 42), (x + 18, y + 30), (x + 25, y - 5)])
-        pygame.draw.circle(screen, (105, 20, 145), (x, y - 12), 20)
-        pygame.draw.polygon(screen, (45, 10, 70), [(x - 13, y - 25), (x - 25, y - 45), (x - 8, y - 32)])
-        pygame.draw.polygon(screen, (45, 10, 70), [(x + 13, y - 25), (x + 25, y - 45), (x + 8, y - 32)])
-        pygame.draw.circle(screen, (255, 40, 70), (x - 8, y - 14), 4)
-        pygame.draw.circle(screen, (255, 40, 70), (x + 8, y - 14), 4)
-        pulso = int(math.sin(tiempo * 6) * 3)
-        pygame.draw.circle(screen, (190, 40, 255), (x, y + 10), 9 + pulso)
-        pygame.draw.circle(screen, (240, 150, 255), (x, y + 10), 4)
-
-    def dibujar_escudo(tiempo):
-        cx, cy = jefe.rect.center
-        radio_base = max(jefe.rect.width, jefe.rect.height) // 2 + 30
-        radio = int(radio_base + math.sin(tiempo * 6) * 6)
-        halo = pygame.Surface((radio_base * 4, radio_base * 4), pygame.SRCALPHA)
-        pygame.draw.circle(halo, (140, 20, 255, 45), (radio_base * 2, radio_base * 2), radio + 20)
-        pygame.draw.circle(halo, (200, 60, 255, 35), (radio_base * 2, radio_base * 2), radio + 10)
-        screen.blit(halo, (cx - radio_base * 2, cy - radio_base * 2))
-        for i in range(6):
-            angulo = tiempo * 2 + i * (2 * math.pi / 6)
-            punto = (int(cx + math.cos(angulo) * (radio + 5)), int(cy + math.sin(angulo) * (radio + 5)))
-            pygame.draw.circle(screen, (220, 130, 255), punto, 6)
-            pygame.draw.circle(screen, (255, 255, 255), punto, 3)
-        escudo = pygame.Surface((radio * 2 + 10, radio * 2 + 10), pygame.SRCALPHA)
-        pygame.draw.circle(escudo, (150, 30, 240, 80), (radio + 5, radio + 5), radio)
-        pygame.draw.circle(escudo, (220, 160, 255, 230), (radio + 5, radio + 5), radio, 3)
-        pygame.draw.circle(escudo, (255, 255, 255, 255), (radio + 5, radio + 5), radio - 4, 1)
-        screen.blit(escudo, (cx - radio - 5, cy - radio - 5))
-
-    def cancelar_fase_al_morir():
-        nonlocal fase2_activada, transicion_fase, transicion_timer
-        nonlocal demonios_activos, demonios_timer, demonios_cooldown
-        nonlocal demonios, proyectiles_demonio, proyectiles_demonio_timer
-        nonlocal bolas_fuego, bola_fuego_timer
-
-        fase2_activada = True
-        transicion_fase = False
-        transicion_timer = 0.0
-        demonios_activos = False
-        demonios_timer = 0.0
-        demonios_cooldown = 7.8
-        demonios.clear()
-        proyectiles_demonio.clear()
-        proyectiles_demonio_timer = 0.0
-        bolas_fuego.clear()
-        bola_fuego_timer = 0.0
-
     while en_batalla:
         dt = clock.tick(60) / 1000.0
         tiempo = pygame.time.get_ticks() / 1000.0
-        if transicion_fase and tiempo_congelado_transicion is not None:
-            tiempo = tiempo_congelado_transicion
 
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
-                pygame.quit()
-                sys.exit()
+                cerrar_nivel()
             elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
-                pausar_juego(screen)
+                action = pausar_juego(
+                    screen,
+                    devolver_accion=NIVEL_INTEGRADO,
+                )
+                if NIVEL_INTEGRADO and action in ("menu", "exit"):
+                    cerrar_nivel(action)
                 continue
-            if not transicion_fase:
+
+            if (
+                not jefe.muerto_definitivo
+                and combate.estado not in ("transicion", "derrota")
+            ):
                 player.procesar_evento(event)
 
-        if not transicion_fase:
+        if not jefe.transicionando and combate.estado != "derrota":
             player.update(0, transicion_realizada=True, limite_max_x=ANCHO - 80)
 
-        if jefe.health <= 0:
-            cancelar_fase_al_morir()
+        combate.update(dt, player, screen)
 
-        if not transicion_fase and not jefe.muerto_definitivo:
-            if demonios_activos:
-                jefe.cambiar_estado("idle")
-                jefe.attacking = False
-                jefe.has_hit = False
-                jefe.hitbox = pygame.Rect(0, 0, 0, 0)
-                jefe.actualizar_animacion()
-                jefe.velocity_y = 0
-                jefe.on_ground = True
-                jefe.rect.bottom = POSICION_SUELO
-                jefe.hurtbox = jefe.rect.copy()
-            else:
-                jefe.update(player, dt, width=ANCHO)
-                jefe.rect.bottom = POSICION_SUELO
-                jefe.hurtbox = jefe.rect.copy()
-                jefe.rect.x = max(0, min(ANCHO - jefe.rect.width, jefe.rect.x))
-
-        if (
-            fase == 1
-            and jefe.health > jefe.max_health * 0.75
-            and jefe.health > 0
-            and not jefe.muerto_definitivo
-            and not transicion_fase
-        ):
-            temporizador_corte_sombra -= dt
-            if temporizador_corte_sombra <= 0:
-                temporizador_corte_sombra = 2.0
-                origen = pygame.Vector2(jefe.rect.center)
-                destino = pygame.Vector2(player.hurtbox.center)
-                direccion = destino - origen
-                if direccion.length_squared() == 0:
-                    direccion.update(1 if jefe.direction == "right" else -1, 0)
-                direccion = direccion.normalize()
-                angulo = -math.degrees(math.atan2(direccion.y, direccion.x))
-                imagen_base = pygame.transform.flip(sombra_base, True, False)
-                imagen_sombra = pygame.transform.rotate(imagen_base, angulo)
-                rect_sombra = imagen_sombra.get_rect(center=origen)
-                hitbox_sombra = imagen_sombra.get_bounding_rect().move(
-                    rect_sombra.topleft
-                )
-                proyectiles_sombra.append({
-                    "x": float(rect_sombra.centerx),
-                    "y": float(rect_sombra.centery),
-                    "vx": direccion.x * 500,
-                    "vy": direccion.y * 500,
-                    "imagen": imagen_sombra,
-                    "rect": rect_sombra,
-                    "hitbox": hitbox_sombra,
-                })
-
-        for proyectil in proyectiles_sombra[:]:
-            proyectil["x"] += proyectil["vx"] * dt
-            proyectil["y"] += proyectil["vy"] * dt
-            nuevo_centro = (round(proyectil["x"]), round(proyectil["y"]))
-            desplazamiento = pygame.Vector2(nuevo_centro) - proyectil["rect"].center
-            proyectil["rect"].center = nuevo_centro
-            proyectil["hitbox"].move_ip(round(desplazamiento.x), round(desplazamiento.y))
-            if proyectil["hitbox"].colliderect(player.hurtbox):
-                player.take_damage(15)
-                proyectiles_sombra.remove(proyectil)
-            elif (
-                proyectil["rect"].right < 0
-                or proyectil["rect"].left > ANCHO
-                or proyectil["rect"].bottom < 0
-                or proyectil["rect"].top > ALTO
-            ):
-                proyectiles_sombra.remove(proyectil)
-
-        if transicion_fase:
-            transicion_timer -= dt
-            if transicion_timer <= 0:
-                transicion_fase = False
-                tiempo_congelado_transicion = None
-
-        if (
-            fase == 2
-            and not transicion_fase
-            and not jefe.muerto_definitivo
-            and jefe.health > 0
-        ):
-            bola_fuego_timer -= dt
-            if bola_fuego_timer <= 0:
-                bola_fuego_timer = random.uniform(1.0, 1.7)
-                for _ in range(random.randint(4, 6)):
-                    bolas_fuego.append({
-                        "x": random.randint(80, ANCHO - 80),
-                        "y": -50,
-                        "speed": random.randint(380, 520),
-                        "aviso_timer": 0.7,
-                        "radio": random.randint(14, 20),
-                    })
-
-            for bola in bolas_fuego[:]:
-                if bola["aviso_timer"] > 0:
-                    bola["aviso_timer"] -= dt
-                    continue
-                bola["y"] += bola["speed"] * dt
-                bola_rect = pygame.Rect(
-                    bola["x"] - bola["radio"],
-                    bola["y"] - bola["radio"],
-                    bola["radio"] * 2,
-                    bola["radio"] * 2,
-                )
-                if bola_rect.colliderect(player.hurtbox):
-                    player.take_damage(12)
-                    bolas_fuego.remove(bola)
-                elif bola["y"] >= POSICION_SUELO:
-                    bolas_fuego.remove(bola)
-
-            if demonios_activos:
-                demonios_timer -= dt
-                proyectiles_demonio_timer -= dt
-                if proyectiles_demonio_timer <= 0:
-                    for demonio in demonios:
-                        dx = player.rect.centerx - demonio["x"]
-                        dy = player.rect.centery - demonio["y"]
-                        distancia = max(1, math.hypot(dx, dy))
-                        proyectiles_demonio.append({
-                            "x": demonio["x"],
-                            "y": demonio["y"],
-                            "vx": dx / distancia * 360,
-                            "vy": dy / distancia * 360,
-                            "rect": pygame.Rect(demonio["x"] - 8, demonio["y"] - 8, 16, 16),
-                        })
-                    proyectiles_demonio_timer = 1.6
-
-                for proyectil in proyectiles_demonio[:]:
-                    proyectil["x"] += proyectil["vx"] * dt
-                    proyectil["y"] += proyectil["vy"] * dt
-                    proyectil["rect"].center = (int(proyectil["x"]), int(proyectil["y"]))
-                    if proyectil["rect"].colliderect(player.hurtbox):
-                        player.take_damage(10)
-                        proyectiles_demonio.remove(proyectil)
-                    elif not screen.get_rect().inflate(100, 100).collidepoint(
-                        proyectil["rect"].center
-                    ):
-                        proyectiles_demonio.remove(proyectil)
-
-                if demonios_timer <= 0:
-                    demonios.clear()
-                    proyectiles_demonio.clear()
-                    demonios_activos = False
-                    demonios_cooldown = 7.8
-            else:
-                demonios_cooldown -= dt
-                if demonios_cooldown <= 0:
-                    demonios_activos = True
-                    demonios_timer = 6
-                    proyectiles_demonio_timer = 0.5
-                    demonios = crear_demonios()
-                    jefe.velocity_y = 0
-                    jefe.on_ground = True
-                    jefe.rect.bottom = POSICION_SUELO
-                    jefe.hurtbox = jefe.rect.copy()
-
-        if not transicion_fase and jefe.health > 0 and not demonios_activos:
+        if not jefe.muerto_definitivo and combate.estado != "derrota":
             player.comprobar_golpe(jefe)
             player.comprobar_golpes_proyectiles((jefe,))
 
-        if jefe.health <= 0:
-            cancelar_fase_al_morir()
-
         screen.blit(fondo_img, (0, 0))
-        if fase == 2:
-            overlay = pygame.Surface((ANCHO, ALTO), pygame.SRCALPHA)
-            overlay.fill((35, 0, 20, 90))
-            screen.blit(overlay, (0, 0))
-            dibujar_luna_roja_batalla(screen, tiempo)
-
         jefe.draw(screen)
-        for proyectil in proyectiles_sombra:
-            screen.blit(proyectil["imagen"], proyectil["rect"])
-        if demonios_activos and not jefe.muerto_definitivo:
-            dibujar_escudo(tiempo)
-            for demonio in demonios:
-                dibujar_demonio(demonio, tiempo)
-
-        for proyectil in proyectiles_demonio:
-            x, y = proyectil["rect"].center
-            pygame.draw.line(screen, (110, 20, 180), (x, y - 30), (x, y + 8), 8)
-            pygame.draw.circle(screen, (150, 30, 230), (x, y), 14)
-            pygame.draw.circle(screen, (210, 80, 255), (x, y), 8)
-            pygame.draw.circle(screen, (255, 190, 255), (x, y), 3)
-
-        for bola in bolas_fuego:
-            if bola["aviso_timer"] > 0:
-                aviso = pygame.Surface((50, 12), pygame.SRCALPHA)
-                aviso.fill((180, 40, 255, 140))
-                screen.blit(aviso, (bola["x"] - 25, POSICION_SUELO - 6))
-                pygame.draw.rect(
-                    screen,
-                    (230, 130, 255),
-                    (bola["x"] - 25, POSICION_SUELO - 6, 50, 12),
-                    2,
-                )
-            else:
-                for i in range(3):
-                    offset_y = (i + 1) * 12
-                    radio_estela = max(2, bola["radio"] - i * 4)
-                    pygame.draw.circle(
-                        screen,
-                        (140, 20, 220),
-                        (int(bola["x"]), int(bola["y"] - offset_y)),
-                        radio_estela,
-                    )
-                pygame.draw.circle(screen, (160, 30, 240), (int(bola["x"]), int(bola["y"])), bola["radio"])
-                pygame.draw.circle(screen, (220, 110, 255), (int(bola["x"]), int(bola["y"])), int(bola["radio"] * 0.65))
-                pygame.draw.circle(screen, (255, 230, 255), (int(bola["x"]), int(bola["y"])), int(bola["radio"] * 0.3))
-
+        combate.draw(screen, tiempo)
         screen.blit(player.image, player.rect)
 
         if not jefe.muerto_definitivo:
-            porcentaje_vida = max(0.0, min(1.0, jefe.health / jefe.max_health))
+            porcentaje_vida = max(
+                0.0, min(1.0, jefe.health / jefe.max_health)
+            )
             if IMG_LEVIATHAN is not None:
                 ancho_barra = 650
-                alto_barra = int(IMG_LEVIATHAN.get_height() * ancho_barra / IMG_LEVIATHAN.get_width())
+                alto_barra = int(
+                    IMG_LEVIATHAN.get_height()
+                    * ancho_barra / IMG_LEVIATHAN.get_width()
+                )
                 barra_sin_nombre = IMG_LEVIATHAN.copy()
                 barra_sin_nombre.fill(
                     (0, 0, 0, 0),
@@ -1172,10 +915,21 @@ def ejecutar_batalla_ciclope(screen, player, fondo_img):
                 y_relleno = y_barra + int(12 * escala_barra)
                 ancho_relleno = int(179 * escala_barra)
                 alto_relleno = max(1, int(6 * escala_barra))
-                pygame.draw.rect(screen, (20, 5, 12), (x_relleno, y_relleno, ancho_relleno, alto_relleno))
+                pygame.draw.rect(
+                    screen, (20, 5, 12),
+                    (x_relleno, y_relleno, ancho_relleno, alto_relleno),
+                )
                 if porcentaje_vida > 0:
-                    color_vida = (255, 210, 0) if porcentaje_vida <= 0.5 else (170, 20, 35)
-                    pygame.draw.rect(screen, color_vida, (x_relleno, y_relleno, int(ancho_relleno * porcentaje_vida), alto_relleno))
+                    color_vida = (
+                        (255, 210, 0) if combate.fase == 3
+                        else (255, 100, 0) if combate.fase == 2
+                        else (170, 20, 35)
+                    )
+                    pygame.draw.rect(
+                        screen, color_vida,
+                        (x_relleno, y_relleno,
+                         int(ancho_relleno * porcentaje_vida), alto_relleno),
+                    )
                 screen.blit(barra, (x_barra, y_barra))
                 nombre_jefe = fuente_nombre_jefe.render(
                     "Ciclope: El Portador de la Muerte",
@@ -1192,10 +946,37 @@ def ejecutar_batalla_ciclope(screen, player, fondo_img):
                 )
                 screen.blit(nombre_sombra, (rect_nombre.x + 1, rect_nombre.y + 1))
                 screen.blit(nombre_jefe, rect_nombre)
+            else:
+                pygame.draw.rect(screen, (35, 10, 15), (ANCHO // 2 - 250, 45, 500, 20))
+                color_vida = (
+                    (255, 210, 0) if combate.fase == 3
+                    else (255, 100, 0) if combate.fase == 2
+                    else (170, 20, 35)
+                )
+                pygame.draw.rect(
+                    screen, color_vida,
+                    (ANCHO // 2 - 250, 45,
+                     int(500 * porcentaje_vida), 20),
+                )
+                pygame.draw.rect(
+                    screen, (220, 200, 180),
+                    (ANCHO // 2 - 250, 45, 500, 20), 2,
+                )
+                nombre_jefe = fuente_nombre_jefe.render(
+                    "Ciclope: El Portador de la Muerte",
+                    True,
+                    (190, 100, 255),
+                )
+                screen.blit(
+                    nombre_jefe,
+                    nombre_jefe.get_rect(center=(ANCHO // 2, 78)),
+                )
 
         dibujar_barra_jugador(screen, player)
-        if transicion_fase:
-            texto = fuente_boss_title.render("FURIA NOCTURNA", True, (255, 50, 60))
+        if combate.estado == "transicion":
+            texto = fuente_boss_title.render(
+                combate.texto_transicion, True, (255, 50, 60)
+            )
             screen.blit(texto, texto.get_rect(center=(ANCHO // 2, ALTO // 2)))
 
         if jefe.muerto_definitivo:
@@ -1218,6 +999,7 @@ def ejecutar_batalla_ciclope(screen, player, fondo_img):
             screen.blit(texto, rect_texto)
             if timer_muerte_jefe >= 4.8:
                 mostrar_comic_final(screen)
+                nivel_completado = True
                 en_batalla = False
 
         pygame.display.flip()
@@ -1845,6 +1627,8 @@ def ejecutar_prueba_tuneles(screen, player):
 
             for evento in pygame.event.get():
                 if evento.type == pygame.QUIT:
+                    if NIVEL_INTEGRADO:
+                        cerrar_nivel()
                     return False
                 if evento.type == pygame.KEYDOWN and evento.key == pygame.K_c:
                     if pista_abierta:
@@ -2055,7 +1839,7 @@ def ejecutar_prueba_tuneles(screen, player):
         player.plataformas = player_platforms
 
 
-if __name__ == "__main__":
+if __name__ in ("__main__", "_nivel3_integrado"):
     mostrar_comic_inicio(pantalla)
     heroe = crear_jugador(
         200,
@@ -2130,9 +1914,16 @@ if __name__ == "__main__":
 
         for evento in pygame.event.get():
             if evento.type == pygame.QUIT:
+                if NIVEL_INTEGRADO:
+                    cerrar_nivel()
                 ejecutando = False
             elif evento.type == pygame.KEYDOWN and evento.key == pygame.K_ESCAPE:
-                pausar_juego(pantalla)
+                action = pausar_juego(
+                    pantalla,
+                    devolver_accion=NIVEL_INTEGRADO,
+                )
+                if NIVEL_INTEGRADO and action in ("menu", "exit"):
+                    cerrar_nivel(action)
                 continue
             elif (
                 evento.type == pygame.KEYDOWN
@@ -2334,5 +2125,6 @@ if __name__ == "__main__":
             dibujar_boton_demoniaco(pantalla)
         pygame.display.flip()
 
-    pygame.quit()
-    sys.exit()
+    if not NIVEL_INTEGRADO:
+        pygame.quit()
+        sys.exit()

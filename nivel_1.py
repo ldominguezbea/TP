@@ -13,6 +13,7 @@ from personajes import crear_jugador
 from menu_pausa import (
     EXIT_GAME_EXIT_CODE,
     RETURN_TO_MENU_EXIT_CODE,
+    NivelIntegradoFinalizado,
     pausar_juego,
 )
 
@@ -21,6 +22,7 @@ pygame.font.init()
 
 NIVEL_INTEGRADO = __name__ == "_nivel1_integrado"
 accion_cierre_nivel = None
+nivel_completado = False
 
 # 1. Configuración de pantalla y mundo
 ANCHO, ALTO = 1350, 700
@@ -98,14 +100,10 @@ pygame.display.set_caption("Nivel 1 - Batalla de Jefe")
 
 
 def cerrar_nivel(action=None):
-    global accion_cierre_nivel, ejecutando
-
     if NIVEL_INTEGRADO:
-        if action is None:
-            raise _Nivel1Finalizado
-        accion_cierre_nivel = action
-        ejecutando = False
-        return
+        if action is not None:
+            raise NivelIntegradoFinalizado(nivel_completado, action)
+        raise NivelIntegradoFinalizado(nivel_completado)
     if action == "menu":
         raise SystemExit(RETURN_TO_MENU_EXIT_CODE)
     if action == "exit":
@@ -157,7 +155,7 @@ def mostrar_comic_inicio(screen):
     while esperando:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
-                cerrar_nivel()
+                cerrar_nivel("exit")
             if event.type == pygame.KEYDOWN and event.key == pygame.K_RETURN:
                 esperando = False
 
@@ -184,7 +182,7 @@ def mostrar_comic_final(screen):
     while esperando:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
-                cerrar_nivel()
+                cerrar_nivel("exit")
             if event.type == pygame.KEYDOWN:
                 esperando = False
 
@@ -787,6 +785,8 @@ def dibujar_barra_jugador(screen, player):
 
 # 5. Escena de Batalla contra el Jefe
 def ejecutar_batalla_carnicero(screen, player, fondo_img):
+    global nivel_completado
+
     from Jefes_enemigos import CarniceroBoss
 
     clock = pygame.time.Clock()
@@ -979,6 +979,7 @@ def ejecutar_batalla_carnicero(screen, player, fondo_img):
 
             if timer_muerte_jefe >= (TIEMPO_FADE_LETRERO + TIEMPO_ESPERA_POST):
                 mostrar_comic_final(screen)
+                nivel_completado = True
                 en_batalla = False
 
         pygame.display.flip()
@@ -1373,7 +1374,7 @@ while ejecutando:
 
     for evento in pygame.event.get():
         if evento.type == pygame.QUIT:
-            ejecutando = False
+            cerrar_nivel("exit")
         elif evento.type == pygame.KEYDOWN and evento.key == pygame.K_ESCAPE:
             accion = pausar_juego(pantalla, devolver_accion=True)
             if accion in ("menu", "exit"):

@@ -355,7 +355,12 @@ class Enemigo:
     def take_damage(self, damage):
         if self.health <= 0:
             return
+        previous_health = self.health
         self.health = max(0, self.health - damage)
+        if self.health < previous_health and getattr(
+            self, "esperando_jugador", False
+        ):
+            self.esperando_jugador = False
         accion = "muerte" if self.health <= 0 else "danio"
         _reproducir_sonido_accion(self.name, accion)
         print(

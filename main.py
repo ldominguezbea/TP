@@ -6,15 +6,14 @@ import random
 import math
 import json
 import runpy
-import subprocess
 
 pygame.init()
 
 # ============================================================
 # INICIALIZACIÓN SEGURA DEL AUDIO
 # ============================================================
-
-try:
+ 
+try: 
     pygame.mixer.init()
     audio_disponible = True
     print("[AUDIO] Audio inicializado correctamente.")
@@ -33,7 +32,11 @@ from selector_niveles import LevelSelector
 from sonidos_selector_niveles import Audio
 from personajes import PERSONAJE_SELECCIONADO_ENV
 from pergamino_controles import ControlsScroll
-from menu_pausa import EXIT_GAME_EXIT_CODE, RETURN_TO_MENU_EXIT_CODE
+from menu_pausa import (
+    EXIT_GAME_EXIT_CODE,
+    RETURN_TO_MENU_EXIT_CODE,
+    NivelIntegradoFinalizado,
+)
 
 
 # ============================================================
@@ -45,10 +48,6 @@ screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
 pygame.display.set_caption("REQUIEM: El juicio final")
 
 clock = pygame.time.Clock()
-
-
-class _Nivel1Finalizado(Exception):
-    pass
 
 
 # ============================================================
@@ -207,11 +206,12 @@ def play_menu_cue(option):
 SAVE_FILE = BASE_DIR / "savegame.json"
 
 
-def save_game(character_name, level_number):
+def save_game(character_name, completed_levels, prologue_seen):
 
     data = {
         "character": character_name,
-        "level": level_number
+        "completed_levels": sorted(completed_levels),
+        "prologue_seen": prologue_seen,
     }
 
     SAVE_FILE.write_text(
@@ -244,19 +244,30 @@ def load_game():
         return None
 
     character_name = data.get("character")
-    level_number = data.get("level")
+    completed = data.get("completed_levels", [])
+    prologue_was_seen = data.get("prologue_seen", "level" in data)
 
     if (
-        not isinstance(character_name, str)
-        or character_name not in valid_characters
-        or type(level_number) is not int
-        or level_number not in (1, 2, 3, 4, 5)
+        (
+            character_name is not None
+            and (
+                not isinstance(character_name, str)
+                or character_name not in valid_characters
+            )
+        )
+        or not isinstance(completed, list)
+        or any(type(level) is not int or level not in (1, 2, 3, 4) for level in completed)
+        or type(prologue_was_seen) is not bool
     ):
 
         print(f"[PARTIDA] Datos inválidos en {SAVE_FILE}.")
         return None
 
-    return data
+    return {
+        "character": character_name,
+        "completed_levels": completed,
+        "prologue_seen": prologue_was_seen,
+    }
 
 
 # ============================================================
@@ -265,6 +276,8 @@ def load_game():
 
 level_selector = None
 chosen_level = None
+completed_levels = set()
+prologue_seen = False
 
 level_select_overlay = pygame.Surface(
     (SCREEN_WIDTH, SCREEN_HEIGHT),
@@ -469,7 +482,7 @@ def launch_level(level_number):
     global screen, level_selector, game_state
 
     if level_selector is None:
-        level_selector = LevelSelector(screen, audio)
+        level_selector = LevelSelector(screen, audio, completed_levels)
 
     level_path = level_selector.get_level_path(level_number)
 
@@ -483,8 +496,16 @@ def launch_level(level_number):
 
         return False
 
-    if level_number == 1:
+    integrated_levels = {
+        1: "_nivel1_integrado",
+        2: "_nivel2_integrado",
+        3: "_nivel3_integrado",
+        4: "_nivel4_integrado",
+    }
 
+    if level_number in integrated_levels:
+        run_name = integrated_levels[level_number]
+        level_completed = False
         previous_cwd = os.getcwd()
 
         try:
@@ -494,14 +515,15 @@ def launch_level(level_number):
             try:
                 resultado_nivel = runpy.run_path(
                     str(level_path),
-                    run_name="_nivel1_integrado",
-                    init_globals={
-                        "_Nivel1Finalizado": _Nivel1Finalizado
-                    },
+                    run_name=run_name,
                 )
 
-            except _Nivel1Finalizado:
-                pass
+            except NivelIntegradoFinalizado as error:
+                level_completed = error.completed
+                if error.action == "menu":
+                    game_state = "MENU"
+                elif error.action == "exit":
+                    game_state = "EXIT"
             except SystemExit as error:
                 if error.code == RETURN_TO_MENU_EXIT_CODE:
                     game_state = "MENU"
@@ -510,6 +532,9 @@ def launch_level(level_number):
                 else:
                     raise
             else:
+                level_completed = bool(
+                    resultado_nivel.get("nivel_completado", False)
+                )
                 if resultado_nivel.get("accion_cierre_nivel") == "menu":
                     game_state = "MENU"
                 elif resultado_nivel.get("accion_cierre_nivel") == "exit":
@@ -525,19 +550,7 @@ def launch_level(level_number):
                 "REQUIEM: El juicio final"
             )
 
-    else:
-
-        result = subprocess.run(
-            [sys.executable, level_path],
-            cwd=BASE_DIR,
-            check=False,
-        )
-        if result.returncode == RETURN_TO_MENU_EXIT_CODE:
-            game_state = "MENU"
-        elif result.returncode == EXIT_GAME_EXIT_CODE:
-            game_state = "EXIT"
-
-    return True
+    return level_completed
 
 
 # ============================================================
@@ -1151,6 +1164,8 @@ def main():
     global prologue_image_index
     global level_selector
     global chosen_level
+    global completed_levels
+    global prologue_seen
     global menu_notice
     global audio_disponible
 
@@ -1293,11 +1308,18 @@ def main():
                             PERSONAJE_SELECCIONADO_ENV
                         ] = chosen_char_name
 
+                        save_game(
+                            chosen_char_name,
+                            completed_levels,
+                            prologue_seen,
+                        )
+
                         chosen_level = None
 
                         level_selector = LevelSelector(
                             screen,
-                            audio
+                            audio,
+                            completed_levels,
                         )
 
                         game_state = "LEVEL_SELECT"
@@ -1327,12 +1349,16 @@ def main():
 
                         chosen_level = result
 
-                        save_game(
-                            chosen_char_name,
-                            chosen_level
-                        )
-
-                        launch_level(chosen_level)
+                        if launch_level(chosen_level):
+                            completed_levels.add(chosen_level)
+                            save_game(
+                                chosen_char_name,
+                                completed_levels,
+                                prologue_seen,
+                            )
+                            level_selector.set_completed_levels(
+                                completed_levels
+                            )
 
                         chosen_level = None
 
@@ -1354,6 +1380,15 @@ def main():
             # ================================================
 
             if option == "NEW GAME":
+
+                completed_levels = set()
+                chosen_char_name = None
+                prologue_seen = False
+                save_game(
+                    chosen_char_name,
+                    completed_levels,
+                    prologue_seen,
+                )
 
                 prologue_images = prologue()
 
@@ -1378,49 +1413,44 @@ def main():
                 else:
 
                     chosen_char_name = saved_game["character"]
-
-                    selected_char_index = next(
-                        index
-                        for index, character in enumerate(characters)
-                        if character["name"] == chosen_char_name
+                    completed_levels = set(
+                        saved_game["completed_levels"]
+                    )
+                    prologue_seen = saved_game["prologue_seen"]
+                    selected_char_index = (
+                        next(
+                            index
+                            for index, character in enumerate(characters)
+                            if character["name"] == chosen_char_name
+                        )
+                        if chosen_char_name is not None
+                        else 0
                     )
 
-                    os.environ[
-                        PERSONAJE_SELECCIONADO_ENV
-                    ] = chosen_char_name
-
-                    chosen_level = saved_game["level"]
+                    if chosen_char_name is not None:
+                        os.environ[
+                            PERSONAJE_SELECCIONADO_ENV
+                        ] = chosen_char_name
 
                     level_selector = LevelSelector(
                         screen,
-                        audio
+                        audio,
+                        completed_levels,
                     )
 
-                    if level_selector.get_level_path(chosen_level) is None:
+                    if menu_music_playing:
 
-                        menu_notice = (
-                            "El nivel guardado ya no está disponible."
-                        )
+                        if audio_disponible:
+                            try:
+                                pygame.mixer.music.stop()
+                            except pygame.error:
+                                audio_disponible = False
 
-                    else:
+                        menu_music_playing = False
 
-                        if menu_music_playing:
-
-                            if audio_disponible:
-                                try:
-                                    pygame.mixer.music.stop()
-                                except pygame.error:
-                                    audio_disponible = False
-
-                            menu_music_playing = False
-
-                        game_state = "LEVEL_SELECT"
-
-                        launch_level(chosen_level)
-
-                        chosen_level = None
-
-                        menu_notice = ""
+                    game_state = "CHARACTER_SELECT"
+                    chosen_level = None
+                    menu_notice = ""
 
             # ================================================
             # CONTROLS
@@ -1529,6 +1559,13 @@ def main():
         elif game_state == "PROLOGUE":
 
             render_prologue()
+            if not prologue_seen:
+                prologue_seen = True
+                save_game(
+                    chosen_char_name,
+                    completed_levels,
+                    prologue_seen,
+                )
 
         elif game_state == "CHARACTER_SELECT":
 

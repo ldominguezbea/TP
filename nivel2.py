@@ -6,7 +6,7 @@ from array import array
 from types import SimpleNamespace
 import pygame
 from personajes import crear_jugador
-from menu_pausa import pausar_juego
+from menu_pausa import NivelIntegradoFinalizado, pausar_juego
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -19,6 +19,8 @@ from enemigos import (
 
 pygame.init()
 pygame.font.init()
+NIVEL_INTEGRADO = __name__ == "_nivel2_integrado"
+nivel_completado = False
 
 # 1. Configuración de pantalla y mundo
 ANCHO, ALTO = 1350, 700
@@ -30,8 +32,17 @@ PORTAL_X = ANCHO_MUNDO - 500
 HUECO_INICIO = PORTAL_X - 150
 HUECO_FIN = PORTAL_X + 150
 
-pantalla = pygame.display.set_mode((ANCHO, ALTO))
+pantalla = pygame.display.get_surface()
+if pantalla is None:
+    pantalla = pygame.display.set_mode((ANCHO, ALTO))
 pygame.display.set_caption("Nivel 2 - Batalla de Jefe")
+
+
+def cerrar_nivel(action="exit"):
+    if NIVEL_INTEGRADO:
+        raise NivelIntegradoFinalizado(nivel_completado, action)
+    pygame.quit()
+    sys.exit()
 
 # Tamaño del sprite ajustado a escala humana
 ANCHO_HEROE, ALTO_HEROE = 300, 300
@@ -83,8 +94,7 @@ def mostrar_comic_inicio(screen):
     while esperando:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
-                pygame.quit()
-                sys.exit()
+                cerrar_nivel()
             if event.type == pygame.KEYDOWN and event.key == pygame.K_RETURN:
                 esperando = False
 
@@ -111,8 +121,7 @@ def mostrar_comic_final(screen):
     while esperando:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
-                pygame.quit()
-                sys.exit()
+                cerrar_nivel()
             if event.type == pygame.KEYDOWN:
                 esperando = False
 
@@ -176,10 +185,10 @@ def cargar_fondo_nivel2(nombre_archivo):
 
 
 fondos = [
-    cargar_fondo_nivel2("Nivel2_imagen1.png"),
     cargar_fondo_nivel2("Nivel2_imagen2.png"),
+    cargar_fondo_nivel2("Nivel2_imagen4.png"),
 ]
-fondo_jefe = cargar_fondo_nivel2("Nivel2_imagen3.png")
+fondo_jefe = cargar_fondo_nivel2("Nivel2_imagen1.png")
 fondo_autobus = cargar_fondo_nivel2("Nivel2_imagen5.png.png")
 
 
@@ -681,10 +690,14 @@ def ejecutar_batalla_carnicero(screen, player, fondo_img):
 
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
-                pygame.quit()
-                sys.exit()
+                cerrar_nivel()
             elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
-                pausar_juego(screen)
+                action = pausar_juego(
+                    screen,
+                    devolver_accion=NIVEL_INTEGRADO,
+                )
+                if NIVEL_INTEGRADO and action in ("menu", "exit"):
+                    cerrar_nivel(action)
                 continue
 
             player.procesar_evento(event)
@@ -837,6 +850,8 @@ def ejecutar_batalla_carnicero(screen, player, fondo_img):
 
 
 def ejecutar_batalla_werewolf(screen, player, fondo_img):
+    global nivel_completado
+
     from Jefes_enemigos import WerewolfBoss
 
     clock = pygame.time.Clock()
@@ -957,10 +972,14 @@ def ejecutar_batalla_werewolf(screen, player, fondo_img):
 
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
-                pygame.quit()
-                sys.exit()
+                cerrar_nivel()
             elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
-                pausar_juego(screen)
+                action = pausar_juego(
+                    screen,
+                    devolver_accion=NIVEL_INTEGRADO,
+                )
+                if NIVEL_INTEGRADO and action in ("menu", "exit"):
+                    cerrar_nivel(action)
                 continue
             if not transicion_fase:
                 player.procesar_evento(event)
@@ -1213,6 +1232,7 @@ def ejecutar_batalla_werewolf(screen, player, fondo_img):
             screen.blit(texto, rect_texto)
             if timer_muerte_jefe >= 4.8:
                 mostrar_comic_final(screen)
+                nivel_completado = True
                 en_batalla = False
 
         pygame.display.flip()
@@ -1626,9 +1646,16 @@ while ejecutando:
 
     for evento in pygame.event.get():
         if evento.type == pygame.QUIT:
+            if NIVEL_INTEGRADO:
+                cerrar_nivel()
             ejecutando = False
         elif evento.type == pygame.KEYDOWN and evento.key == pygame.K_ESCAPE:
-            pausar_juego(pantalla)
+            action = pausar_juego(
+                pantalla,
+                devolver_accion=NIVEL_INTEGRADO,
+            )
+            if NIVEL_INTEGRADO and action in ("menu", "exit"):
+                cerrar_nivel(action)
             continue
 
         if autobus_perdido:
@@ -1803,8 +1830,7 @@ while ejecutando:
             pos_x_fondo = i * ANCHO - scroll_x
             if -ANCHO < pos_x_fondo < ANCHO:
                 fondo_tramo = (
-                    fondo_jefe if i == ANCHO_MUNDO // ANCHO - 1
-                    else fondo_autobus if i == BUS_ESCENARIO_TRAMO
+                    fondo_autobus if i == BUS_ESCENARIO_TRAMO
                     else fondos[i % len(fondos)]
                 )
                 pantalla.blit(fondo_tramo, (pos_x_fondo, 0))
@@ -1909,5 +1935,6 @@ while ejecutando:
 
     pygame.display.flip()
 
-pygame.quit()
-sys.exit()
+if not NIVEL_INTEGRADO:
+    pygame.quit()
+    sys.exit()

@@ -362,6 +362,38 @@ class p_fuego(pygame.sprite.Sprite):
 
             self.animaciones["11_death"].append(img)
 
+    @staticmethod
+    def cargar_animaciones_batalla():
+
+        base_path = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)),
+            "assets",
+            "Heroes",
+            "p_fuego",
+            "p_fuego",
+        )
+        configuracion = {
+            "idle": ("idle", "idle", 8),
+            "run": ("run", "run", 8),
+            "j_up": ("j_up", "jump_up", 3),
+            "1_atk": ("1_atk", "1_atk", 11),
+        }
+        animaciones = {}
+
+        for nombre, (carpeta, prefijo, cantidad) in configuracion.items():
+            animaciones[nombre] = [
+                pygame.image.load(
+                    os.path.join(
+                        base_path,
+                        carpeta,
+                        f"{prefijo}_{indice}.png",
+                    )
+                ).convert_alpha()
+                for indice in range(1, cantidad + 1)
+            ]
+
+        return animaciones
+
     # ========================================================
     # HURTBOX
     # ========================================================

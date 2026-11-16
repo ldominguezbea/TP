@@ -482,6 +482,9 @@ class CiclopeBoss(WerewolfBoss):
             "attack1": cargar_animacion_con_altura_maxima(
                 os.path.join(base_path, "Attack"), altura_maxima
             ),
+            "cast": cargar_animacion_con_altura_maxima(
+                os.path.join(base_path, "Cast"), altura_maxima
+            ),
         }
 
         self.estado_actual = "idle"
@@ -504,6 +507,37 @@ class CiclopeBoss(WerewolfBoss):
         self.desaparecer_timer = 3.0
         self.muerto_definitivo = False
         self.invertir_orientacion_sprite = True
+        self.fase_actual = 1
+        self.vulnerable = False
+        self.transicionando = False
+        self.dano_en_vulnerabilidad = 0
+        self.dano_maximo_vulnerabilidad = 55
+
+    def take_damage(self, damage):
+        if self.health <= 0 or self.transicionando:
+            return
+
+        damage_permitido = max(0, damage)
+        if self.fase_actual == 3:
+            if not self.vulnerable:
+                return
+            restante = self.dano_maximo_vulnerabilidad - self.dano_en_vulnerabilidad
+            damage_permitido = min(damage_permitido, max(0, restante))
+        else:
+            limite_porcentaje = 0.75 if self.fase_actual == 1 else 0.35
+            vida_minima_fase = round(self.max_health * limite_porcentaje)
+            damage_permitido = min(
+                damage_permitido,
+                max(0, self.health - vida_minima_fase),
+            )
+
+        if damage_permitido <= 0:
+            return
+
+        vida_anterior = self.health
+        super().take_damage(damage_permitido)
+        if self.fase_actual == 3 and self.vulnerable:
+            self.dano_en_vulnerabilidad += vida_anterior - self.health
 
 
 class CarniceroBoss(Enemigo):

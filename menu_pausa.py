@@ -9,6 +9,12 @@ EXIT_GAME_EXIT_CODE = 11
 _OPTIONS = ("Resume", "Return to menu", "Exit game")
 
 
+class NivelIntegradoFinalizado(Exception):
+    def __init__(self, completed=False, action=None):
+        self.completed = completed
+        self.action = action
+
+
 def pausar_juego(screen, devolver_accion=False):
     """Muestra el menú de pausa; las salidas se comunican al lanzador del juego."""
     snapshot = screen.copy()

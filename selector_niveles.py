@@ -70,8 +70,7 @@ tierra_levels = [
     {"id": "Nivel 3", "number": 3, "file": "Nivel3.py", "lat": 0, "lon": 110, "boss": "3", "tag": "NIVEL", "big": "3"},
 ]
 gehena_levels = [
-    {"id": "Nivel 4", "number": 4, "file": "nivel_4.py", "lat": 20, "lon": -80, "boss": "4", "tag": "NIVEL", "big": "4"},
-    {"id": "Nivel Secreto", "number": 5, "file": "nivel_5.py", "lat": -10, "lon": 80, "boss": "?", "tag": "???", "big": "SECRETO"},
+    {"id": "Nivel 4", "number": 4, "file": "nivel4.py", "lat": -10, "lon": 80, "boss": "4", "tag": "NIVEL", "big": "4"},
 ]
 for _lvl in tierra_levels + gehena_levels:
     _lvl["available"] = resolver_nivel(_lvl["file"])[0]
@@ -93,10 +92,9 @@ def ejecutar_nivel(ruta_nivel):
     ejecutable_python = sys.executable
     if ejecutable_python.lower().endswith("pythonw.exe"):
         ejecutable_python = os.path.join(os.path.dirname(ejecutable_python), "python.exe")
- 
+
     try:
         pygame.quit()
-        # El selector espera mientras se ejecuta el nivel.
         resultado = subprocess.run([ejecutable_python, ruta_nivel], cwd=BASE_DIR)
         print(f"[INFO] Nivel terminado. Código: {resultado.returncode}")
     except Exception as error:
@@ -176,7 +174,7 @@ _toast = {"surf": None, "start": 0, "until": 0}
  
  
 def mostrar_toast(msg, dur=2300):
-    txt = fancy_text(msg.upper(), get_font(17), (255, 245, 210), (255, 170, 70), (50, 14, 0), spacing=2, ow=1)
+    txt = fancy_text(msg, get_font(17), (255, 245, 210), (255, 170, 70), (50, 14, 0), spacing=2, ow=1)
     w, h = txt.get_width() + 44, txt.get_height() + 14
     surf = pygame.Surface((w, h), pygame.SRCALPHA)
     pygame.draw.rect(surf, (12, 10, 18, 235), (0, 0, w, h), border_radius=12)
@@ -1101,7 +1099,7 @@ par_x = par_y = 0.0
 
 
 class LevelSelector:
-    def __init__(self, target_surface, audio_manager):
+    def __init__(self, target_surface, audio_manager, completed_levels=()):
         global audio, cursor, snap_cursor, clickable_nodes, hover_anim
         global bubble_acc, par_x, par_y, current_planet, active_levels
         global current_index, planet_rotation, target_rotation, env_t, env_target
@@ -1124,6 +1122,38 @@ class LevelSelector:
         par_x = par_y = 0.0
         bubbles.clear()
         self._dt = FRAME_MS
+        self.set_completed_levels(completed_levels)
+
+    def set_completed_levels(self, completed_levels):
+        self.completed_levels = set(completed_levels)
+        for lvl in tierra_levels + gehena_levels:
+            has_file = resolver_nivel(lvl["file"])[0]
+            unlocked = lvl["number"] == 1 or lvl["number"] - 1 in self.completed_levels
+            lvl["available"] = (
+                has_file
+                and unlocked
+                and lvl["number"] not in self.completed_levels
+            )
+
+    def _progress_message(self, lvl):
+        number = lvl["number"]
+        if number in self.completed_levels:
+            return f"Nivel{number} completado"
+        if number > 1 and number - 1 not in self.completed_levels:
+            portal = {1: "Norte", 2: "Oeste", 3: "Este"}.get(number - 1)
+            if portal is not None:
+                return f"Aun no,ve al portal del {portal}"
+        return None
+
+    def _launch_selected(self, lvl):
+        message = self._progress_message(lvl)
+        if message is not None:
+            audio.denied()
+            mostrar_toast(message)
+            return None
+        if intentar_lanzar(lvl):
+            return numero_nivel(lvl)
+        return None
 
     def update(self, elapsed_ms):
         self._dt = max(1, min(50, elapsed_ms))
@@ -1298,8 +1328,7 @@ class LevelSelector:
             elif event.key in (pygame.K_d, pygame.K_RIGHT):
                 set_index(current_index + 1)
             elif event.key in (pygame.K_RETURN, pygame.K_SPACE):
-                if intentar_lanzar(active_levels[current_index]):
-                    return numero_nivel(active_levels[current_index])
+                return self._launch_selected(active_levels[current_index])
             elif event.key == pygame.K_F11:
                 try:
                     pygame.display.toggle_fullscreen()
@@ -1323,8 +1352,12 @@ class LevelSelector:
                     if rect.collidepoint(position):
                         if idx != current_index:
                             set_index(idx)
-                        elif intentar_lanzar(active_levels[idx]):
-                            return numero_nivel(active_levels[idx])
+                            message = self._progress_message(active_levels[idx])
+                            if message is not None:
+                                audio.denied()
+                                mostrar_toast(message)
+                        else:
+                            return self._launch_selected(active_levels[idx])
                         break
         return None
 
