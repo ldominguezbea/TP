@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import numpy as np
 import pygame
 
@@ -12,6 +14,7 @@ class Audio:
         self._sfx = {}
         self._amb = {}
         self._amb_ch = {}
+        self._travel_sound = None
 
         try:
             if not pygame.mixer.get_init():
@@ -51,13 +54,12 @@ class Audio:
         sr = self.sr
 
         # --- Efectos de sonido (SFX) ---
-        dur = 0.55
-        t = self._t(dur)
-        n = np.random.default_rng(1).standard_normal(len(t))
-        n = np.convolve(n, np.ones(60) / 60, "same") * 5
-        env = np.sin(np.pi * np.clip(t / dur, 0, 1)) ** 2
-        ph = 2 * np.pi * np.cumsum(220 + 900 * (t / dur) ** 2) / sr
-        self._sfx["travel"] = self._sound((n * 0.5 + np.sin(ph) * 0.25) * env, 0.8)
+        travel_path = Path(__file__).resolve().parent / "musica" / "space transition.mp3"
+        try:
+            self._travel_sound = pygame.mixer.Sound(str(travel_path))
+            self._travel_sound.set_volume(0.8)
+        except (pygame.error, OSError) as error:
+            print(f"[Audio] No se pudo cargar space transition.mp3: {error}")
 
         out = np.zeros(int(sr * 0.9))
         for i, f in enumerate((523.25, 659.25, 783.99, 1046.5)):
@@ -78,14 +80,6 @@ class Audio:
         self._sfx["denied"] = self._sound(
             np.sin(denied_phase) * denied_env, 0.45
         )
-
-        dur_p = 1.6
-        t_p = self._t(dur_p)
-        n_p = np.random.default_rng(2).standard_normal(len(t_p))
-        n_p = np.convolve(n_p, np.ones(200) / 200, "same") * 14
-        ph_p = 2 * np.pi * np.cumsum(50 + 140 * (t_p / dur_p) ** 2) / sr
-        env_p = np.sin(np.pi * np.clip(t_p / dur_p, 0, 1)) ** 1.5
-        self._sfx["planet_switch"] = self._sound((n_p * 0.5 + np.sin(ph_p) * 0.5) * env_p, 0.8)
 
         # --- Ambientes Sintetizados (Loopped) ---
         t_amb = self._t(8.0)
@@ -117,10 +111,15 @@ class Audio:
                 self._amb_ch[key] = ch
 
     def travel(self):
-        self._play(self._sfx.get("travel"), 0.8)
+        self._play(self._travel_sound, 0.8)
+
+    def stop_ambient(self):
+        for channel in self._amb_ch.values():
+            if channel is not None:
+                channel.stop()
 
     def planet_switch(self):
-        self._play(self._sfx.get("planet_switch"), 1.0)
+        self.travel()
 
     def confirm(self):
         self._play(self._sfx.get("confirm"), 0.9)
