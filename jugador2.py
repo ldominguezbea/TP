@@ -2,12 +2,13 @@
 import pygame
 import os
 
+from habilidades_jugador import HabilidadesJugador
 
 # ============================================================
 # PERSONAJE P_TIERRA
 # ============================================================
 
-class p_tierra(pygame.sprite.Sprite):
+class p_tierra(HabilidadesJugador, pygame.sprite.Sprite):
 
     def __init__(
         self,
@@ -17,6 +18,7 @@ class p_tierra(pygame.sprite.Sprite):
     ):
 
         super().__init__()
+        self.inicializar_habilidades((255, 145, 35))
 
         # ====================================================
         # CONFIGURACIÓN DEL PERSONAJE
@@ -486,7 +488,7 @@ class p_tierra(pygame.sprite.Sprite):
         if (
             evento.type == pygame.KEYDOWN
             and evento.key == pygame.K_w
-            and self.en_suelo
+            and self.saltos_restantes > 0
             and not (
                 self.atacando
                 or self.rodando
@@ -496,6 +498,7 @@ class p_tierra(pygame.sprite.Sprite):
 
             self.velocidad_y = self.fuerza_salto
             self.en_suelo = False
+            self.registrar_salto()
 
         # RODAR - Q
 
@@ -534,6 +537,7 @@ class p_tierra(pygame.sprite.Sprite):
         elif (
             evento.type == pygame.KEYDOWN
             and evento.key == pygame.K_e
+            and self.energia_lista
             and self.en_suelo
             and not (
                 self.rodando
@@ -546,6 +550,7 @@ class p_tierra(pygame.sprite.Sprite):
             self.estado = "sp_atk"
             self.frame_index = 0
             self.enemigos_golpeados_sp_atk.clear()
+            self.usar_energia()
 
         # ATAQUE - CLICK IZQUIERDO
 
@@ -791,6 +796,7 @@ class p_tierra(pygame.sprite.Sprite):
 
             self.velocidad_y = 0
             self.en_suelo = True
+            self.restaurar_saltos()
 
         else:
 
@@ -1096,6 +1102,8 @@ class p_tierra(pygame.sprite.Sprite):
         scroll_x,
         ancho_mundo
     ):
+
+        self.actualizar_energia()
 
         if self.muerto:
 

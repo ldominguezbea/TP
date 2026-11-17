@@ -782,6 +782,8 @@ def dibujar_barra_jugador(screen, player):
         lbl_player = fuente_ui.render(f"JUGADOR: {int(player.health)} / {player.max_health}", True, (255, 255, 255))
         screen.blit(lbl_player, (x_player, 8))
 
+    player.dibujar_barra_energia(screen)
+
 
 # 5. Escena de Batalla contra el Jefe
 def ejecutar_batalla_carnicero(screen, player, fondo_img):

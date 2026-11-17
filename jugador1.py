@@ -1,12 +1,15 @@
 import pygame
 import os
 
+from habilidades_jugador import HabilidadesJugador
 
-class p_viento(pygame.sprite.Sprite):
+
+class p_viento(HabilidadesJugador, pygame.sprite.Sprite):
 
     def __init__(self, x, y, posicion_suelo):
 
         super().__init__()
+        self.inicializar_habilidades((100, 220, 255))
 
         self.ancho_heroe = 600
         self.alto_heroe = 240
@@ -231,7 +234,7 @@ class p_viento(pygame.sprite.Sprite):
         if (
             evento.type == pygame.KEYDOWN
             and evento.key == pygame.K_w
-            and self.en_suelo
+            and self.saltos_restantes > 0
             and not (
                 self.atacando
                 or self.rodando
@@ -241,6 +244,7 @@ class p_viento(pygame.sprite.Sprite):
 
             self.velocidad_y = self.fuerza_salto
             self.en_suelo = False
+            self.registrar_salto()
 
         elif (
             evento.type == pygame.KEYDOWN
@@ -273,6 +277,7 @@ class p_viento(pygame.sprite.Sprite):
         elif (
             evento.type == pygame.KEYDOWN
             and evento.key == pygame.K_e
+            and self.energia_lista
             and self.en_suelo
             and not (
                 self.rodando
@@ -284,6 +289,7 @@ class p_viento(pygame.sprite.Sprite):
             self.atacando = True
             self.estado = "sp_atk"
             self.frame_index = 0
+            self.usar_energia()
 
             self.frames_especial_que_danaron.clear()
             self.origen_especial_x = self.pos_x
@@ -487,6 +493,7 @@ class p_viento(pygame.sprite.Sprite):
 
             self.velocidad_y = 0
             self.en_suelo = True
+            self.restaurar_saltos()
 
         else:
             self.en_suelo = False
@@ -734,6 +741,8 @@ class p_viento(pygame.sprite.Sprite):
         ancho_mundo,
         enemigo=None
     ):
+
+        self.actualizar_energia()
 
         if self.muerto:
 

@@ -49,6 +49,19 @@ class _AdaptadorJugadorNivel:
     def take_damage(self, damage):
         self.recibir_dano(damage)
 
+    def set_position(self, x, suelo_y):
+        self.posicion_suelo = suelo_y
+        self.pos_x = float(x)
+        self.rect.midbottom = (round(x), suelo_y)
+        self.velocidad_x = 0
+        self.velocidad_y = 0
+        self.en_suelo = True
+        self.plataforma_actual = None
+        self.plataforma_ignorada = None
+        self.scroll_x_actual = 0
+        self.restaurar_saltos()
+        self.actualizar_hitboxes()
+
     def comprobar_golpe(self, enemigo):
         hitbox = self.hitbox
         self.hitbox = hitbox.move(self.scroll_x_actual, 0)
@@ -130,6 +143,9 @@ class _AdaptadorJugadorNivel:
             self.rect.bottom = self.posicion_suelo
             self.velocidad_y = 0
             self.en_suelo = True
+
+        if self.en_suelo:
+            self.restaurar_saltos()
 
     def actualizar_hitboxes(self):
         self.actualizar_hurtbox()

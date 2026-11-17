@@ -61,22 +61,37 @@ class ControlsBook:
             "defend": ("09_defend",),
         }
         animations = {}
+
+        def fallback_frames(color=(143, 101, 61), size=(92, 120)):
+            surface = pygame.Surface(size, pygame.SRCALPHA)
+            rect = surface.get_rect().inflate(-16, -18)
+            pygame.draw.rect(surface, color, rect, border_radius=16)
+            pygame.draw.line(surface, (228, 199, 120), (rect.centerx, rect.top), (rect.centerx, rect.bottom), 3)
+            pygame.draw.line(surface, (228, 199, 120), (rect.left + 12, rect.centery), (rect.right - 12, rect.centery), 2)
+            return [surface]
+
         for animation, directories in frame_directories.items():
             frames = []
             for directory in directories:
-                frame_paths = list((assets_dir / directory).glob("*.png"))
+                directory_path = assets_dir / directory
+                if not directory_path.exists():
+                    continue
+                frame_paths = list(directory_path.glob("*.png"))
+                if not frame_paths:
+                    continue
                 frame_paths.sort(
                     key=lambda path: int(re.search(r"(\d+)\.png$", path.name).group(1))
                 )
-                if not frame_paths:
-                    raise FileNotFoundError(
-                        f"No hay fotogramas para {animation}: {assets_dir / directory}"
-                    )
                 for frame_path in frame_paths:
-                    image = pygame.image.load(str(frame_path)).convert_alpha()
+                    try:
+                        image = pygame.image.load(str(frame_path)).convert_alpha()
+                    except pygame.error:
+                        continue
                     bounds = image.get_bounding_rect(min_alpha=1)
                     if bounds.width and bounds.height:
                         frames.append(image.subsurface(bounds).copy())
+            if not frames:
+                frames = fallback_frames()
             animations[animation] = frames
 
         animations["movement"] = (
@@ -354,3 +369,34 @@ class ControlsBook:
             hint,
             hint.get_rect(center=(self.screen_size[0] // 2, self.book_rect.bottom + self._px(31))),
         )
+
+
+class ControlsScroll(ControlsBook):
+    def __init__(self, screen_size, hero_assets_dir: Path):
+        super().__init__(screen_size, hero_assets_dir)
+        self._close_requested = False
+        self._close_delay = 0.35
+
+    def reset(self):
+        self._close_requested = False
+        super().reset()
+
+    def handle_enter(self):
+        if not self._close_requested:
+            self._close_requested = True
+            self._play_sound("close")
+
+    def handle_key(self, key):
+        if key in (pygame.K_ESCAPE, pygame.K_RETURN, pygame.K_SPACE):
+            self.handle_enter()
+            return True
+        return super().handle_key(key)
+
+    def update(self, dt):
+        super().update(dt)
+        if self._close_requested:
+            return self.animation_elapsed >= self._close_delay
+        return False
+
+
+__all__ = ["ControlsBook", "ControlsScroll"]

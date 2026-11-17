@@ -2,6 +2,8 @@
 import pygame
 import os
 
+from habilidades_jugador import HabilidadesJugador
+
 # ============================================================
 # RUTAS DE RECURSOS
 # ============================================================
@@ -639,10 +641,11 @@ class RafagaFlechas(pygame.sprite.Sprite):
 # CLASE DEL HEROE PLANTA
 # ============================================================
 
-class p_planta(pygame.sprite.Sprite):
+class p_planta(HabilidadesJugador, pygame.sprite.Sprite):
 
     def __init__(self, x, y, posicion_suelo):
         super().__init__()
+        self.inicializar_habilidades((65, 220, 110))
 
         self.ancho_heroe = 600
         self.alto_heroe = 240
@@ -1090,7 +1093,7 @@ class p_planta(pygame.sprite.Sprite):
         if (
             evento.type == pygame.KEYDOWN
             and evento.key == pygame.K_w
-            and self.en_suelo
+            and self.saltos_restantes > 0
             and not (
                 self.atacando
                 or self.rodando
@@ -1100,6 +1103,7 @@ class p_planta(pygame.sprite.Sprite):
 
             self.velocidad_y = self.fuerza_salto
             self.en_suelo = False
+            self.registrar_salto()
 
         # RODAR: Q
 
@@ -1138,6 +1142,7 @@ class p_planta(pygame.sprite.Sprite):
         elif (
             evento.type == pygame.KEYDOWN
             and evento.key == pygame.K_e
+            and self.energia_lista
             and self.en_suelo
             and not (
                 self.rodando
@@ -1151,6 +1156,7 @@ class p_planta(pygame.sprite.Sprite):
             self.frame_index = 0
 
             self.enemigos_golpeados_especial.clear()
+            self.usar_energia()
 
         # ATAQUES: CLIC IZQUIERDO
 
@@ -1487,6 +1493,7 @@ class p_planta(pygame.sprite.Sprite):
             self.rect.bottom = self.posicion_suelo
             self.velocidad_y = 0
             self.en_suelo = True
+            self.restaurar_saltos()
 
         else:
 
@@ -1499,6 +1506,7 @@ class p_planta(pygame.sprite.Sprite):
     def update(self, scroll_x, ancho_mundo):
 
         self.ancho_mundo = ancho_mundo
+        self.actualizar_energia()
 
         # ACTUALIZAR INMUNIDAD TEMPORAL
 

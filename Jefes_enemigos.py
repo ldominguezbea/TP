@@ -55,7 +55,7 @@ def cargar_animacion_con_altura_maxima(ruta_carpeta, altura_maxima=135, rango_fr
                     img = img.subsurface(bbox)
 
                 ancho_orig, alto_orig = img.get_size()
-                if alto_orig > 0:
+                if alto_orig > 0 and alto_orig != altura_maxima:
                     # Reescalado proporcional fijando la altura máxima a altura_maxima (135)
                     factor_escala = altura_maxima / float(alto_orig)
                     nuevo_ancho = max(1, int(ancho_orig * factor_escala))
@@ -77,7 +77,10 @@ class ImpalerBoss(Enemigo):
     def __init__(self, x=900, y=500):
         super().__init__("Impaler Boss", 10, x, y)
 
-        base_path = os.path.join("assets", "Jefes", "Impaler Boss")
+        base_path = os.path.join(BASE_DIR, "assets", "Jefes", "Impaler Boss")
+        runtime_path = os.path.join(base_path, "runtime")
+        if os.path.isdir(runtime_path):
+            base_path = runtime_path
         ALTURA_MAX = 150
 
         self.animaciones = {
@@ -220,10 +223,10 @@ class ImpalerBoss(Enemigo):
             self.velocity_y = 0
             self.on_ground = True
 
-        distancia = player.rect.centerx - self.rect.centerx
+        distancia = player.hurtbox.centerx - self.rect.centerx
 
         if self.on_ground and self.cooldown_salto <= 0 and not self.attacking:
-            if player.rect.y < self.rect.y - 50 or random.random() < 0.02:
+            if player.hurtbox.top < self.rect.y - 50 or random.random() < 0.02:
                 self.realizar_salto()
                 self.cooldown_salto = 3.0
 

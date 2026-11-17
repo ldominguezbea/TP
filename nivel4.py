@@ -3,7 +3,7 @@ import runpy
 
 import pygame
 
-from jugador_nivel4 import JugadorSeleccionadoNivel4
+from personajes import crear_jugador
 from menu_pausa import NivelIntegradoFinalizado, pausar_juego
 
 
@@ -81,7 +81,7 @@ def iniciar_batalla(jugador):
             if NIVEL_INTEGRADO
             else "__main__"
         ),
-        init_globals={"jugador_seleccionado_nivel4": jugador},
+        init_globals={"jugador_nivel4": jugador},
     )
     return bool(resultado.get("nivel_completado", False))
 
@@ -96,7 +96,7 @@ def recorrer_escenarios(jugador):
     ejecutando = True
 
     while ejecutando:
-        dt = reloj.tick(60) / 1000.0
+        reloj.tick(60)
         cerca_de_puerta = abs(jugador.pos_x - entradas[escenario]) <= CAMBIO_PUERTA
 
         for evento in pygame.event.get():
@@ -128,9 +128,10 @@ def recorrer_escenarios(jugador):
             else:
                 jugador.procesar_evento(evento)
 
-        jugador.update(dt)
+        jugador.update(0, transicion_realizada=True)
         pantalla.blit(fondos[escenario], (0, 0))
-        jugador.draw(pantalla)
+        pantalla.blit(jugador.image, jugador.rect)
+        jugador.dibujar_barra_energia(pantalla)
 
         ayuda = fuente_ui.render("A / D: MOVERSE   W: SALTAR", True, (255, 245, 220))
         pantalla.blit(ayuda, (28, 24))
@@ -149,7 +150,9 @@ def recorrer_escenarios(jugador):
 def main():
     mostrar_comic("nivel4_1.png")
     mostrar_comic("nivel4_2.png")
-    jugador = JugadorSeleccionadoNivel4(170, SUELO, ANCHO)
+    jugador = crear_jugador(170, SUELO, SUELO, ANCHO, ANCHO)
+    jugador.max_health = 150
+    jugador.health = jugador.max_health
     return recorrer_escenarios(jugador)
 
 

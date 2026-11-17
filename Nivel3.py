@@ -23,7 +23,7 @@ ANCHO, ALTO = 1350, 700
 POSICION_SUELO = 638
 
 # Recorrido lateral continuo hasta la entrada del jefe.
-ANCHO_MUNDO = ANCHO * 10
+ANCHO_MUNDO = ANCHO * 7
 PORTAL_X = ANCHO_MUNDO - 500
 HUECO_INICIO = PORTAL_X - 150
 HUECO_FIN = PORTAL_X + 150
@@ -616,6 +616,8 @@ def dibujar_barra_jugador(screen, player):
         pygame.draw.rect(screen, (200, 200, 200), (x_player - 2, y_player - 2, ancho_b_player + 4, alto_b_player + 4), 2)
         lbl_player = fuente_ui.render(f"JUGADOR: {int(player.health)} / {player.max_health}", True, (255, 255, 255))
         screen.blit(lbl_player, (x_player, 8))
+
+    player.dibujar_barra_energia(screen)
 
 
 # 5. Escena de Batalla contra el Jefe

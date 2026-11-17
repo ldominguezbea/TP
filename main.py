@@ -383,8 +383,7 @@ archivos_imagenes = {
 imagenes_chars = {}
 archivos_ya_abiertos = set()
 
-prologue_images = []
-prologue_image_index = 0
+prologue_viewer = None
 
 menu_notice = ""
 # ============================================================
@@ -945,11 +944,13 @@ def render_controls(time_counter):
 # ============================================================
 
 def render_prologue():
+    get_prologue_viewer().draw(screen)
 
-    screen.blit(
-        prologue_images[prologue_image_index],
-        (0, 0)
-    )
+
+def get_prologue_viewer():
+    if prologue_viewer is None:
+        raise RuntimeError("El lector del prólogo no está inicializado.")
+    return prologue_viewer
 
 
 # ============================================================
@@ -1160,8 +1161,7 @@ def main():
     global game_state
     global selected_char_index
     global chosen_char_name
-    global prologue_images
-    global prologue_image_index
+    global prologue_viewer
     global level_selector
     global chosen_level
     global completed_levels
@@ -1196,6 +1196,10 @@ def main():
             if event.type == pygame.QUIT:
 
                 running = False
+
+            elif event.type == pygame.MOUSEBUTTONDOWN and game_state == "PROLOGUE":
+
+                get_prologue_viewer().handle_click(event.pos)
 
             elif event.type == pygame.KEYUP:
 
@@ -1254,8 +1258,11 @@ def main():
 
                 elif game_state == "CONTROLS":
 
-                    if event.key == pygame.K_RETURN and fresh_enter:
-                        controls_scroll.handle_enter()
+                    if (
+                        event.key in (pygame.K_ESCAPE, pygame.K_SPACE)
+                        or (event.key == pygame.K_RETURN and fresh_enter)
+                    ):
+                        controls_scroll.handle_key(event.key)
 
                 # ============================================
                 # PRÓLOGO
@@ -1265,20 +1272,12 @@ def main():
 
                     if event.key in (
                         pygame.K_RETURN,
-                        pygame.K_SPACE
+                        pygame.K_SPACE,
+                        pygame.K_ESCAPE,
                     ):
-
-                        if prologue_image_index < len(prologue_images) - 1:
-
-                            prologue_image_index += 1
-
-                        else:
-
+                        action = get_prologue_viewer().handle_key(event.key)
+                        if action == "finished":
                             game_state = "CHARACTER_SELECT"
-
-                    elif event.key == pygame.K_ESCAPE:
-
-                        game_state = "MENU"
 
                 # ============================================
                 # SELECCIÓN DE PERSONAJES
@@ -1390,9 +1389,7 @@ def main():
                     prologue_seen,
                 )
 
-                prologue_images = prologue()
-
-                prologue_image_index = 0
+                prologue_viewer = prologue()
 
                 game_state = "PROLOGUE"
 
@@ -1488,6 +1485,13 @@ def main():
 
             if controls_scroll.update(elapsed_ms / 1000):
                 game_state = "MENU"
+
+        elif game_state == "PROLOGUE":
+
+            prologue_viewer = get_prologue_viewer()
+            prologue_viewer.update(elapsed_ms / 1000)
+            if prologue_viewer.consume_action() == "skip":
+                game_state = "CHARACTER_SELECT"
 
         # ====================================================
         # ACTUALIZACIÓN DE PARTÍCULAS

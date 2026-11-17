@@ -2,7 +2,10 @@ import pygame
 import os
 
 
-class p_fuego(pygame.sprite.Sprite):
+from habilidades_jugador import HabilidadesJugador
+
+
+class p_fuego(HabilidadesJugador, pygame.sprite.Sprite):
 
     def __init__(
         self,
@@ -12,6 +15,7 @@ class p_fuego(pygame.sprite.Sprite):
     ):
 
         super().__init__()
+        self.inicializar_habilidades((245, 55, 55))
 
         # ====================================================
         # CONFIGURACIÓN DEL PERSONAJE
@@ -689,7 +693,7 @@ class p_fuego(pygame.sprite.Sprite):
         if (
             evento.type == pygame.KEYDOWN
             and evento.key == pygame.K_w
-            and self.en_suelo
+            and self.saltos_restantes > 0
             and not (
                 self.atacando
                 or self.rodando
@@ -699,6 +703,7 @@ class p_fuego(pygame.sprite.Sprite):
 
             self.velocidad_y = self.fuerza_salto
             self.en_suelo = False
+            self.registrar_salto()
 
         # ====================================================
         # RODAR - Q
@@ -743,6 +748,7 @@ class p_fuego(pygame.sprite.Sprite):
         elif (
             evento.type == pygame.KEYDOWN
             and evento.key == pygame.K_e
+            and self.energia_lista
             and self.en_suelo
             and not (
                 self.rodando
@@ -755,6 +761,7 @@ class p_fuego(pygame.sprite.Sprite):
             self.estado = "sp_atk"
             self.frame_index = 0
             self.enemigos_golpeados_especial.clear()
+            self.usar_energia()
 
         # ====================================================
         # ATAQUE - CLICK IZQUIERDO
@@ -1017,6 +1024,7 @@ class p_fuego(pygame.sprite.Sprite):
 
             self.velocidad_y = 0
             self.en_suelo = True
+            self.restaurar_saltos()
 
     # ========================================================
     # ACTUALIZAR JUGADOR
@@ -1027,6 +1035,8 @@ class p_fuego(pygame.sprite.Sprite):
         scroll_x,
         ancho_mundo
     ):
+
+        self.actualizar_energia()
 
         # ACTUALIZAR INMUNIDAD TEMPORAL
 

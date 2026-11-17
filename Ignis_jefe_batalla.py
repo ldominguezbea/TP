@@ -3,7 +3,7 @@ import random
 import math
 import pygame
 from Jefes_enemigos import ImpalerBoss
-from jugador_nivel4 import JugadorSeleccionadoNivel4
+from personajes import crear_jugador
 from menu_pausa import NivelIntegradoFinalizado, pausar_juego
 
 
@@ -226,7 +226,7 @@ class ZonaFuego:
                 self.hitbox = pygame.Rect(self.ancho_pantalla - w, self.pos_y, w, self.alto_fuego_base)
 
             # Si el jugador toca el fuego, simplemente recibe daño
-            if player.rect.colliderect(self.hitbox):
+            if player.hurtbox.colliderect(self.hitbox):
                 player.take_damage(20 * dt)
 
             # Generar partículas
@@ -434,7 +434,7 @@ class LavaAscendente:
 
         if (
             self.estado in ("subiendo", "activa", "bajando")
-            and player.rect.bottom > self.y
+            and player.hurtbox.bottom > self.y
         ):
             player.take_damage(45 * dt)
 
@@ -708,7 +708,7 @@ class BossBattleController:
         player.set_position(min(player.pos_x, WIDTH // 3), SUELO_Y)
 
         clone_image = crear_imagen_holograma(self._frame_muerte4(boss), alpha=210)
-        start_x = player.rect.centerx
+        start_x = player.hurtbox.centerx
         end_x = boss.rect.centerx
         self.execution_clones = []
         for index in range(4):
@@ -720,7 +720,7 @@ class BossBattleController:
             )
 
     def registrar_golpe(self, player, boss, zona_fuego):
-        if not player.attacking or player.has_hit:
+        if not player.atacando or player.has_hit:
             return
 
         if self.phase in (1, 2):
@@ -788,7 +788,7 @@ class BossBattleController:
                 0, SUELO_Y - 50, max(1, boss.rect.left), 36
             )
             if (
-                self.horizontal_beam.colliderect(player.rect)
+                self.horizontal_beam.colliderect(player.hurtbox)
                 and not self.horizontal_beam_hit
             ):
                 player.take_damage(45)
@@ -827,7 +827,7 @@ class BossBattleController:
                 36,
             )
             if (
-                self.horizontal_beam.colliderect(player.rect)
+                self.horizontal_beam.colliderect(player.hurtbox)
                 and not self.horizontal_beam_hit
             ):
                 player.take_damage(45)
@@ -920,7 +920,7 @@ class BossBattleController:
                 self.vertical_beam_hit = False
         elif self.vertical_state == "activo":
             laser = pygame.Rect(WIDTH // 2 - 24, 0, 48, HEIGHT)
-            if laser.colliderect(player.rect) and not self.vertical_beam_hit:
+            if laser.colliderect(player.hurtbox) and not self.vertical_beam_hit:
                 player.take_damage(45)
                 self.vertical_beam_hit = True
             self.vertical_timer -= dt
@@ -953,7 +953,7 @@ class BossBattleController:
     def _actualizar_proyectiles(self, dt, player):
         for projectile in self.projectiles[:]:
             projectile.update(dt)
-            if projectile.rect.colliderect(player.rect):
+            if projectile.rect.colliderect(player.hurtbox):
                 player.take_damage(projectile.damage)
                 self.projectiles.remove(projectile)
             elif projectile.rect.top > HEIGHT:
@@ -1088,9 +1088,11 @@ def dibujar_barras_vida(screen, player, enemy, phase=1):
     )
 
 
-player = globals().get("jugador_seleccionado_nivel4")
+player = globals().get("jugador_nivel4")
 if player is None:
-    player = JugadorSeleccionadoNivel4(200, SUELO_Y, WIDTH)
+    player = crear_jugador(200, SUELO_Y, SUELO_Y, WIDTH, WIDTH)
+    player.max_health = 150
+    player.health = player.max_health
 else:
     player.set_position(200, SUELO_Y)
 enemy = ImpalerBoss(900, 500)
@@ -1109,7 +1111,15 @@ while running:
             running = False
         elif event.type == pygame.KEYDOWN:
             if event.key == pygame.K_f:
-                player.attack()
+                player.procesar_evento(
+                    pygame.event.Event(
+                        pygame.MOUSEBUTTONDOWN,
+                        {
+                            "button": pygame.BUTTON_LEFT,
+                            "pos": player.hurtbox.center,
+                        },
+                    )
+                )
             elif event.key == pygame.K_ESCAPE:
                 action = pausar_juego(
                     screen,
@@ -1123,7 +1133,8 @@ while running:
             player.procesar_evento(event)
 
     plataforma = batalla.platform if batalla.phase in (2, 3) else None
-    player.update(dt, plataforma)
+    player.plataformas = [plataforma] if plataforma is not None else []
+    player.update(0, transicion_realizada=True)
 
     if batalla.phase in (1, 2):
         enemy.update(player, dt, width=WIDTH)
@@ -1155,7 +1166,8 @@ while running:
     pygame.draw.line(screen, (200, 200, 200), (0, SUELO_Y), (WIDTH, SUELO_Y), 4)
 
     enemy.draw(screen)
-    player.draw(screen)
+    screen.blit(player.image, player.rect)
+    player.dibujar_barra_energia(screen)
     if batalla.phase == 1:
         zona_fuego.draw(screen)
     batalla.draw_effects(screen, enemy)
