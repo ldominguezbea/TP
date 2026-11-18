@@ -15,6 +15,7 @@ class ControlsBook:
         self.screen_size = screen_size
         self.scale = min(screen_size[0] / 1350, screen_size[1] / 720)
         self.animation_elapsed = 0.0
+        self.closing = False
         self.background = self._make_background()
         self.font_title = pygame.font.SysFont("Georgia", self._px(29), bold=True)
         self.font_body = pygame.font.SysFont("Georgia", self._px(19), bold=True)
@@ -238,40 +239,114 @@ class ControlsBook:
 
     def reset(self):
         self.animation_elapsed = 0.0
+        self.closing = False
         self._play_sound("open")
 
     def handle_key(self, key):
-        if key == pygame.K_ESCAPE:
+        if key in (pygame.K_ESCAPE, pygame.K_RETURN, pygame.K_SPACE):
+            self.closing = True
+            self.animation_elapsed = 0.0
             self._play_sound("close")
             return True
         return False
 
+    def update(self, elapsed_seconds):
+        self.animation_elapsed += max(0.0, elapsed_seconds)
+        return self.closing and self.animation_elapsed >= self.FRAME_DURATION * 8
+
     def draw(self, surface):
-        # CLOSED usa el fotograma 1 y OPEN el fotograma 8 del spritesheet.
         screen_width, screen_height = self.screen_size
-        # Todos los fotogramas comparten escala y ancla; solo cambia el dibujo del sprite.
-        frame_width, frame_height = self.frame_size
-        scale = min(
-            screen_width * 0.78 / frame_width,
-            screen_height * 0.88 / frame_height,
-        )
-        frame = self.frames[
-            0 if self.state == ScrollState.CLOSED else self.frame_index
-        ]
-        offset_x, offset_y = self.frame_offsets[
-            0 if self.state == ScrollState.CLOSED else self.frame_index
-        ]
-        image = pygame.transform.smoothscale(
-            frame,
+        surface.blit(self.background, (0, 0))
+        pygame.draw.rect(surface, (28, 17, 12), self.book_rect, border_radius=18)
+
+        pages = (self.left_page_rect, self.right_page_rect)
+        for page in pages:
+            pygame.draw.rect(surface, (226, 205, 164), page, border_radius=8)
+            pygame.draw.rect(
+                surface,
+                (150, 112, 63),
+                page,
+                self._px(2),
+                border_radius=8,
+            )
+
+        sections = (
             (
-                max(1, round(frame.get_width() * scale)),
-                max(1, round(frame.get_height() * scale)),
+                self.left_page_rect,
+                "MOVIMIENTO",
+                (("A / D", "Caminar"), ("W", "Saltar"), ("Q", "Esquivar")),
+                "movement",
+            ),
+            (
+                self.right_page_rect,
+                "COMBATE",
+                (
+                    ("Clic izquierdo", "Atacar"),
+                    ("Clic derecho", "Defender"),
+                    ("E", "Habilidad especial"),
+                ),
+                "combat",
             ),
         )
-        image_rect = image.get_rect(
-            topleft=(
-                round(screen_width / 2 + (offset_x - frame_width / 2) * scale),
-                round(screen_height / 2 + (offset_y - frame_height / 2) * scale),
+
+        for page, title, rows, animation_name in sections:
+            title_image = self.font_title.render(title, True, (83, 43, 22))
+            surface.blit(
+                title_image,
+                title_image.get_rect(
+                    center=(page.centerx, page.top + self._px(50))
+                ),
             )
+            pygame.draw.line(
+                surface,
+                (160, 119, 62),
+                (page.left + self._px(28), page.top + self._px(82)),
+                (page.right - self._px(28), page.top + self._px(82)),
+                self._px(2),
+            )
+
+            y = page.top + self._px(112)
+            for key, description in rows:
+                key_image = self.font_controls.render(
+                    key, True, (104, 57, 28)
+                )
+                text_image = self.font_body.render(
+                    description, True, (55, 39, 27)
+                )
+                surface.blit(key_image, (page.left + self._px(30), y))
+                surface.blit(text_image, (page.left + self._px(145), y))
+                y += self._px(44)
+
+            frames = self.animations[animation_name]
+            frame_index = int(self.animation_elapsed / self.FRAME_DURATION) % len(
+                frames
+            )
+            frame = frames[frame_index]
+            max_size = (self._px(132), self._px(150))
+            scale = min(
+                max_size[0] / frame.get_width(),
+                max_size[1] / frame.get_height(),
+            )
+            image = pygame.transform.smoothscale(
+                frame,
+                (
+                    max(1, round(frame.get_width() * scale)),
+                    max(1, round(frame.get_height() * scale)),
+                ),
+            )
+            surface.blit(
+                image,
+                image.get_rect(
+                    center=(page.centerx, page.bottom - self._px(105))
+                ),
+            )
+
+        hint = self.font_small.render(
+            "ESC / ENTER / ESPACIO: volver",
+            True,
+            (235, 220, 190),
         )
-        surface.blit(image, image_rect)
+        surface.blit(
+            hint,
+            hint.get_rect(center=(screen_width // 2, screen_height - self._px(24))),
+        )
