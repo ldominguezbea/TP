@@ -18,8 +18,7 @@ class Intro:
     TITLE_PHASE_START_MS = 33_000
     PARTICLE_COUNT = 180
     FADE_DURATION_MS = 2_000
-    INSTRUCTION_DURATION_MS = 5_000
-    INSTRUCTION_FADE_MS = 900
+    MUSIC_FADE_DURATION_MS = 1_100
     MUSIC_VOLUME = 0.7
     DUCKED_MUSIC_VOLUME = 0.2
     TITLE_MUSIC_VOLUME = 0.8
@@ -69,7 +68,7 @@ class Intro:
         self.subtitle_font = pygame.font.SysFont("Arial", 30, bold=True)
         self.instruction_font = pygame.font.SysFont("Arial", 22, bold=True)
         self.instruction = self.instruction_font.render(
-            'press "esc" to continue', True, (255, 255, 255)
+            "SALTAR [ESC / CLICK]", True, (255, 255, 255)
         )
         self.instruction_background = pygame.Surface(
             (self.instruction.get_width() + 28, self.instruction.get_height() + 20),
@@ -82,8 +81,9 @@ class Intro:
             border_radius=6,
         )
         self.instruction_rect = self.instruction_background.get_rect(
-            midbottom=(screen_width // 2, screen_height - 28)
+            topright=(screen_width - 24, 28)
         )
+        self.skip_rect = self.instruction_rect.copy()
         self.subtitle = None
 
         rng = random.Random(1604)
@@ -103,13 +103,18 @@ class Intro:
         self.broadcast_channel = None
         self.broadcast_started_ticks = None
         self.audio_started = False
+        self.music_volume = self.MUSIC_VOLUME
+        self.music_fade_start = self.music_volume
+        self.music_fade_target = self.music_volume
+        self.music_fade_elapsed = 0
+        self.music_fade_duration = 0
         if self.audio_enabled:
             try:
                 if not pygame.mixer.get_init():
                     pygame.mixer.init()
                 self.broadcast_audio = pygame.mixer.Sound(str(self.BROADCAST_AUDIO))
                 pygame.mixer.music.load(str(self.TITLE_TRACK))
-                pygame.mixer.music.set_volume(self.MUSIC_VOLUME)
+                pygame.mixer.music.set_volume(self.music_volume)
                 pygame.mixer.music.play(-1)
                 self.audio_started = True
             except (pygame.error, OSError) as error:
@@ -127,6 +132,34 @@ class Intro:
         if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
             self.stop_audio()
             self.finished = True
+        elif (
+            event.type == pygame.MOUSEBUTTONDOWN
+            and event.button == 1
+            and self.skip_rect.collidepoint(event.pos)
+        ):
+            self.stop_audio()
+            self.finished = True
+
+    def _begin_music_fade(self, target_volume):
+        self.music_fade_start = self.music_volume
+        self.music_fade_target = target_volume
+        self.music_fade_elapsed = 0
+        self.music_fade_duration = self.MUSIC_FADE_DURATION_MS
+
+    def _update_music_fade(self, elapsed_ms):
+        if not self.audio_enabled or self.music_fade_duration <= 0:
+            return
+
+        self.music_fade_elapsed = min(
+            self.music_fade_duration,
+            self.music_fade_elapsed + max(0, elapsed_ms),
+        )
+        progress = self.music_fade_elapsed / self.music_fade_duration
+        eased = progress * progress * (3 - 2 * progress)
+        self.music_volume = self.music_fade_start + (
+            self.music_fade_target - self.music_fade_start
+        ) * eased
+        pygame.mixer.music.set_volume(self.music_volume)
 
     def stop_audio(self):
         if self.broadcast_channel is not None:
@@ -151,7 +184,7 @@ class Intro:
         ):
             self.broadcast_channel = self.broadcast_audio.play()
             self.broadcast_started_ticks = pygame.time.get_ticks()
-            pygame.mixer.music.set_volume(self.DUCKED_MUSIC_VOLUME)
+            self._begin_music_fade(self.DUCKED_MUSIC_VOLUME)
             self.broadcast_started = True
 
         if (
@@ -159,8 +192,10 @@ class Intro:
             and not self.title_started
             and self.timeline_ms >= self.TITLE_PHASE_START_MS
         ):
-            pygame.mixer.music.set_volume(self.TITLE_MUSIC_VOLUME)
+            self._begin_music_fade(self.TITLE_MUSIC_VOLUME)
             self.title_started = True
+
+        self._update_music_fade(elapsed_ms)
 
         if self.timeline_ms < self.STUDIO_PHASE_END_MS:
             self.phase = "STUDIO"
@@ -333,28 +368,11 @@ class Intro:
             )
 
         self._draw_subtitle()
-        instruction_elapsed = self.timeline_ms
-        if 0 <= instruction_elapsed < self.INSTRUCTION_DURATION_MS:
-            alpha = min(
-                255,
-                round(
-                    255
-                    * min(
-                        1.0,
-                        (self.INSTRUCTION_DURATION_MS - instruction_elapsed)
-                        / self.INSTRUCTION_FADE_MS,
-                    )
-                ),
-            )
-            instruction_background = self.instruction_background.copy()
-            instruction_background.set_alpha(alpha)
-            instruction = self.instruction.copy()
-            instruction.set_alpha(alpha)
-            self.screen.blit(instruction_background, self.instruction_rect)
-            self.screen.blit(
-                instruction,
-                (self.instruction_rect.x + 14, self.instruction_rect.y + 10),
-            )
+        self.screen.blit(self.instruction_background, self.instruction_rect)
+        self.screen.blit(
+            self.instruction,
+            (self.instruction_rect.x + 14, self.instruction_rect.y + 10),
+        )
 
 
 def run_intro(screen=None, audio_enabled=True):

@@ -60,7 +60,8 @@ clock = pygame.time.Clock()
 # SISTEMA DE AUDIO
 # ============================================================
 
-MENU_AUDIO_VOLUME = 0.45
+MENU_MUSIC_VOLUME = 0.85
+MENU_SFX_VOLUME = 0.45
 
 MENU_CUE_FILES = {
     "NEW GAME": ("New_game.mp3", 0, 3500),
@@ -72,9 +73,33 @@ MENU_CUE_FILES = {
 
 # Audio alternativo por si la clase Audio no puede inicializarse.
 class AudioSilencioso:
+    def __init__(self):
+        self.muted = True
 
     def update_ambient(self, *args, **kwargs):
         pass
+
+    def stop_ambient(self):
+        pass
+
+    def play_level_transition(self, level_number):
+        return 4_500 if level_number == 4 else 7_000
+
+    def travel(self):
+        pass
+
+    def planet_switch(self):
+        pass
+
+    def confirm(self):
+        pass
+
+    def denied(self):
+        pass
+
+    def toggle_mute(self):
+        self.muted = not self.muted
+        return self.muted
 
 
 try:
@@ -137,7 +162,7 @@ if audio_disponible:
 
     try:
         navigation_sound = create_navigation_sound()
-        navigation_sound.set_volume(MENU_AUDIO_VOLUME)
+        navigation_sound.set_volume(MENU_SFX_VOLUME)
 
     except (pygame.error, RuntimeError) as e:
         print(f"[AUDIO] Error creando sonido de navegación: {e}")
@@ -193,7 +218,7 @@ def play_menu_cue(option):
                 duration_ms
             )
 
-        sound.set_volume(MENU_AUDIO_VOLUME)
+        sound.set_volume(MENU_SFX_VOLUME)
         sound.play(maxtime=duration_ms)
 
         return pygame.time.get_ticks() + duration_ms, sound
@@ -322,8 +347,6 @@ menu_options = [
 
 selected_option = 0
 game_state = "MENU"
-
-MENU_AUDIO_VOLUME = 0.45
 
 assets_chars = BASE_DIR / "assets" / "sprites" / "seleccion_personajes"
 
@@ -1039,6 +1062,10 @@ def main():
 
                 get_prologue_viewer().handle_click(event.pos)
 
+            elif event.type == pygame.MOUSEWHEEL and game_state == "PROLOGUE":
+
+                get_prologue_viewer().handle_scroll(event.y)
+
             elif event.type == pygame.KEYUP:
 
                 if event.key == pygame.K_RETURN:
@@ -1112,6 +1139,10 @@ def main():
                         pygame.K_RETURN,
                         pygame.K_SPACE,
                         pygame.K_ESCAPE,
+                        pygame.K_UP,
+                        pygame.K_DOWN,
+                        pygame.K_PAGEUP,
+                        pygame.K_PAGEDOWN,
                     ):
                         action = get_prologue_viewer().handle_key(event.key)
                         if action == "finished":
@@ -1361,7 +1392,7 @@ def main():
                     )
 
                     pygame.mixer.music.set_volume(
-                        MENU_AUDIO_VOLUME
+                        MENU_MUSIC_VOLUME
                     )
 
                     pygame.mixer.music.play(-1)

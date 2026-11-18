@@ -200,7 +200,6 @@ def intentar_lanzar(lvl):
         audio.denied()
         mostrar_toast(motivo)
         return False
-    audio.confirm()
     return True
 
 
@@ -1122,6 +1121,11 @@ class LevelSelector:
         par_x = par_y = 0.0
         bubbles.clear()
         self._dt = FRAME_MS
+        self.transition_kind = None
+        self.transition_elapsed_ms = 0
+        self.transition_duration_ms = 0
+        self.transition_center = (CENTER_X, CENTER_Y)
+        self.transition_layer = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
         self.set_completed_levels(completed_levels)
 
     def set_completed_levels(self, completed_levels):
@@ -1152,8 +1156,87 @@ class LevelSelector:
             mostrar_toast(message)
             return None
         if intentar_lanzar(lvl):
-            return numero_nivel(lvl)
+            level_number = numero_nivel(lvl)
+            self._run_level_transition(lvl, level_number)
+            return level_number
         return None
+
+    def _run_level_transition(self, lvl, level_number):
+        global planet_rotation
+
+        self.transition_kind = "gehena" if level_number == 4 else "earth"
+        self.transition_elapsed_ms = 0
+        self.transition_duration_ms = max(
+            1, self.audio.play_level_transition(level_number)
+        )
+
+        latitude = math.radians(lvl["lat"])
+        longitude = math.radians(lvl["lon"] + planet_rotation)
+        self.transition_center = (
+            int(CENTER_X + R * math.cos(latitude) * math.sin(longitude)),
+            int(CENTER_Y - R * math.sin(latitude)),
+        )
+
+        transition_clock = pygame.time.Clock()
+        quit_events = []
+        while self.transition_elapsed_ms < self.transition_duration_ms:
+            elapsed_ms = max(1, transition_clock.tick(60))
+            self.transition_elapsed_ms += elapsed_ms
+            self._dt = min(50, elapsed_ms)
+            quit_events.extend(
+                event
+                for event in pygame.event.get()
+                if event.type == pygame.QUIT
+            )
+            self.draw(pygame.time.get_ticks())
+            pygame.display.flip()
+
+        self.transition_kind = None
+        for event in quit_events:
+            pygame.event.post(event)
+
+    def _draw_level_transition(self, ticks):
+        progress = min(
+            1.0, self.transition_elapsed_ms / self.transition_duration_ms
+        )
+        self.transition_layer.fill((0, 0, 0, 0))
+        color = (90, 195, 255) if self.transition_kind == "earth" else (255, 75, 35)
+        center_x, center_y = self.transition_center
+        angle_offset = ticks / 280
+        max_radius = 22 + round(195 * progress)
+
+        for ring_index in range(5):
+            radius = max_radius - ring_index * 17
+            if radius > 4:
+                alpha = max(24, round(185 * (1.0 - progress * 0.55)))
+                pygame.draw.circle(
+                    self.transition_layer,
+                    (*color, alpha),
+                    (center_x, center_y),
+                    radius,
+                    max(1, 4 - ring_index // 2),
+                )
+
+        for arm in range(3):
+            points = []
+            for step in range(36):
+                distance = 10 + max_radius * step / 35
+                angle = angle_offset + arm * math.tau / 3 + step * 0.18
+                points.append(
+                    (
+                        round(center_x + math.cos(angle) * distance),
+                        round(center_y + math.sin(angle) * distance),
+                    )
+                )
+            pygame.draw.lines(
+                self.transition_layer,
+                (*color, 210),
+                False,
+                points,
+                3,
+            )
+
+        screen.blit(self.transition_layer, (0, 0))
 
     def update(self, elapsed_ms):
         self._dt = max(1, min(50, elapsed_ms))
@@ -1206,7 +1289,8 @@ class LevelSelector:
         light_length = math.sqrt(lx * lx + ly * ly + lz * lz)
         light = (lx / light_length, ly / light_length, lz / light_length)
 
-        audio.update_ambient(env_t)
+        if self.transition_kind is None:
+            audio.update_ambient(env_t)
         screen.fill((0, 0, 0))
         draw_space(ticks, dt, planet_rotation, env_t, par_x, par_y)
         draw_sun(sun_x, sun_y, theta, ticks, env_t)
@@ -1304,6 +1388,8 @@ class LevelSelector:
         draw_arrow_button(BTN_RIGHT, 1, BTN_RIGHT.collidepoint(mouse_pos))
         screen.blit(HUD_TEXT, HUD_TEXT.get_rect(center=(WIDTH // 2, HEIGHT - 18)))
         draw_toast(ticks)
+        if self.transition_kind is not None:
+            self._draw_level_transition(ticks)
         set_hand(
             hover_idx is not None
             or hover_planet

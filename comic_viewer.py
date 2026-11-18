@@ -8,11 +8,11 @@ import pygame
 
 
 _PAGE_FILES = (
-    ("Pag_1.png", 0.81, 0.91),
-    ("Pag_2.png", 0.88, 0.94),
-    ("Pag_3.png", 0.94, 0.96),
-    ("Pag_4.png", 0.83, 0.96),
-    ("Pag_5.png", 0.70, 0.98),
+    "Pag_1.png",
+    "Pag_2.png",
+    "Pag_3.png",
+    "Pag_4.png",
+    "Pag_5.png",
 )
 _TRANSITION_DURATION = 0.4
 _SKIP_FADE_DURATION = 0.36
@@ -39,29 +39,30 @@ def _make_pcm_sound(duration, sample_rate, channels, sample_function):
 class ComicViewer:
     def __init__(self, screen_size, assets_dir: Path):
         self.screen_size = screen_size
+        self.view_rect = pygame.Rect(
+            _MARGIN,
+            _MARGIN,
+            screen_size[0] - _MARGIN * 2,
+            screen_size[1] - _MARGIN * 2 - 64,
+        )
         self.pages = []
-        self.prompt_positions = []
-        for filename, grid_bottom, prompt_position in _PAGE_FILES:
+        for filename in _PAGE_FILES:
             path = assets_dir / filename
             if not path.is_file():
                 raise FileNotFoundError(f"No se encontró una página del prólogo: {path}")
             image = pygame.image.load(str(path)).convert_alpha()
-            panels = (
-                self._make_irregular_panels(image)
-                if filename == "Pag_5.png"
-                else self._make_panels(image, grid_bottom)
+            scale = min(1.0, self.view_rect.width / image.get_width())
+            scaled_size = (
+                max(1, round(image.get_width() * scale)),
+                max(1, round(image.get_height() * scale)),
             )
-            self.pages.append((image, panels))
-            self.prompt_positions.append(prompt_position)
+            self.pages.append(pygame.transform.smoothscale(image, scaled_size))
 
         self.page_index = 0
-        self.panel_index = 0
-        self.mode = "panel"
-        self.camera_rect = self.pages[0][1][0]
+        self.scroll_offset = 0.0
+        self.scroll_target = 0.0
+        self.mode = "page"
         self.transition_from = None
-        self.transition_start = None
-        self.transition_target = None
-        self.transition_target_mode = None
         self.transition_elapsed = 0.0
         self.skip_elapsed = 0.0
         self.pending_action = None
@@ -70,12 +71,6 @@ class ComicViewer:
         self.vignette = self._make_vignette()
         self.dust_surface = pygame.Surface(self.screen_size, pygame.SRCALPHA)
         self.prompt_font = pygame.font.SysFont("Constantia", max(16, screen_size[1] // 44), bold=True)
-        prompt = self.prompt_font.render("CONTINUAR [ENTER]", True, (255, 255, 255))
-        self.prompt_backdrop = pygame.Surface(
-            (prompt.get_width() + 24, prompt.get_height() + 14),
-            pygame.SRCALPHA,
-        )
-        self.prompt_backdrop.fill((8, 10, 17, 255))
         skip_prompt = self.prompt_font.render("SALTAR [ESC / CLICK]", True, (255, 255, 255))
         self.skip_backdrop = pygame.Surface(
             (skip_prompt.get_width() + 24, skip_prompt.get_height() + 14),
@@ -91,57 +86,23 @@ class ComicViewer:
         self.rng = random.Random()
         self.flip_sounds = self._load_flip_sounds()
 
-    @staticmethod
-    def _make_panels(image, grid_bottom):
-        width, height = image.get_size()
-        cell_width = width / 3
-        cell_height = height * grid_bottom / 3
-        panels = []
-        for row in range(3):
-            for column in range(3):
-                overlap_x = round(cell_width * 0.035)
-                overlap_y = round(cell_height * 0.035)
-                left = max(0, round(column * cell_width) - overlap_x)
-                top = max(0, round(row * cell_height) - overlap_y)
-                right = min(width, round((column + 1) * cell_width) + overlap_x)
-                bottom = min(
-                    round(height * grid_bottom),
-                    round((row + 1) * cell_height) + overlap_y,
-                )
-                panels.append(
-                    (
-                        float(left),
-                        float(top),
-                        float(max(1, right - left)),
-                        float(max(1, bottom - top)),
-                    )
-                )
-        return panels
+    def _max_scroll(self, page_index=None):
+        index = self.page_index if page_index is None else page_index
+        return max(0, self.pages[index].get_height() - self.view_rect.height)
 
-    @staticmethod
-    def _make_irregular_panels(image):
-        width, height = image.get_size()
-        grid_bottom = 0.70
-        row_edges = (0.0, 0.23, 0.47, grid_bottom)
-        rows = (
-            ((0.0, 0.62), (0.62, 1.0)),
-            ((0.0, 0.38), (0.38, 0.73), (0.73, 1.0)),
-            ((0.0, 0.42), (0.42, 0.73), (0.73, 1.0)),
+    def _render_page(self, scroll_offset=None):
+        frame = pygame.Surface(self.screen_size)
+        frame.fill((5, 6, 12))
+        page = self.pages[self.page_index]
+        offset = self.scroll_offset if scroll_offset is None else scroll_offset
+        page_rect = page.get_rect(
+            midtop=(self.view_rect.centerx, self.view_rect.top - round(offset))
         )
-        panels = []
-        for row, columns in enumerate(rows):
-            top = max(0, round(height * row_edges[row]) - round(height * 0.012))
-            bottom = min(
-                round(height * grid_bottom),
-                round(height * row_edges[row + 1]) + round(height * 0.012),
-            )
-            for left_fraction, right_fraction in columns:
-                left = max(0, round(width * left_fraction) - round(width * 0.012))
-                right = min(width, round(width * right_fraction) + round(width * 0.012))
-                panels.append(
-                    (float(left), float(top), float(right - left), float(bottom - top))
-                )
-        return panels
+        frame.set_clip(self.view_rect)
+        frame.blit(page, page_rect)
+        frame.set_clip(None)
+        self.image_rect = page_rect
+        return frame
 
     def _make_vignette(self):
         width, height = self.screen_size
@@ -217,41 +178,11 @@ class ComicViewer:
             print(f"[PRÓLOGO] No se pudieron preparar los sonidos: {error}")
             return None, None
 
-    def _make_camera_surface(self, rect):
-        image, _ = self.pages[self.page_index]
-        x, y, width, height = rect
-        crop = image.subsurface(
-            pygame.Rect(
-                round(x),
-                round(y),
-                max(1, round(width)),
-                max(1, round(height)),
-            )
-        )
-        target_width = max(1, self.screen_size[0] - _MARGIN * 2)
-        target_height = max(1, self.screen_size[1] - _MARGIN * 2)
-        scale = min(target_width / crop.get_width(), target_height / crop.get_height())
-        size = (
-            max(1, round(crop.get_width() * scale)),
-            max(1, round(crop.get_height() * scale)),
-        )
-        scaled = pygame.transform.smoothscale(crop, size)
-        frame = pygame.Surface(self.screen_size)
-        frame.fill((5, 6, 12))
-        self.image_rect = scaled.get_rect(center=frame.get_rect().center)
-        frame.blit(scaled, self.image_rect)
-        return frame
-
-    def _begin_transition(self, target, target_mode, next_page=False):
-        self.transition_from = self._make_camera_surface(self.camera_rect)
-        if next_page:
-            self.page_index += 1
-            self.panel_index = 0
-            image = self.pages[self.page_index][0]
-            self.camera_rect = (0.0, 0.0, float(image.get_width()), float(image.get_height()))
-        self.transition_start = self.camera_rect
-        self.transition_target = target
-        self.transition_target_mode = target_mode
+    def _begin_transition(self):
+        self.transition_from = self._render_page()
+        self.page_index += 1
+        self.scroll_offset = 0.0
+        self.scroll_target = 0.0
         self.transition_elapsed = 0.0
         self.mode = "transition"
         if self.flip_sounds:
@@ -263,7 +194,6 @@ class ComicViewer:
         self.mode = "skipping"
         self.skip_elapsed = 0.0
         self.transition_from = None
-        self.transition_target = None
         if self.ambient_channel is not None:
             self.ambient_channel.fadeout(round(_SKIP_FADE_DURATION * 1000))
 
@@ -271,27 +201,44 @@ class ComicViewer:
         if key == pygame.K_ESCAPE:
             self._begin_skip()
             return None
-        if key not in (pygame.K_RETURN, pygame.K_SPACE) or self.mode == "transition":
+        if self.mode in ("transition", "skipping"):
             return None
 
-        panels = self.pages[self.page_index][1]
-        if self.mode == "panel":
-            if self.panel_index < len(panels) - 1:
-                self.panel_index += 1
-                self._begin_transition(panels[self.panel_index], "panel")
-            else:
-                image = self.pages[self.page_index][0]
-                full_page = (0.0, 0.0, float(image.get_width()), float(image.get_height()))
-                self._begin_transition(full_page, "full")
+        if key in (pygame.K_UP, pygame.K_PAGEUP):
+            self.scroll_target = max(
+                0.0, self.scroll_target - self.view_rect.height * 0.8
+            )
+            return None
+        if key in (pygame.K_DOWN, pygame.K_PAGEDOWN):
+            self.scroll_target = min(
+                self._max_scroll(),
+                self.scroll_target + self.view_rect.height * 0.8,
+            )
             return None
 
+        if key not in (pygame.K_RETURN, pygame.K_SPACE):
+            return None
+
+        if self.scroll_offset < self._max_scroll() - 2:
+            self.scroll_target = self._max_scroll()
+            return None
         if self.page_index < len(self.pages) - 1:
-            first_panel = self.pages[self.page_index + 1][1][0]
-            self._begin_transition(first_panel, "panel", next_page=True)
+            self._begin_transition()
             return None
 
         self.stop_audio()
         return "finished"
+
+    def handle_scroll(self, amount):
+        if self.mode in ("transition", "skipping"):
+            return
+        self.scroll_target = max(
+            0.0,
+            min(
+                self._max_scroll(),
+                self.scroll_target - amount * self.view_rect.height * 0.18,
+            ),
+        )
 
     def handle_click(self, position):
         if self.mode != "skipping" and self.skip_rect is not None:
@@ -323,20 +270,19 @@ class ComicViewer:
 
         if self.mode == "transition":
             self.transition_elapsed += elapsed
-            progress = _smoothstep(self.transition_elapsed / _TRANSITION_DURATION)
-            target = self.transition_target
-            self.camera_rect = tuple(
-                current + (destination - current) * progress
-                for current, destination in zip(self.transition_start, target)
-            )
             if self.transition_elapsed >= _TRANSITION_DURATION:
-                self.camera_rect = self.transition_target
-                self.mode = self.transition_target_mode
+                self.mode = "page"
                 self.transition_from = None
-                self.transition_target = None
+        elif self.mode == "page":
+            progress = min(1.0, elapsed * 8.0)
+            self.scroll_offset += (
+                self.scroll_target - self.scroll_offset
+            ) * progress
+            if abs(self.scroll_target - self.scroll_offset) < 0.5:
+                self.scroll_offset = self.scroll_target
 
     def draw(self, surface):
-        frame = self._make_camera_surface(self.camera_rect)
+        frame = self._render_page()
         surface.blit(frame, (0, 0))
         if self.transition_from is not None:
             progress = _smoothstep(self.transition_elapsed / _TRANSITION_DURATION)
@@ -357,25 +303,26 @@ class ComicViewer:
 
         if self.mode != "skipping":
             pulse = 0.5 + 0.5 * math.sin(self.elapsed * 2.8)
+            prompt_text = (
+                "LEER [ENTER / RUEDA]"
+                if self.scroll_offset < self._max_scroll() - 2
+                else "SIGUIENTE [ENTER]"
+            )
             prompt = self.prompt_font.render(
-                "CONTINUAR [ENTER]",
+                prompt_text,
                 True,
                 (round(186 + pulse * 69), round(161 + pulse * 78), round(108 + pulse * 92)),
             )
-            if self.mode == "full":
-                prompt_rect = prompt.get_rect(
-                    bottomright=(
-                        self.image_rect.right - 12,
-                        self.image_rect.top
-                        + round(self.image_rect.height * self.prompt_positions[self.page_index]),
-                    )
-                )
-            else:
-                prompt_rect = prompt.get_rect(
-                    bottomright=(surface.get_width() - 24, surface.get_height() - 20)
-                )
-            backdrop_rect = self.prompt_backdrop.get_rect(center=prompt_rect.center)
-            surface.blit(self.prompt_backdrop, backdrop_rect)
+            prompt_rect = prompt.get_rect(
+                bottomright=(surface.get_width() - 24, surface.get_height() - 18)
+            )
+            backdrop = pygame.Surface(
+                (prompt.get_width() + 24, prompt.get_height() + 14),
+                pygame.SRCALPHA,
+            )
+            backdrop.fill((8, 10, 17, 255))
+            backdrop_rect = backdrop.get_rect(center=prompt_rect.center)
+            surface.blit(backdrop, backdrop_rect)
             surface.blit(prompt, prompt_rect)
 
             skip = self.prompt_font.render(
@@ -387,11 +334,36 @@ class ComicViewer:
                     round(109 + pulse * 38),
                 ),
             )
-            skip_rect = skip.get_rect(bottomleft=(24, surface.get_height() - 20))
+            skip_rect = skip.get_rect(bottomleft=(24, surface.get_height() - 18))
             skip_backdrop_rect = self.skip_backdrop.get_rect(center=skip_rect.center)
             surface.blit(self.skip_backdrop, skip_backdrop_rect)
             surface.blit(skip, skip_rect)
             self.skip_rect = skip_backdrop_rect
+
+            max_scroll = self._max_scroll()
+            if max_scroll > 0:
+                track = pygame.Rect(
+                    self.view_rect.right - 6,
+                    self.view_rect.top,
+                    4,
+                    self.view_rect.height,
+                )
+                thumb_height = max(
+                    22,
+                    round(self.view_rect.height ** 2 / self.pages[self.page_index].get_height()),
+                )
+                thumb_top = self.view_rect.top + round(
+                    (self.view_rect.height - thumb_height)
+                    * self.scroll_offset
+                    / max_scroll
+                )
+                pygame.draw.rect(surface, (28, 25, 30), track, border_radius=3)
+                pygame.draw.rect(
+                    surface,
+                    (195, 160, 105),
+                    (track.x, thumb_top, track.width, thumb_height),
+                    border_radius=3,
+                )
         else:
             self.skip_rect = None
 
