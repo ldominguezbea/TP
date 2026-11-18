@@ -17,6 +17,10 @@ pygame.init()
 pygame.font.init()
 NIVEL_INTEGRADO = __name__ == "_nivel3_integrado"
 nivel_completado = False
+decision_ascanor = None
+gena_desbloqueado = False
+primer_final_alcanzado = False
+final_definitivo = False
 
 # 1. Configuración de pantalla y mundo
 ANCHO, ALTO = 1350, 700
@@ -213,6 +217,83 @@ def mostrar_comic_final(screen):
         screen.blit(imagen_final, (0, 0))
         pygame.display.flip()
         reloj.tick(60)
+    return opcion
+
+
+def esperar_enter_nuevo(screen, reloj, enter_liberado=True):
+    teclas_enter = (pygame.K_RETURN, pygame.K_KP_ENTER)
+    while True:
+        enter_aceptado = False
+        for evento in pygame.event.get():
+            if evento.type == pygame.QUIT:
+                cerrar_nivel("exit")
+            if evento.type == pygame.KEYUP and evento.key in teclas_enter:
+                enter_liberado = True
+            elif evento.type == pygame.KEYDOWN and evento.key in teclas_enter:
+                if enter_liberado and not enter_aceptado:
+                    enter_aceptado = True
+                enter_liberado = False
+        if enter_aceptado:
+            return enter_liberado
+        screen.fill((0, 0, 0))
+        pygame.display.flip()
+        reloj.tick(60)
+
+
+def mostrar_primer_final(screen):
+    ruta_imagen = os.path.join(
+        BASE_DIR,
+        "imagenes",
+        "Nivel3",
+        "Planeta ígneo sobre la ciudad en ruinas.png",
+    )
+    if not os.path.isfile(ruta_imagen):
+        raise FileNotFoundError(f"No se encontró la imagen del primer final: {ruta_imagen}")
+
+    imagen = pygame.image.load(ruta_imagen).convert_alpha()
+    escala = min(ANCHO / imagen.get_width(), ALTO / imagen.get_height())
+    tamano = (
+        round(imagen.get_width() * escala),
+        round(imagen.get_height() * escala),
+    )
+    imagen = pygame.transform.scale(imagen, tamano)
+    reloj = pygame.time.Clock()
+    fin_imagen = pygame.time.get_ticks() + 3000
+    while pygame.time.get_ticks() < fin_imagen:
+        for evento in pygame.event.get():
+            if evento.type == pygame.QUIT:
+                cerrar_nivel("exit")
+        screen.fill((0, 0, 0))
+        screen.blit(imagen, imagen.get_rect(center=(ANCHO // 2, ALTO // 2)))
+        pygame.display.flip()
+        reloj.tick(60)
+
+    screen.fill((0, 0, 0))
+    texto_fin = pygame.font.SysFont("Arial", 56, bold=True).render(
+        "FIN",
+        True,
+        (255, 255, 255),
+    )
+    screen.blit(texto_fin, texto_fin.get_rect(center=(ANCHO // 2, ALTO // 2)))
+    pygame.display.flip()
+    esperar_enter_nuevo(screen, reloj)
+
+
+def resolver_final_nivel3(screen):
+    global decision_ascanor, gena_desbloqueado
+    global primer_final_alcanzado, nivel_completado
+
+    opcion = mostrar_comic_final(screen)
+    decision_ascanor = "let_go" if opcion == 1 else "stop"
+    gena_desbloqueado = decision_ascanor == "let_go"
+
+    if decision_ascanor == "stop":
+        primer_final_alcanzado = True
+        gena_desbloqueado = False
+        mostrar_primer_final(screen)
+
+    nivel_completado = True
+    return decision_ascanor
 
 
 # 3. Clase para el Jugador (P_viento)
@@ -803,7 +884,7 @@ def ejecutar_batalla_carnicero(screen, player, fondo_img):
             screen.blit(surf_texto, rect_txt)
 
             if timer_muerte_jefe >= (TIEMPO_FADE_LETRERO + TIEMPO_ESPERA_POST):
-                mostrar_comic_final(screen)
+                resolver_final_nivel3(screen)
                 en_batalla = False
 
         pygame.display.flip()
@@ -1000,8 +1081,7 @@ def ejecutar_batalla_ciclope(screen, player, fondo_img):
             screen.blit(sombra, (rect_texto.x + 3, rect_texto.y + 3))
             screen.blit(texto, rect_texto)
             if timer_muerte_jefe >= 4.8:
-                mostrar_comic_final(screen)
-                nivel_completado = True
+                resolver_final_nivel3(screen)
                 en_batalla = False
 
         pygame.display.flip()

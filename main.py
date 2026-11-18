@@ -23,6 +23,7 @@ except pygame.error as e:
 
 
 from config import SCREEN_WIDTH, SCREEN_HEIGHT, GAME_WIDTH, GAME_HEIGHT, BASE_DIR, abrir_archivo
+from intro import run_intro
 
 # Configuración del motor de video de Pygame
 canvas = pygame.Surface((GAME_WIDTH, GAME_HEIGHT))
@@ -207,12 +208,33 @@ def play_menu_cue(option):
 SAVE_FILE = BASE_DIR / "savegame.json"
 
 
-def save_game(character_name, completed_levels, prologue_seen):
+def nueva_progresion_historia():
+    return {
+        "ascanor_decision": None,
+        "gena_unlocked": False,
+        "level4_completed": False,
+        "first_ending": False,
+        "definitive_ending": False,
+        "game_finished": False,
+    }
+
+
+def save_game(
+    character_name,
+    completed_levels,
+    prologue_seen,
+    story_progress=None,
+):
 
     data = {
         "character": character_name,
         "completed_levels": sorted(completed_levels),
         "prologue_seen": prologue_seen,
+        "story_progress": dict(
+            story_progress
+            if story_progress is not None
+            else nueva_progresion_historia()
+        ),
     }
 
     SAVE_FILE.write_text(
@@ -247,6 +269,13 @@ def load_game():
     character_name = data.get("character")
     completed = data.get("completed_levels", [])
     prologue_was_seen = data.get("prologue_seen", "level" in data)
+    story = data.get("story_progress")
+    if story is None:
+        story = nueva_progresion_historia()
+    elif isinstance(story, dict):
+        defaults = nueva_progresion_historia()
+        defaults.update(story)
+        story = defaults
 
     if (
         (
@@ -259,6 +288,64 @@ def load_game():
         or not isinstance(completed, list)
         or any(type(level) is not int or level not in (1, 2, 3, 4) for level in completed)
         or type(prologue_was_seen) is not bool
+        or not isinstance(story, dict)
+        or story.get("ascanor_decision") not in (None, "stop", "let_go")
+        or any(
+            type(story.get(key)) is not bool
+            for key in (
+                "gena_unlocked",
+                "level4_completed",
+                "first_ending",
+                "definitive_ending",
+                "game_finished",
+            )
+        )
+        or (
+            story.get("ascanor_decision") == "let_go"
+            and story.get("gena_unlocked") is not True
+        )
+        or (
+            story.get("ascanor_decision") != "let_go"
+            and story.get("gena_unlocked") is True
+        )
+        or (
+            story.get("first_ending")
+            and (
+                story.get("ascanor_decision") != "stop"
+                or story.get("game_finished") is not True
+                or story.get("level4_completed")
+                or 4 in completed
+                or not {1, 2, 3}.issubset(completed)
+            )
+        )
+        or (
+            story.get("ascanor_decision") == "stop"
+            and story.get("first_ending") is not True
+        )
+        or (
+            story.get("level4_completed")
+            != story.get("definitive_ending")
+        )
+        or (
+            story.get("definitive_ending")
+            and (
+                story.get("ascanor_decision") != "let_go"
+                or story.get("level4_completed") is not True
+                or story.get("game_finished") is not True
+                or not {1, 2, 3, 4}.issubset(completed)
+            )
+        )
+        or (
+            story.get("game_finished")
+            != (
+                story.get("first_ending")
+                or story.get("definitive_ending")
+            )
+        )
+        or (
+            story.get("level4_completed")
+            and 4 not in completed
+        )
     ):
 
         print(f"[PARTIDA] Datos inválidos en {SAVE_FILE}.")
@@ -268,7 +355,45 @@ def load_game():
         "character": character_name,
         "completed_levels": completed,
         "prologue_seen": prologue_was_seen,
+        "story_progress": story,
     }
+
+
+def registrar_resultado_historia(
+    level_number,
+    resultado_nivel,
+    completed_levels,
+    progress,
+):
+    if not resultado_nivel.get("nivel_completado", False):
+        return
+
+    if level_number == 3:
+        decision = resultado_nivel.get("decision_ascanor")
+        if decision not in ("stop", "let_go"):
+            return
+        completed_levels.add(3)
+        progress["ascanor_decision"] = decision
+        progress["gena_unlocked"] = decision == "let_go"
+        progress["first_ending"] = bool(
+            resultado_nivel.get("primer_final_alcanzado", False)
+        )
+        if progress["first_ending"]:
+            progress["gena_unlocked"] = False
+            progress["game_finished"] = True
+            completed_levels.update((1, 2, 3))
+        return
+
+    if level_number == 4:
+        definitive_ending = bool(
+            resultado_nivel.get("final_definitivo", False)
+        )
+        progress["level4_completed"] = definitive_ending
+        progress["definitive_ending"] = definitive_ending
+        if definitive_ending:
+            progress["gena_unlocked"] = True
+            progress["game_finished"] = True
+            completed_levels.update((1, 2, 3, 4))
 
 
 # ============================================================
@@ -279,6 +404,7 @@ level_selector = None
 chosen_level = None
 completed_levels = set()
 prologue_seen = False
+story_progress = nueva_progresion_historia()
 
 level_select_overlay = pygame.Surface(
     (SCREEN_WIDTH, SCREEN_HEIGHT),
@@ -495,45 +621,17 @@ def play_menu_cue(option):
     return pygame.time.get_ticks() + duration_ms, sound
 
 
-def save_game(character_name, level_number):
-    data = {"character": character_name, "level": level_number}
-    SAVE_FILE.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-
-
-def load_game():
-    try:
-        data = json.loads(SAVE_FILE.read_text(encoding="utf-8"))
-    except FileNotFoundError:
-        print(f"[PARTIDA] No existe una partida guardada en {SAVE_FILE}.")
-        return None
-    except json.JSONDecodeError as error:
-        print(f"[PARTIDA] El archivo guardado no es válido: {error}")
-        return None
-
-    valid_characters = {character["name"] for character in characters}
-    if not isinstance(data, dict):
-        print(f"[PARTIDA] Datos inválidos en {SAVE_FILE}.")
-        return None
-
-    character_name = data.get("character")
-    level_number = data.get("level")
-    if (
-        not isinstance(character_name, str)
-        or character_name not in valid_characters
-        or type(level_number) is not int
-        or level_number not in (1, 2, 3, 4, 5)
-    ):
-        print(f"[PARTIDA] Datos inválidos en {SAVE_FILE}.")
-        return None
-    return data
-
-
 def launch_level(level_number):
 
-    global screen, level_selector, game_state
+    global screen, level_selector, game_state, story_progress
 
     if level_selector is None:
-        level_selector = LevelSelector(screen, audio, completed_levels)
+        level_selector = LevelSelector(
+            screen,
+            audio,
+            completed_levels,
+            story_progress,
+        )
 
     level_path = level_selector.get_level_path(level_number)
 
@@ -585,6 +683,12 @@ def launch_level(level_number):
             else:
                 level_completed = bool(
                     resultado_nivel.get("nivel_completado", False)
+                )
+                registrar_resultado_historia(
+                    level_number,
+                    resultado_nivel,
+                    completed_levels,
+                    story_progress,
                 )
                 if resultado_nivel.get("accion_cierre_nivel") == "menu":
                     game_state = "MENU"
@@ -1088,6 +1192,7 @@ def main():
     global chosen_level
     global completed_levels
     global prologue_seen
+    global story_progress
     global menu_notice
     global audio_disponible
 
@@ -1224,6 +1329,7 @@ def main():
                             chosen_char_name,
                             completed_levels,
                             prologue_seen,
+                            story_progress,
                         )
 
                         chosen_level = None
@@ -1232,6 +1338,7 @@ def main():
                             screen,
                             audio,
                             completed_levels,
+                            story_progress,
                         )
 
                         game_state = "LEVEL_SELECT"
@@ -1273,10 +1380,14 @@ def main():
                                     chosen_char_name,
                                     completed_levels,
                                     prologue_seen,
+                                    story_progress,
                                 )
-                                level_selector.set_completed_levels(
-                                    completed_levels
+                                level_selector.set_progress(
+                                    completed_levels,
+                                    story_progress,
                                 )
+                                if story_progress["game_finished"]:
+                                    break
 
                             result_action = show_level_result(
                                 chosen_level,
@@ -1316,10 +1427,12 @@ def main():
                 completed_levels = set()
                 chosen_char_name = None
                 prologue_seen = False
+                story_progress = nueva_progresion_historia()
                 save_game(
                     chosen_char_name,
                     completed_levels,
                     prologue_seen,
+                    story_progress,
                 )
 
                 prologue_viewer = prologue()
@@ -1340,6 +1453,14 @@ def main():
 
                     menu_notice = "No hay una partida guardada válida."
 
+                elif saved_game["story_progress"]["game_finished"]:
+
+                    completed_levels = set(saved_game["completed_levels"])
+                    story_progress = saved_game["story_progress"]
+                    menu_notice = (
+                        "Esta partida ya terminó. Inicia una partida nueva para volver a jugar."
+                    )
+
                 else:
 
                     chosen_char_name = saved_game["character"]
@@ -1347,6 +1468,7 @@ def main():
                         saved_game["completed_levels"]
                     )
                     prologue_seen = saved_game["prologue_seen"]
+                    story_progress = saved_game["story_progress"]
                     selected_char_index = (
                         next(
                             index
@@ -1366,6 +1488,7 @@ def main():
                         screen,
                         audio,
                         completed_levels,
+                        story_progress,
                     )
 
                     if menu_music_playing:
@@ -1496,6 +1619,7 @@ def main():
                     chosen_char_name,
                     completed_levels,
                     prologue_seen,
+                    story_progress,
                 )
 
         elif game_state == "CHARACTER_SELECT":

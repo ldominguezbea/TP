@@ -4,6 +4,7 @@ import math
 import pygame
 from Jefes_enemigos import ImpalerBoss
 from personajes import crear_jugador
+from barra_vida_jugador import dibujar_barra_vida_jugador
 from menu_pausa import NivelIntegradoFinalizado, pausar_juego
 
 
@@ -13,10 +14,16 @@ NIVEL_INTEGRADO = __name__ in (
     "_nivel4_boss_integrado",
 )
 nivel_completado = False
+final_definitivo = False
 
 WIDTH = 1350
 HEIGHT = 700
 SUELO_Y = 590
+FACTOR_DANO_JEFE = 0.7
+
+
+def ajustar_dano_jefe(dano):
+    return round(dano * FACTOR_DANO_JEFE)
 
 screen = pygame.display.get_surface()
 if screen is None:
@@ -26,6 +33,7 @@ pygame.display.set_caption("Batalla contra ignis")
 clock = pygame.time.Clock()
 fuente_aviso = pygame.font.SysFont("Arial", 24, bold=True)
 fuente_fase = pygame.font.SysFont("Georgia", 26, bold=True)
+fuente_cuenta_regresiva = pygame.font.SysFont("Arial", 54, bold=True)
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 CARPETA_FONDOS_BATALLA = os.path.join(BASE_DIR, "imagenes", "Nivel4")
@@ -67,7 +75,7 @@ def mostrar_comic_segunda_barra():
                     raise NivelIntegradoFinalizado(nivel_completado, "exit")
                 raise SystemExit
             if event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_RETURN:
+                if event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
                     esperando = False
                 elif event.key == pygame.K_ESCAPE:
                     action = pausar_juego(
@@ -91,6 +99,93 @@ def mostrar_comic_segunda_barra():
         screen.blit(texto, caja)
         pygame.display.flip()
         clock.tick(60)
+
+
+def esperar_enter_cinematica(dibujar, enter_liberado=True):
+    teclas_enter = (pygame.K_RETURN, pygame.K_KP_ENTER)
+    while True:
+        enter_aceptado = False
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                if NIVEL_INTEGRADO:
+                    raise NivelIntegradoFinalizado(nivel_completado, "exit")
+                raise SystemExit
+            if event.type == pygame.KEYUP and event.key in teclas_enter:
+                enter_liberado = True
+            elif event.type == pygame.KEYDOWN and event.key in teclas_enter:
+                if enter_liberado and not enter_aceptado:
+                    enter_aceptado = True
+                enter_liberado = False
+            elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                action = pausar_juego(
+                    screen,
+                    devolver_accion=NIVEL_INTEGRADO,
+                )
+                if action in ("menu", "exit"):
+                    if NIVEL_INTEGRADO:
+                        raise NivelIntegradoFinalizado(nivel_completado, action)
+                    raise SystemExit
+        if enter_aceptado:
+            return enter_liberado
+        dibujar()
+        pygame.display.flip()
+        clock.tick(60)
+
+
+def mostrar_cinematica_final_definitiva():
+    ruta_imagen = os.path.join(
+        CARPETA_FONDOS_BATALLA,
+        "Héroes ante la ciudad en ruinas.png",
+    )
+    if not os.path.isfile(ruta_imagen):
+        raise FileNotFoundError(f"No se encontró la imagen del final: {ruta_imagen}")
+
+    imagen = pygame.image.load(ruta_imagen).convert_alpha()
+    escala = min(WIDTH / imagen.get_width(), HEIGHT / imagen.get_height())
+    imagen = pygame.transform.smoothscale(
+        imagen,
+        (
+            round(imagen.get_width() * escala),
+            round(imagen.get_height() * escala),
+        ),
+    )
+
+    fuente_final = pygame.font.SysFont("Georgia", 30, bold=True)
+    lineas_texto = (
+        "Los héroes lograron vencer al rey demonio",
+        "y volvieron a la ciudad.",
+    )
+
+    def dibujar_texto():
+        screen.fill((0, 0, 0))
+        alto_linea = fuente_final.get_linesize()
+        y = HEIGHT // 2 - alto_linea // 2
+        for linea in lineas_texto:
+            texto = fuente_final.render(linea, True, (255, 255, 255))
+            screen.blit(texto, texto.get_rect(center=(WIDTH // 2, y)))
+            y += alto_linea
+
+    enter_liberado = esperar_enter_cinematica(dibujar_texto)
+
+    def dibujar_imagen():
+        screen.fill((0, 0, 0))
+        screen.blit(imagen, imagen.get_rect(center=(WIDTH // 2, HEIGHT // 2)))
+
+    enter_liberado = esperar_enter_cinematica(
+        dibujar_imagen,
+        enter_liberado,
+    )
+
+    def dibujar_fin():
+        screen.fill((0, 0, 0))
+        texto = pygame.font.SysFont("Arial", 56, bold=True).render(
+            "FIN",
+            True,
+            (255, 255, 255),
+        )
+        screen.blit(texto, texto.get_rect(center=(WIDTH // 2, HEIGHT // 2)))
+
+    esperar_enter_cinematica(dibujar_fin, enter_liberado)
 
 
 class ParticulaFuego:
@@ -227,7 +322,7 @@ class ZonaFuego:
 
             # Si el jugador toca el fuego, simplemente recibe daño
             if player.hurtbox.colliderect(self.hitbox):
-                player.take_damage(20 * dt, attacker=self.hitbox)
+                player.take_damage(ajustar_dano_jefe(20) * dt, attacker=self.hitbox)
 
             # Generar partículas
             if w > 0:
@@ -371,7 +466,7 @@ class ProyectilHolograma:
     def __init__(self, x, y):
         self.rect = pygame.Rect(round(x - 32), round(y), 64, 128)
         self.speed = 470
-        self.damage = 25
+        self.damage = ajustar_dano_jefe(25)
 
     def update(self, dt):
         self.rect.y += round(self.speed * dt)
@@ -396,6 +491,15 @@ class LavaAscendente:
         self.hold_duration = 1.6
         self.rise_speed = 320
         self.fall_speed = 400
+        rng = random.Random(2905)
+        self.warning_particles = tuple(
+            (
+                rng.randrange(24, WIDTH - 24),
+                rng.random(),
+                rng.randrange(2, 5),
+            )
+            for _ in range(28)
+        )
 
     def reset(self):
         self.estado = "inactivo"
@@ -436,33 +540,28 @@ class LavaAscendente:
             self.estado in ("subiendo", "activa", "bajando")
             and player.hurtbox.bottom > self.y
         ):
-            player.take_damage(45 * dt)
+            player.take_damage(ajustar_dano_jefe(45) * dt)
 
     def draw(self, screen):
         if self.estado == "inactivo":
             return
         if self.estado == "advertencia":
-            if int(pygame.time.get_ticks() / 160) % 2 == 0:
-                pygame.draw.rect(screen, (80, 8, 4), (0, HEIGHT - 70, WIDTH, 70))
-                pygame.draw.rect(
-                    screen,
-                    (255, 55, 10),
-                    (0, HEIGHT - 70, WIDTH, 70),
-                    3,
-                )
-                pygame.draw.line(
-                    screen,
-                    (255, 140, 30),
-                    (0, HEIGHT - 65),
-                    (WIDTH, HEIGHT - 65),
-                    3,
-                )
-                texto = fuente_aviso.render(
-                    "¡LAVA SUBIENDO! SALTA A LA PLATAFORMA",
-                    True,
-                    (255, 240, 190),
-                )
-                screen.blit(texto, texto.get_rect(center=(WIDTH // 2, HEIGHT - 35)))
+            elapsed = self.warning_duration - self.timer
+            pygame.draw.line(
+                screen,
+                (150, 45, 12),
+                (0, SUELO_Y - 1),
+                (WIDTH, SUELO_Y - 1),
+                2,
+            )
+            for x, phase, radius in self.warning_particles:
+                pulse = (elapsed * 1.25 + phase) % 1.0
+                y = SUELO_Y - 3 - round(pulse * 30)
+                center = (x, y)
+                pygame.draw.circle(screen, (150, 30, 5), center, radius + 2)
+                pygame.draw.circle(screen, (255, 92, 12), center, radius)
+                if radius > 2:
+                    pygame.draw.circle(screen, (255, 220, 100), center, 1)
             return
 
         alto = max(0, HEIGHT - round(self.y))
@@ -607,6 +706,7 @@ class BossBattleController:
 
         self.phase3_state = "cargando_derecha"
         self.phase3_timer = 0.0
+        self.lightning_countdown_font = fuente_cuenta_regresiva
         self.horizontal_beam = pygame.Rect(0, 0, 0, 0)
         self.horizontal_beam_hit = False
         self.teleport_flash_timer = 0.0
@@ -641,8 +741,7 @@ class BossBattleController:
         self._limpiar_hologramas()
 
     def _iniciar_fase3(self, boss, zona_fuego):
-        if NIVEL_INTEGRADO:
-            mostrar_comic_segunda_barra()
+        mostrar_comic_segunda_barra()
         self.phase = 3
         self.phase_banner_timer = 1.5
         self._detener_fuego(zona_fuego)
@@ -791,7 +890,7 @@ class BossBattleController:
                 self.horizontal_beam.colliderect(player.hurtbox)
                 and not self.horizontal_beam_hit
             ):
-                player.take_damage(45, attacker=boss)
+                player.take_damage(ajustar_dano_jefe(45), attacker=boss)
                 self.horizontal_beam_hit = True
             self.phase3_timer -= dt
             if self.phase3_timer <= 0:
@@ -830,7 +929,7 @@ class BossBattleController:
                 self.horizontal_beam.colliderect(player.hurtbox)
                 and not self.horizontal_beam_hit
             ):
-                player.take_damage(45, attacker=boss)
+                player.take_damage(ajustar_dano_jefe(45), attacker=boss)
                 self.horizontal_beam_hit = True
             self.phase3_timer -= dt
             if self.phase3_timer <= 0:
@@ -921,7 +1020,7 @@ class BossBattleController:
         elif self.vertical_state == "activo":
             laser = pygame.Rect(WIDTH // 2 - 24, 0, 48, HEIGHT)
             if laser.colliderect(player.hurtbox) and not self.vertical_beam_hit:
-                player.take_damage(45, attacker=boss)
+                player.take_damage(ajustar_dano_jefe(45), attacker=boss)
                 self.vertical_beam_hit = True
             self.vertical_timer -= dt
             if self.vertical_timer <= 0:
@@ -982,19 +1081,34 @@ class BossBattleController:
             if self.phase3_state in (
                 "cargando_derecha",
                 "cargando_izquierda",
+                "disparando_derecha",
+                "disparando_izquierda",
             ):
-                y = (
-                    SUELO_Y - 32
-                    if self.phase3_state == "cargando_derecha"
-                    else self.platform.top - 32
+                segundos = (
+                    0
+                    if self.phase3_state.startswith("disparando")
+                    else max(0, math.ceil(self.phase3_timer))
                 )
-                aviso = fuente_fase.render(
-                    f"CARGANDO RAYO: {max(0, math.ceil(self.phase3_timer))}",
+                numero_sombra = self.lightning_countdown_font.render(
+                    str(segundos),
                     True,
-                    (255, 210, 100),
+                    (35, 8, 5),
                 )
-                screen.blit(aviso, aviso.get_rect(center=(boss.rect.centerx, y - 34)))
-            elif self.phase3_state in (
+                numero = self.lightning_countdown_font.render(
+                    str(segundos),
+                    True,
+                    (255, 226, 135),
+                )
+                posicion = (boss.rect.centerx, boss.rect.top - 34)
+                screen.blit(
+                    numero_sombra,
+                    numero_sombra.get_rect(
+                        center=(posicion[0] + 2, posicion[1] + 3)
+                    ),
+                )
+                screen.blit(numero, numero.get_rect(center=posicion))
+
+            if self.phase3_state in (
                 "disparando_derecha",
                 "disparando_izquierda",
             ):
@@ -1066,13 +1180,6 @@ class BossBattleController:
 
 def dibujar_barras_vida(screen, player, enemy, phase=1):
     fuente = pygame.font.SysFont("Arial", 16, bold=True)
-    
-    # Barra de vida del Jugador
-    pygame.draw.rect(screen, (50, 50, 50), (20, 20, 200, 20))
-    pct_p = max(0, player.health / player.max_health)
-    pygame.draw.rect(screen, (0, 220, 0), (20, 20, int(200 * pct_p), 20))
-    pygame.draw.rect(screen, (255, 255, 255), (20, 20, 200, 20), 2)
-    screen.blit(fuente.render(f"Jugador: {int(player.health)}", True, (255, 255, 255)), (20, 45))
 
     # Barra de vida del Jefe
     pygame.draw.rect(screen, (50, 50, 50), (WIDTH - 320, 20, 300, 20))
@@ -1137,7 +1244,13 @@ while running:
     player.update(0, transicion_realizada=True)
 
     if batalla.phase in (1, 2):
-        enemy.update(player, dt, width=WIDTH)
+        enemy.update(
+            player,
+            dt,
+            width=WIDTH,
+            platform=batalla.platform if batalla.phase == 2 else None,
+            ground_y=SUELO_Y,
+        )
     elif batalla.phase == 3:
         batalla.update_boss_phase3(dt, player, enemy)
     elif batalla.final_death:
@@ -1153,7 +1266,7 @@ while running:
         and not getattr(enemy, "has_hit", False)
     ):
         if hasattr(enemy, "hitbox") and enemy.hitbox.colliderect(player.hurtbox):
-            player.take_damage(20, attacker=enemy)
+            player.take_damage(ajustar_dano_jefe(20), attacker=enemy)
             enemy.has_hit = True
 
     fondo_actual = (
@@ -1167,6 +1280,7 @@ while running:
 
     enemy.draw(screen)
     screen.blit(player.image, player.rect)
+    dibujar_barra_vida_jugador(screen, player)
     player.dibujar_barra_energia(screen)
     if batalla.phase == 1:
         zona_fuego.draw(screen)
@@ -1176,8 +1290,12 @@ while running:
     pygame.display.flip()
 
     if getattr(enemy, "muerto_definitivo", False):
-        nivel_completado = True
         running = False
+
+if getattr(enemy, "muerto_definitivo", False):
+    mostrar_cinematica_final_definitiva()
+    final_definitivo = True
+    nivel_completado = True
 
 if not NIVEL_INTEGRADO:
     pygame.quit()

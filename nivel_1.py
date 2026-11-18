@@ -375,6 +375,30 @@ def obtener_limite_derecho(fase):
     return limites[fase]
 
 
+PROGRESO_POR_FASE = {
+    FASE_RECORRIDO: (0, 40, 100),
+    FASE_BIBLIOTECA_7: (40, 48, 180),
+    FASE_BIBLIOTECA_9: (48, 56, 100),
+    FASE_PASILLO_HOSPITAL: (56, 63, 180),
+    FASE_HOSPITAL_11: (63, 67, 180),
+    FASE_CONDUCTO_1: (67, 75, 110),
+    FASE_CONDUCTO_2: (75, 83, 100),
+    FASE_CONDUCTO_3: (83, 91, 100),
+    FASE_HUECO_FINAL: (91, 99, 180),
+}
+
+
+def calcular_progreso_nivel(fase, x):
+    inicio_porcentaje, fin_porcentaje, inicio_x = PROGRESO_POR_FASE[fase]
+    limite_x = obtener_limite_derecho(fase)
+    distancia = max(1, limite_x - inicio_x)
+    avance = max(0.0, min(1.0, (x - inicio_x) / distancia))
+    porcentaje_fase = inicio_porcentaje + int(
+        avance * (fin_porcentaje - inicio_porcentaje)
+    )
+    return min(99, porcentaje_fase)
+
+
 def requiere_interaccion(fase, x):
     if fase == FASE_RECORRIDO:
         return abs(x - ZONA_BIBLIOTECA_X) <= RADIO_INTERACCION_FONDO
@@ -993,6 +1017,13 @@ def ejecutar_batalla_carnicero(screen, player, fondo_img):
                 screen.blit(lbl_jefe, rect_lbl)
 
         dibujar_barra_jugador(screen, player)
+        texto_progreso = fuente_progreso.render(
+            "RUMBO AL PORTAL: 100%", True, (230, 210, 160)
+        )
+        screen.blit(
+            texto_progreso,
+            texto_progreso.get_rect(topright=(ANCHO - 30, 20)),
+        )
 
         if getattr(jefe, 'muerto_definitivo', False):
             timer_muerte_jefe += dt
@@ -1799,26 +1830,24 @@ while ejecutando:
                 enemigo.draw(pantalla)
                 enemigo.rect.x = pos_x_orig
 
-        progreso = min(
-            100, int(heroe.pos_x * 100 / ZONA_BIBLIOTECA_X)
+    progreso = calcular_progreso_nivel(fase_nivel, heroe.pos_x)
+    if fase_nivel == FASE_RECORRIDO and enemigos_pendientes:
+        str_progreso = (
+            f"RUMBO AL PORTAL: {progreso}%"
+            f"  |  ENEMIGOS: {len(enemigos_pendientes)}"
         )
-        if enemigos_pendientes:
-            str_progreso = (
-                f"RUMBO AL PORTAL: {progreso}%"
-                f"  |  ENEMIGOS: {len(enemigos_pendientes)}"
-            )
-            color_progreso = (255, 190, 90)
-        else:
-            str_progreso = f"RUMBO AL PORTAL: {progreso}%"
-            color_progreso = (230, 210, 160)
+        color_progreso = (255, 190, 90)
+    else:
+        str_progreso = f"RUMBO AL PORTAL: {progreso}%"
+        color_progreso = (230, 210, 160)
 
-        txt_progreso_sombra = fuente_progreso.render(str_progreso, True, (0, 0, 0))
-        txt_progreso = fuente_progreso.render(str_progreso, True, color_progreso)
-        rect_progreso = txt_progreso.get_rect(topright=(ANCHO - 30, 20))
-        pantalla.blit(
-            txt_progreso_sombra, (rect_progreso.x + 2, rect_progreso.y + 2)
-        )
-        pantalla.blit(txt_progreso, rect_progreso)
+    txt_progreso_sombra = fuente_progreso.render(str_progreso, True, (0, 0, 0))
+    txt_progreso = fuente_progreso.render(str_progreso, True, color_progreso)
+    rect_progreso = txt_progreso.get_rect(topright=(ANCHO - 30, 20))
+    pantalla.blit(
+        txt_progreso_sombra, (rect_progreso.x + 2, rect_progreso.y + 2)
+    )
+    pantalla.blit(txt_progreso, rect_progreso)
 
     dibujar_barra_jugador(pantalla, heroe)
 

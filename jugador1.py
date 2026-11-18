@@ -74,6 +74,7 @@ class p_viento(HabilidadesJugador, pygame.sprite.Sprite):
 
         self.rodando = False
         self.defendiendo = False
+        self.escudo_levantado = False
         self.desbloqueando = False
         self.atacando = False
         self.combo_siguiente = False
@@ -155,6 +156,10 @@ class p_viento(HabilidadesJugador, pygame.sprite.Sprite):
         self.animaciones["unblock"] = list(
             reversed(self.animaciones["defend"])
         )
+        self.defend_hold_frame_index = 4
+        self.animaciones["defend_hold"] = [
+            self.animaciones["defend"][self.defend_hold_frame_index]
+        ]
 
     def recibir_dano(self, cantidad, atacante=None):
 
@@ -239,10 +244,15 @@ class p_viento(HabilidadesJugador, pygame.sprite.Sprite):
                 frame_defensa = (
                     min(max(int(self.frame_index), 0), len(frames_defensa) - 1)
                     if self.estado == "defend"
+                    else len(frames_defensa) - 1
+                    if self.estado == "defend_hold"
                     else 0
                 )
+                if self.estado == "defend_hold":
+                    frame_defensa = self.defend_hold_frame_index
                 self.frame_index = len(frames_defensa) - 1 - frame_defensa
                 self.defendiendo = False
+                self.escudo_levantado = False
                 self.desbloqueando = True
                 self.estado = "unblock"
             return
@@ -251,6 +261,24 @@ class p_viento(HabilidadesJugador, pygame.sprite.Sprite):
             return
 
         if self.recibiendo_dano or self.muerto:
+            return
+
+        if (
+            evento.type == pygame.KEYDOWN
+            and evento.key == pygame.K_q
+            and self.en_suelo
+            and self.atacando
+            and not self.rodando
+        ):
+            self.atacando = False
+            self.combo_siguiente = False
+            self.hitbox = pygame.Rect(0, 0, 0, 0)
+            if hasattr(self, "hitbox_activa"):
+                self.hitbox_activa = False
+            self.rodando = True
+            self.velocidad_x = 0
+            self.frame_index = 0
+            self.estado = "roll"
             return
 
         if evento.type not in (
@@ -294,12 +322,14 @@ class p_viento(HabilidadesJugador, pygame.sprite.Sprite):
             and evento.button == pygame.BUTTON_RIGHT
             and self.en_suelo
             and not self.rodando
+            and not self.defendiendo
         ):
 
             self.desbloqueando = False
             self.atacando = False
             self.combo_siguiente = False
             self.defendiendo = True
+            self.escudo_levantado = False
             self.estado = "defend"
             self.frame_index = 0
 
@@ -404,7 +434,9 @@ class p_viento(HabilidadesJugador, pygame.sprite.Sprite):
             self.estado = "roll"
 
         elif self.defendiendo:
-            self.estado = "defend"
+            self.estado = (
+                "defend_hold" if self.escudo_levantado else "defend"
+            )
 
         elif self.desbloqueando:
             self.estado = "unblock"
@@ -465,6 +497,10 @@ class p_viento(HabilidadesJugador, pygame.sprite.Sprite):
 
             elif self.rodando:
                 self.rodando = False
+
+            elif self.defendiendo and self.estado == "defend":
+                self.escudo_levantado = True
+                self.estado = "defend_hold"
 
             elif self.desbloqueando:
                 self.desbloqueando = False

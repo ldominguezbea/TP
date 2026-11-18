@@ -127,6 +127,7 @@ class ImpalerBoss(Enemigo):
         self.gravity = 0.6
         self.jump_force = -13
         self.on_ground = True
+        self.current_platform = None
         self.cooldown_salto = 0.0
 
         self.direction = "right"
@@ -150,10 +151,11 @@ class ImpalerBoss(Enemigo):
         disponibles = [a for a in ataques if len(self.animaciones.get(a, [])) > 0]
         return random.choice(disponibles) if disponibles else "idle"
 
-    def realizar_salto(self):
+    def realizar_salto(self, fuerza=None):
         if self.on_ground and len(self.animaciones.get("saltar", [])) > 0:
-            self.velocity_y = self.jump_force
+            self.velocity_y = self.jump_force if fuerza is None else fuerza
             self.on_ground = False
+            self.current_platform = None
             self.cambiar_estado("saltar")
 
     def actualizar_hitbox_ataque(self):
@@ -202,7 +204,7 @@ class ImpalerBoss(Enemigo):
 
         self.image = imagen_frame
 
-    def update(self, player, dt, width=WIDTH):
+    def update(self, player, dt, width=WIDTH, platform=None, ground_y=SUELO_Y):
         if self.muerto_definitivo:
             return
 
@@ -223,34 +225,73 @@ class ImpalerBoss(Enemigo):
             self.actualizar_animacion()
             return
 
+        bottom_anterior = self.rect.bottom
         self.velocity_y += self.gravity
         self.rect.y += self.velocity_y
 
-        if self.rect.bottom >= SUELO_Y:
-            self.rect.bottom = SUELO_Y
+        self.on_ground = False
+        self.current_platform = None
+        if (
+            platform is not None
+            and self.velocity_y >= 0
+            and bottom_anterior <= platform.top
+            and self.rect.bottom >= platform.top
+            and self.rect.right > platform.left
+            and self.rect.left < platform.right
+        ):
+            self.rect.bottom = platform.top
+            self.velocity_y = 0
+            self.on_ground = True
+            self.current_platform = platform
+        elif self.rect.bottom >= ground_y:
+            self.rect.bottom = ground_y
             self.velocity_y = 0
             self.on_ground = True
 
         distancia = player.hurtbox.centerx - self.rect.centerx
+        jugador_en_plataforma = (
+            platform is not None
+            and getattr(player, "plataforma_actual", None) is platform
+        )
 
-        if self.on_ground and self.cooldown_salto <= 0 and not self.attacking:
-            if player.hurtbox.top < self.rect.y - 50 or random.random() < 0.02:
+        if (
+            self.on_ground
+            and self.cooldown_salto <= 0
+            and jugador_en_plataforma
+            and self.current_platform is not platform
+        ):
+            if self.attacking:
+                self.attacking = False
+                self.has_hit = False
+                self.hitbox = pygame.Rect(0, 0, 0, 0)
+            altura_salto = max(0, ground_y - platform.top + 12)
+            fuerza_salto = -math.sqrt(2 * self.gravity * altura_salto)
+            self.realizar_salto(fuerza_salto)
+            self.cooldown_salto = 1.5
+        elif self.on_ground and self.cooldown_salto <= 0 and not self.attacking:
+            if (
+                not jugador_en_plataforma
+                and (
+                    player.hurtbox.top < self.rect.y - 50
+                    or random.random() < 0.02
+                )
+            ):
                 self.realizar_salto()
                 self.cooldown_salto = 3.0
 
+        self.direction = "right" if distancia > 0 else "left"
         if abs(distancia) > 120:
-            self.direction = "right" if distancia > 0 else "left"
             velocidad = 2.5
             self.rect.x += velocidad if self.direction == "right" else -velocidad
             if self.on_ground and not self.attacking:
                 self.cambiar_estado("correr")
-        elif not self.attacking:
-            self.direction = "right" if distancia > 0 else "left"
+        elif self.on_ground and not self.attacking:
             self.attacking = True
             self.has_hit = False
             ataque = self.seleccionar_ataque_aleatorio()
             self.cambiar_estado(ataque)
 
+        self.rect.left = max(0, min(self.rect.left, width - self.rect.width))
         self.actualizar_hitbox_ataque()
         self.hurtbox = self.rect.copy()
 

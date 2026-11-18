@@ -70,7 +70,7 @@ tierra_levels = [
     {"id": "Nivel 3", "number": 3, "file": "Nivel3.py", "lat": 0, "lon": 110, "boss": "3", "tag": "NIVEL", "big": "3"},
 ]
 gehena_levels = [
-    {"id": "Nivel 4", "number": 4, "file": "nivel4.py", "lat": -10, "lon": 80, "boss": "4", "tag": "NIVEL", "big": "4"},
+    {"id": "Ir a Gena", "number": 4, "file": "nivel4.py", "lat": -10, "lon": 80, "boss": "4", "tag": "IR A", "big": "GENA"},
 ]
 for _lvl in tierra_levels + gehena_levels:
     _lvl["available"] = resolver_nivel(_lvl["file"])[0]
@@ -1099,7 +1099,13 @@ par_x = par_y = 0.0
 
 
 class LevelSelector:
-    def __init__(self, target_surface, audio_manager, completed_levels=()):
+    def __init__(
+        self,
+        target_surface,
+        audio_manager,
+        completed_levels=(),
+        story_progress=None,
+    ):
         global audio, cursor, snap_cursor, clickable_nodes, hover_anim
         global bubble_acc, par_x, par_y, current_planet, active_levels
         global current_index, planet_rotation, target_rotation, env_t, env_target
@@ -1122,21 +1128,39 @@ class LevelSelector:
         par_x = par_y = 0.0
         bubbles.clear()
         self._dt = FRAME_MS
-        self.set_completed_levels(completed_levels)
+        self.set_progress(completed_levels, story_progress)
 
-    def set_completed_levels(self, completed_levels):
+    def set_progress(self, completed_levels, story_progress=None):
         self.completed_levels = set(completed_levels)
+        self.story_progress = dict(story_progress or {})
+        self.gena_unlocked = (
+            self.story_progress.get("ascanor_decision") == "let_go"
+            and self.story_progress.get("gena_unlocked") is True
+            and not self.story_progress.get("first_ending", False)
+        )
+        self.game_finished = bool(self.story_progress.get("game_finished", False))
         for lvl in tierra_levels + gehena_levels:
             has_file = resolver_nivel(lvl["file"])[0]
-            unlocked = lvl["number"] == 1 or lvl["number"] - 1 in self.completed_levels
+            if lvl["number"] == 4:
+                unlocked = self.gena_unlocked and 3 in self.completed_levels
+            else:
+                unlocked = (
+                    lvl["number"] == 1
+                    or lvl["number"] - 1 in self.completed_levels
+                )
             lvl["available"] = (
                 has_file
                 and unlocked
                 and lvl["number"] not in self.completed_levels
+                and not self.game_finished
             )
 
     def _progress_message(self, lvl):
         number = lvl["number"]
+        if self.game_finished:
+            return "Juego terminado. Inicia una partida nueva."
+        if number == 4 and not self.gena_unlocked:
+            return "Gena se desbloquea al dejar ir a Ascanor."
         if number in self.completed_levels:
             return f"Nivel{number} completado"
         if number > 1 and number - 1 not in self.completed_levels:
@@ -1165,6 +1189,8 @@ class LevelSelector:
     def get_level_path(self, level_number):
         for lvl in tierra_levels + gehena_levels:
             if lvl["number"] == level_number:
+                if not lvl["available"]:
+                    return None
                 available, path, _ = resolver_nivel(lvl["file"])
                 return path if available else None
         return None
@@ -1230,19 +1256,26 @@ class LevelSelector:
             screen.blit(MIST, (0, HEIGHT - 150))
 
         selected = active_levels[current_index]
-        longitude = math.radians(selected["lon"] + planet_rotation)
-        latitude = math.radians(selected["lat"])
-        cursor_x = CENTER_X + R * math.cos(latitude) * math.sin(longitude)
-        cursor_y = CENTER_Y - R * math.sin(latitude)
-        cursor_z = math.cos(latitude) * math.cos(longitude)
-        if snap_cursor:
-            cursor.snap(cursor_x, cursor_y)
-            snap_cursor = False
-        cursor.update(cursor_x, cursor_y, max(0.0, min(1.0, (cursor_z - 0.05) / 0.35)), dt)
-        cursor.draw(screen, NODE_R * (0.55 + 0.45 * max(0.0, cursor_z)), ticks)
+        gena_oculto = current_planet == "GEHENA" and not self.gena_unlocked
+        if not self.game_finished and not gena_oculto:
+            longitude = math.radians(selected["lon"] + planet_rotation)
+            latitude = math.radians(selected["lat"])
+            cursor_x = CENTER_X + R * math.cos(latitude) * math.sin(longitude)
+            cursor_y = CENTER_Y - R * math.sin(latitude)
+            cursor_z = math.cos(latitude) * math.cos(longitude)
+            if snap_cursor:
+                cursor.snap(cursor_x, cursor_y)
+                snap_cursor = False
+            cursor.update(cursor_x, cursor_y, max(0.0, min(1.0, (cursor_z - 0.05) / 0.35)), dt)
+            cursor.draw(screen, NODE_R * (0.55 + 0.45 * max(0.0, cursor_z)), ticks)
 
         nodes = []
         for idx, node in enumerate(active_levels):
+            if (
+                self.game_finished
+                or (node["number"] == 4 and not self.gena_unlocked)
+            ):
+                continue
             rad_lon = math.radians(node["lon"] + planet_rotation)
             rad_lat = math.radians(node["lat"])
             x3 = R * math.cos(rad_lat) * math.sin(rad_lon)
@@ -1269,6 +1302,20 @@ class LevelSelector:
             clickable_nodes.append((rect, idx))
 
         draw_title(current_planet, ticks)
+        if self.game_finished:
+            aviso = pygame.font.SysFont("Arial", 21, bold=True).render(
+                "JUEGO TERMINADO - INICIA UNA PARTIDA NUEVA",
+                True,
+                (255, 215, 140),
+            )
+            screen.blit(aviso, aviso.get_rect(center=(WIDTH // 2, 112)))
+        elif gena_oculto:
+            aviso = pygame.font.SysFont("Arial", 17, bold=True).render(
+                "Deja ir a Ascanor al final del nivel 3 para desbloquear Gena.",
+                True,
+                (255, 215, 140),
+            )
+            screen.blit(aviso, aviso.get_rect(center=(WIDTH // 2, HEIGHT - 54)))
         hover_planet = BTN_PLANET.collidepoint(mouse_pos) and not transitioning
         accent = GOLD if hover_planet else ACCENT["GEHENA" if current_planet == "TIERRA" else "TIERRA"]
         pygame.draw.rect(screen, (22, 24, 38), BTN_PLANET, border_radius=10)
@@ -1323,6 +1370,10 @@ class LevelSelector:
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_ESCAPE:
                 return "back"
+            if self.game_finished:
+                if event.key in (pygame.K_RETURN, pygame.K_SPACE):
+                    mostrar_toast("Juego terminado. Inicia una partida nueva.")
+                return None
             if event.key in (pygame.K_a, pygame.K_LEFT):
                 set_index(current_index - 1)
             elif event.key in (pygame.K_d, pygame.K_RIGHT):
@@ -1338,6 +1389,8 @@ class LevelSelector:
                 muted = audio.toggle_mute()
                 mostrar_toast("Sonido desactivado" if muted else "Sonido activado", 1400)
         elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            if self.game_finished:
+                return None
             position = self._map_point(event.pos)
             if BTN_LEFT.collidepoint(position):
                 set_index(current_index - 1)

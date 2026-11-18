@@ -4,6 +4,7 @@ import runpy
 import pygame
 
 from personajes import crear_jugador
+from barra_vida_jugador import dibujar_barra_vida_jugador
 from menu_pausa import NivelIntegradoFinalizado, pausar_juego
 
 
@@ -11,8 +12,10 @@ NIVEL_INTEGRADO = __name__ == "_nivel4_integrado"
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ANCHO, ALTO = 1350, 700
 SUELO = 610
+SUELO_PASILLO = 590
 CAMBIO_PUERTA = 135
 nivel_completado = False
+final_definitivo = False
 
 pygame.init()
 pantalla = pygame.display.get_surface()
@@ -73,6 +76,8 @@ def mostrar_comic(nombre_archivo, instruccion="PRESIONA ENTER PARA CONTINUAR"):
 
 
 def iniciar_batalla(jugador):
+    global final_definitivo
+
     ruta_batalla = os.path.join(BASE_DIR, "Ignis_jefe_batalla.py")
     resultado = runpy.run_path(
         ruta_batalla,
@@ -83,6 +88,7 @@ def iniciar_batalla(jugador):
         ),
         init_globals={"jugador_nivel4": jugador},
     )
+    final_definitivo = bool(resultado.get("final_definitivo", False))
     return bool(resultado.get("nivel_completado", False))
 
 
@@ -116,7 +122,7 @@ def recorrer_escenarios(jugador):
             ):
                 if escenario == 0:
                     escenario = 1
-                    jugador.set_position(170, SUELO)
+                    jugador.set_position(170, SUELO_PASILLO)
                 else:
                     mostrar_comic("Trono demoníaco en pixel art.png")
                     mostrar_comic(
@@ -131,14 +137,16 @@ def recorrer_escenarios(jugador):
         jugador.update(0, transicion_realizada=True)
         pantalla.blit(fondos[escenario], (0, 0))
         pantalla.blit(jugador.image, jugador.rect)
+        dibujar_barra_vida_jugador(pantalla, jugador)
         jugador.dibujar_barra_energia(pantalla)
+        suelo_actual = SUELO if escenario == 0 else SUELO_PASILLO
 
         ayuda = fuente_ui.render("A / D: MOVERSE   W: SALTAR", True, (255, 245, 220))
         pantalla.blit(ayuda, (28, 24))
         if cerca_de_puerta:
             aviso = fuente.render("PRESIONA C PARA ENTRAR", True, (255, 225, 160))
-            caja = aviso.get_rect(center=(entradas[escenario], SUELO - 135))
-            sombra = aviso.get_rect(center=(entradas[escenario], SUELO - 135))
+            caja = aviso.get_rect(center=(entradas[escenario], suelo_actual - 135))
+            sombra = aviso.get_rect(center=(entradas[escenario], suelo_actual - 135))
             pygame.draw.rect(pantalla, (20, 8, 8), sombra.inflate(24, 16), border_radius=8)
             pantalla.blit(aviso, caja)
 
