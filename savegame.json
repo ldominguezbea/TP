@@ -1,5 +1,7 @@
 {
   "character": "Korg",
-  "completed_levels": [],
+  "completed_levels": [
+    1
+  ],
   "prologue_seen": true
 }
