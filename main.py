@@ -1,6 +1,6 @@
+import subprocess
 import pygame
 import sys
-import subprocess
 import runpy
 import os
 import json
@@ -11,7 +11,7 @@ pygame.init()
 # ============================================================
 # INICIALIZACIÓN SEGURA DEL AUDIO
 # ============================================================
- 
+
 try: 
     pygame.mixer.init()
     audio_disponible = True
