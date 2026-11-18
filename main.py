@@ -1,18 +1,17 @@
+import subprocess
 import pygame
 import sys
 import runpy
 import os
 import json
 import array
-import random
-import math
 
 pygame.init()
 
 # ============================================================
 # INICIALIZACIÓN SEGURA DEL AUDIO
 # ============================================================
- 
+
 try: 
     pygame.mixer.init()
     audio_disponible = True
@@ -23,7 +22,7 @@ except pygame.error as e:
     print(f"[AUDIO] Sin audio. El juego continuará normalmente: {e}")
 
 
-from config import SCREEN_WIDTH, SCREEN_HEIGHT, GAME_WIDTH, GAME_HEIGHT, BASE_DIR
+from config import SCREEN_WIDTH, SCREEN_HEIGHT, GAME_WIDTH, GAME_HEIGHT, BASE_DIR, abrir_archivo
 
 # Configuración del motor de video de Pygame
 canvas = pygame.Surface((GAME_WIDTH, GAME_HEIGHT))
@@ -31,13 +30,9 @@ screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
 pygame.display.set_caption("REQUIEM: El juicio final")
 clock = pygame.time.Clock()
 
+import random
+import math
 import animacion_menu
-from intro import run_intro
-from menu_pausa import (
-    EXIT_GAME_EXIT_CODE,
-    RETURN_TO_MENU_EXIT_CODE,
-    NivelIntegradoFinalizado,
-)
 from prologo import prologue
 from selector_niveles import LevelSelector
 from sonidos_selector_niveles import Audio
@@ -319,7 +314,7 @@ level_select_overlay.fill((0, 0, 0, 155))
 controls_overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
 controls_overlay.fill((0, 0, 0, 110))
 controls_scroll = ControlsBook(
-    (SCREEN_WIDTH, SCREEN_HEIGHT), BASE_DIR / "assets" / "Heroes"
+    (SCREEN_WIDTH, SCREEN_HEIGHT), BASE_DIR / "assets" / "pergamino_controles"
 )
 
 
@@ -467,7 +462,95 @@ class MenuAtmosphere:
             special_flags=pygame.BLEND_RGBA_ADD,
         )
 
+def create_navigation_sound():
+    mixer_settings = pygame.mixer.get_init()
+    if mixer_settings is None:
+        raise RuntimeError("El mezclador de pygame no está inicializado.")
+    sample_rate, sample_format, channels = mixer_settings
+    if sample_format != -16:
+        raise RuntimeError(
+            "El sonido de navegación requiere audio PCM firmado de 16 bits."
+        )
+
+    samples = array.array("h")
+    noise = random.Random(501)
+    previous_sample = 0.0
+    sample_count = round(sample_rate * 0.18)
+    for index in range(sample_count):
+        progress = index / sample_count
+        cutoff = 7200 - 6100 * progress
+        filter_amount = 1 - math.exp(-math.tau * cutoff / sample_rate)
+        previous_sample += filter_amount * (noise.uniform(-1, 1) - previous_sample)
+        attack = min(1.0, index / (sample_rate * 0.004))
+        envelope = attack * (1 - progress) ** 2.4
+        value = round(15000 * previous_sample * envelope)
+        samples.extend([value] * channels)
+    return pygame.mixer.Sound(buffer=samples.tobytes())
+
+
+navigation_sound = create_navigation_sound()
+navigation_sound.set_volume(MENU_AUDIO_VOLUME)
 menu_atmosphere = MenuAtmosphere((SCREEN_WIDTH, SCREEN_HEIGHT))
+
+
+def make_sound_segment(sound, start_ms, duration_ms):
+    mixer_settings = pygame.mixer.get_init()
+    if mixer_settings is None:
+        raise RuntimeError("El mezclador de pygame no está inicializado.")
+    sample_rate, sample_format, channels = mixer_settings
+    frame_size = (abs(sample_format) // 8) * channels
+    raw = sound.get_raw()
+    start_frame = round(sample_rate * start_ms / 1000)
+    end_frame = round(sample_rate * (start_ms + duration_ms) / 1000)
+    segment = raw[start_frame * frame_size:end_frame * frame_size]
+    if len(segment) != (end_frame - start_frame) * frame_size:
+        raise ValueError("El audio no contiene la duración solicitada.")
+    return pygame.mixer.Sound(buffer=segment)
+
+
+def play_menu_cue(option):
+    filename, offset_ms, duration_ms = MENU_CUE_FILES[option]
+    sound = pygame.mixer.Sound(str(BASE_DIR / "musica" / filename))
+    if offset_ms:
+        sound = make_sound_segment(sound, offset_ms, duration_ms)
+    sound.set_volume(MENU_AUDIO_VOLUME)
+    sound.play(maxtime=duration_ms)
+    return pygame.time.get_ticks() + duration_ms, sound
+
+
+def save_game(character_name, level_number):
+    data = {"character": character_name, "level": level_number}
+    SAVE_FILE.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def load_game():
+    try:
+        data = json.loads(SAVE_FILE.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        print(f"[PARTIDA] No existe una partida guardada en {SAVE_FILE}.")
+        return None
+    except json.JSONDecodeError as error:
+        print(f"[PARTIDA] El archivo guardado no es válido: {error}")
+        return None
+
+    valid_characters = {character["name"] for character in characters}
+    if not isinstance(data, dict):
+        print(f"[PARTIDA] Datos inválidos en {SAVE_FILE}.")
+        return None
+
+    character_name = data.get("character")
+    level_number = data.get("level")
+    if (
+        not isinstance(character_name, str)
+        or character_name not in valid_characters
+        or type(level_number) is not int
+        or level_number not in (1, 2, 3, 4, 5)
+    ):
+        print(f"[PARTIDA] Datos inválidos en {SAVE_FILE}.")
+        return None
+    return data
+
+
 def launch_level(level_number):
 
     global screen, level_selector, game_state
