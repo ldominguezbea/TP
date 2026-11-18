@@ -144,6 +144,7 @@ fuente_progreso = pygame.font.SysFont("Impact", 22)
 # ==============================================================================
 def cargar_imagen_comic(nombre_archivo):
     rutas = [
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), "imagenes", "Nivel1", nombre_archivo),
         os.path.join("imagenes", "Nivel1", nombre_archivo),
         os.path.join("assets", "imagenes", "Nivel1", nombre_archivo)
     ]
@@ -151,7 +152,16 @@ def cargar_imagen_comic(nombre_archivo):
         if os.path.exists(ruta):
             try:
                 img = pygame.image.load(ruta).convert()
-                return pygame.transform.scale(img, (ANCHO, ALTO))
+                escala = min(ANCHO / img.get_width(), ALTO / img.get_height())
+                tamano = (
+                    max(1, round(img.get_width() * escala)),
+                    max(1, round(img.get_height() * escala)),
+                )
+                ajustada = pygame.transform.smoothscale(img, tamano)
+                lienzo = pygame.Surface((ANCHO, ALTO))
+                lienzo.fill((0, 0, 0))
+                lienzo.blit(ajustada, ajustada.get_rect(center=lienzo.get_rect().center))
+                return lienzo
             except Exception as e:
                 print(f"Error al cargar {ruta}: {e}")
 
@@ -267,7 +277,16 @@ def cargar_fondo_nivel1(numero):
                             img.get_height(),
                         )
                     ).copy()
-                return pygame.transform.scale(img, (ANCHO, ALTO))
+                escala = min(ANCHO / img.get_width(), ALTO / img.get_height())
+                tamano = (
+                    max(1, round(img.get_width() * escala)),
+                    max(1, round(img.get_height() * escala)),
+                )
+                ajustada = pygame.transform.smoothscale(img, tamano)
+                lienzo = pygame.Surface((ANCHO, ALTO))
+                lienzo.fill((0, 0, 0))
+                lienzo.blit(ajustada, ajustada.get_rect(center=lienzo.get_rect().center))
+                return lienzo
 
     surf = pygame.Surface((ANCHO, ALTO))
     surf.fill((20, 15, 25))

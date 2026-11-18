@@ -18,6 +18,8 @@ class Intro:
     TITLE_PHASE_START_MS = 33_000
     PARTICLE_COUNT = 180
     FADE_DURATION_MS = 2_000
+    INSTRUCTION_DURATION_MS = 5_000
+    INSTRUCTION_FADE_MS = 900
     MUSIC_VOLUME = 0.7
     DUCKED_MUSIC_VOLUME = 0.2
     TITLE_MUSIC_VOLUME = 0.8
@@ -79,7 +81,9 @@ class Intro:
             self.instruction_background.get_rect(),
             border_radius=6,
         )
-        self.instruction_rect = self.instruction_background.get_rect(topleft=(24, 24))
+        self.instruction_rect = self.instruction_background.get_rect(
+            midbottom=(screen_width // 2, screen_height - 28)
+        )
         self.subtitle = None
 
         rng = random.Random(1604)
@@ -329,11 +333,28 @@ class Intro:
             )
 
         self._draw_subtitle()
-        self.screen.blit(self.instruction_background, self.instruction_rect)
-        self.screen.blit(
-            self.instruction,
-            (self.instruction_rect.x + 14, self.instruction_rect.y + 10),
-        )
+        instruction_elapsed = self.timeline_ms
+        if 0 <= instruction_elapsed < self.INSTRUCTION_DURATION_MS:
+            alpha = min(
+                255,
+                round(
+                    255
+                    * min(
+                        1.0,
+                        (self.INSTRUCTION_DURATION_MS - instruction_elapsed)
+                        / self.INSTRUCTION_FADE_MS,
+                    )
+                ),
+            )
+            instruction_background = self.instruction_background.copy()
+            instruction_background.set_alpha(alpha)
+            instruction = self.instruction.copy()
+            instruction.set_alpha(alpha)
+            self.screen.blit(instruction_background, self.instruction_rect)
+            self.screen.blit(
+                instruction,
+                (self.instruction_rect.x + 14, self.instruction_rect.y + 10),
+            )
 
 
 def run_intro(screen=None, audio_enabled=True):

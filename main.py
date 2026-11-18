@@ -552,6 +552,51 @@ def launch_level(level_number):
     return level_completed
 
 
+def show_level_result(level_number, completed):
+    """Muestra el resultado del nivel y permite reintentar si se perdió."""
+    overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+    overlay.fill((0, 0, 0, 205))
+    title_font = pygame.font.SysFont("Georgia", 76, bold=True)
+    detail_font = pygame.font.SysFont("Arial", 28, bold=True)
+    hint_font = pygame.font.SysFont("Arial", 22, bold=True)
+    title = "VICTORY" if completed else "RETRY"
+    title_color = (245, 205, 90) if completed else (235, 75, 65)
+    detail = (
+        "Siguiente nivel desbloqueado"
+        if completed and level_number < 4
+        else "Has completado todos los niveles"
+        if completed
+        else "No se completó el nivel"
+    )
+    hint = "ENTER: continuar   |   ESC: menú"
+    if not completed:
+        hint = "ENTER: reintentar   |   ESC: selección de niveles"
+
+    while True:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                return "exit"
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_ESCAPE:
+                    return "menu" if completed else "levels"
+                if event.key in (pygame.K_RETURN, pygame.K_SPACE):
+                    return "continue" if completed else "retry"
+
+        screen.blit(overlay, (0, 0))
+        panel = pygame.Rect(0, 0, 760, 310)
+        panel.center = (SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2)
+        pygame.draw.rect(screen, (12, 10, 13), panel, border_radius=16)
+        pygame.draw.rect(screen, title_color, panel, 3, border_radius=16)
+        title_surface = title_font.render(title, True, title_color)
+        detail_surface = detail_font.render(detail, True, (235, 230, 220))
+        hint_surface = hint_font.render(hint, True, (175, 170, 165))
+        screen.blit(title_surface, title_surface.get_rect(center=(panel.centerx, panel.y + 95)))
+        screen.blit(detail_surface, detail_surface.get_rect(center=(panel.centerx, panel.y + 190)))
+        screen.blit(hint_surface, hint_surface.get_rect(center=(panel.centerx, panel.y + 255)))
+        pygame.display.flip()
+        clock.tick(60)
+
+
 # ============================================================
 # BÚSQUEDA DE IMÁGENES
 # ============================================================
@@ -1348,16 +1393,36 @@ def main():
 
                         chosen_level = result
 
-                        if launch_level(chosen_level):
-                            completed_levels.add(chosen_level)
-                            save_game(
-                                chosen_char_name,
-                                completed_levels,
-                                prologue_seen,
+                        while game_state == "LEVEL_SELECT":
+                            level_completed = launch_level(chosen_level)
+
+                            if game_state != "LEVEL_SELECT":
+                                break
+
+                            if level_completed:
+                                completed_levels.add(chosen_level)
+                                save_game(
+                                    chosen_char_name,
+                                    completed_levels,
+                                    prologue_seen,
+                                )
+                                level_selector.set_completed_levels(
+                                    completed_levels
+                                )
+
+                            result_action = show_level_result(
+                                chosen_level,
+                                level_completed,
                             )
-                            level_selector.set_completed_levels(
-                                completed_levels
-                            )
+                            if result_action == "retry":
+                                continue
+                            if result_action == "menu":
+                                game_state = "MENU"
+                            elif result_action == "levels":
+                                game_state = "LEVEL_SELECT"
+                            elif result_action == "exit":
+                                running = False
+                            break
 
                         chosen_level = None
 
