@@ -2,6 +2,8 @@
 import pygame
 import os
 
+from habilidades_jugador import HabilidadesJugador
+
 # ============================================================
 # RUTAS DE RECURSOS
 # ============================================================
@@ -256,7 +258,7 @@ class FlechaHorizontal(pygame.sprite.Sprite):
         self.frame_index = 0
         self.velocidad_animacion = 0.25
 
-        self.dano = 20
+        self.dano = 32
 
         ruta_flecha = os.path.join(
             BASE_EFECTOS,
@@ -363,6 +365,12 @@ class FlechaHorizontal(pygame.sprite.Sprite):
                 enemigo.vida = max(
                     0,
                     enemigo.vida - self.dano
+                )
+
+            elif hasattr(enemigo, "health"):
+                enemigo.health = max(
+                    0,
+                    enemigo.health - self.dano
                 )
 
             self.kill()
@@ -478,7 +486,7 @@ class RafagaFlechas(pygame.sprite.Sprite):
         self.frame_index = 0
         self.velocidad_animacion = 0.25
 
-        self.dano_por_frame = 4
+        self.dano_por_frame = 7
 
         self.ultimo_frame_golpeado = 0
         self.enemigos_golpeados_frame = set()
@@ -577,6 +585,12 @@ class RafagaFlechas(pygame.sprite.Sprite):
                     enemigo.vida - self.dano_por_frame
                 )
 
+            elif hasattr(enemigo, "health"):
+                enemigo.health = max(
+                    0,
+                    enemigo.health - self.dano_por_frame
+                )
+
             self.enemigos_golpeados_frame.add(enemigo)
 
             return True
@@ -627,10 +641,11 @@ class RafagaFlechas(pygame.sprite.Sprite):
 # CLASE DEL HEROE PLANTA
 # ============================================================
 
-class p_planta(pygame.sprite.Sprite):
+class p_planta(HabilidadesJugador, pygame.sprite.Sprite):
 
     def __init__(self, x, y, posicion_suelo):
         super().__init__()
+        self.inicializar_habilidades((65, 220, 110))
 
         self.ancho_heroe = 600
         self.alto_heroe = 240
@@ -662,7 +677,9 @@ class p_planta(pygame.sprite.Sprite):
         self.dano_ataque_1 = 15
         self.golpe_aplicado = False
 
-        self.dano_ataque_especial = 30
+        self.dano_ataque_3 = 42
+        self.dano_ataque_especial = 55
+        self.enemigos_golpeados_ataque_3 = set()
         self.enemigos_golpeados_especial = set()
 
         # ====================================================
@@ -721,6 +738,7 @@ class p_planta(pygame.sprite.Sprite):
 
         self.rodando = False
         self.defendiendo = False
+        self.desbloqueando = False
         self.atacando = False
         self.combo_siguiente = False
 
@@ -841,6 +859,10 @@ class p_planta(pygame.sprite.Sprite):
 
             self.animaciones["death"].append(imagen)
 
+        self.animaciones["unblock"] = list(
+            reversed(self.animaciones["defend"])
+        )
+
     # ========================================================
     # HURTBOX
     # ========================================================
@@ -867,7 +889,7 @@ class p_planta(pygame.sprite.Sprite):
     # RECIBIR DAÑO
     # ========================================================
 
-    def recibir_dano(self, cantidad):
+    def recibir_dano(self, cantidad, atacante=None):
 
         if self.muerto or self.recibiendo_dano:
             return
@@ -876,7 +898,10 @@ class p_planta(pygame.sprite.Sprite):
 
         if (
             self.rodando
-            or self.defendiendo
+            or (
+                self.defendiendo
+                and self.bloquea_ataque_en_direccion(atacante)
+            )
             or self.inmune_dano
             or (self.atacando and self.estado == "sp_atk")
         ):
@@ -890,24 +915,11 @@ class p_planta(pygame.sprite.Sprite):
         self.inmune_dano = True
         self.tiempo_ultimo_dano = pygame.time.get_ticks()
 
-        self.velocidad_x = 0
-        self.atacando = False
-        self.combo_siguiente = False
-        self.rodando = False
-        self.defendiendo = False
-
-        self.frame_index = 0
-
         if self.vida <= 0:
 
             self.muerto = True
             self.recibiendo_dano = False
             self.estado = "death"
-
-        else:
-
-            self.recibiendo_dano = True
-            self.estado = "take_hit"
         # ========================================================
     # HITBOX DEL PRIMER ATAQUE Y ATAQUE ESPECIAL
     # ========================================================
@@ -946,8 +958,8 @@ class p_planta(pygame.sprite.Sprite):
 
             if int(self.frame_index) == 9:
 
-                ancho_rayo = 730
-                alto_rayo = 85
+                ancho_rayo = 900
+                alto_rayo = 110
 
                 centro_y_rayo = self.hurtbox.centery - 80
 
@@ -975,7 +987,16 @@ class p_planta(pygame.sprite.Sprite):
 
     def comprobar_golpe(self, enemigo):
 
-        if self.hitbox.width <= 0:
+        if self.muerto or enemigo is None or self.hitbox.width <= 0:
+            return
+
+        esta_vivo = getattr(enemigo, "alive", None)
+        vida_enemigo = getattr(enemigo, "health", getattr(enemigo, "vida", None))
+        if (
+            (callable(esta_vivo) and not esta_vivo())
+            or getattr(enemigo, "muerto_definitivo", False)
+            or (vida_enemigo is not None and vida_enemigo <= 0)
+        ):
             return
 
         hurtbox_enemigo = getattr(
@@ -1011,6 +1032,12 @@ class p_planta(pygame.sprite.Sprite):
             dano = self.dano_ataque_1
             self.golpe_aplicado = True
 
+        elif self.estado == "3_atk":
+            if enemigo in self.enemigos_golpeados_ataque_3:
+                return
+            dano = self.dano_ataque_3
+            self.enemigos_golpeados_ataque_3.add(enemigo)
+
         else:
             return
 
@@ -1027,6 +1054,13 @@ class p_planta(pygame.sprite.Sprite):
             enemigo.vida = max(
                 0,
                 enemigo.vida - dano
+            )
+
+        elif hasattr(enemigo, "health"):
+
+            enemigo.health = max(
+                0,
+                enemigo.health - dano
             )
 
     # ========================================================
@@ -1053,12 +1087,33 @@ class p_planta(pygame.sprite.Sprite):
 
     def procesar_evento(self, evento):
 
+        if (
+            evento.type == pygame.MOUSEBUTTONUP
+            and evento.button == pygame.BUTTON_RIGHT
+        ):
+            if self.defendiendo:
+                frames_defensa = self.animaciones["defend"]
+                frame_defensa = (
+                    min(max(int(self.frame_index), 0), len(frames_defensa) - 1)
+                    if self.estado == "defend"
+                    else 0
+                )
+                self.frame_index = len(frames_defensa) - 1 - frame_defensa
+                self.defendiendo = False
+                self.desbloqueando = True
+                self.estado = "unblock"
+            return
+
+        if self.desbloqueando:
+            return
+
         if self.muerto or self.recibiendo_dano:
             return
 
         if evento.type not in (
             pygame.KEYDOWN,
-            pygame.MOUSEBUTTONDOWN
+            pygame.MOUSEBUTTONDOWN,
+            pygame.MOUSEBUTTONUP,
         ):
             return
 
@@ -1067,7 +1122,7 @@ class p_planta(pygame.sprite.Sprite):
         if (
             evento.type == pygame.KEYDOWN
             and evento.key == pygame.K_w
-            and self.en_suelo
+            and self.saltos_restantes > 0
             and not (
                 self.atacando
                 or self.rodando
@@ -1077,6 +1132,7 @@ class p_planta(pygame.sprite.Sprite):
 
             self.velocidad_y = self.fuerza_salto
             self.en_suelo = False
+            self.registrar_salto()
 
         # RODAR: Q
 
@@ -1100,14 +1156,14 @@ class p_planta(pygame.sprite.Sprite):
             evento.type == pygame.MOUSEBUTTONDOWN
             and evento.button == pygame.BUTTON_RIGHT
             and self.en_suelo
-            and not (
-                self.rodando
-                or self.atacando
-                or self.defendiendo
-            )
+            and not self.rodando
         ):
 
+            self.desbloqueando = False
+            self.atacando = False
+            self.combo_siguiente = False
             self.defendiendo = True
+            self.estado = "defend"
             self.frame_index = 0
 
         # ATAQUE ESPECIAL: E
@@ -1115,6 +1171,7 @@ class p_planta(pygame.sprite.Sprite):
         elif (
             evento.type == pygame.KEYDOWN
             and evento.key == pygame.K_e
+            and self.energia_lista
             and self.en_suelo
             and not (
                 self.rodando
@@ -1128,6 +1185,7 @@ class p_planta(pygame.sprite.Sprite):
             self.frame_index = 0
 
             self.enemigos_golpeados_especial.clear()
+            self.usar_energia()
 
         # ATAQUES: CLIC IZQUIERDO
 
@@ -1203,6 +1261,7 @@ class p_planta(pygame.sprite.Sprite):
             or self.recibiendo_dano
             or self.rodando
             or self.defendiendo
+            or self.desbloqueando
             or (self.atacando and self.en_suelo)
         ):
 
@@ -1241,6 +1300,10 @@ class p_planta(pygame.sprite.Sprite):
         elif self.defendiendo:
 
             self.estado = "defend"
+
+        elif self.desbloqueando:
+
+            self.estado = "unblock"
 
         elif self.atacando:
 
@@ -1378,11 +1441,12 @@ class p_planta(pygame.sprite.Sprite):
 
                 self.rodando = False
 
+            elif self.desbloqueando:
+
+                self.desbloqueando = False
+                self.estado = "idle"
+
             # DEFENSA
-
-            elif self.defendiendo:
-
-                self.defendiendo = False
 
             # ATAQUES QUE TERMINAN
 
@@ -1400,6 +1464,7 @@ class p_planta(pygame.sprite.Sprite):
                     self.combo_siguiente = False
                     self.flecha_horizontal_creada = False
                     self.golpe_aplicado = False
+                    self.enemigos_golpeados_especial.clear()
 
                 else:
 
@@ -1414,6 +1479,7 @@ class p_planta(pygame.sprite.Sprite):
                     self.estado = "3_atk"
                     self.frame_index = 0
                     self.rafaga_creada = False
+                    self.enemigos_golpeados_ataque_3.clear()
                     self.combo_siguiente = False
 
                 else:
@@ -1462,6 +1528,7 @@ class p_planta(pygame.sprite.Sprite):
             self.rect.bottom = self.posicion_suelo
             self.velocidad_y = 0
             self.en_suelo = True
+            self.restaurar_saltos()
 
         else:
 
@@ -1474,6 +1541,7 @@ class p_planta(pygame.sprite.Sprite):
     def update(self, scroll_x, ancho_mundo):
 
         self.ancho_mundo = ancho_mundo
+        self.actualizar_energia()
 
         # ACTUALIZAR INMUNIDAD TEMPORAL
 

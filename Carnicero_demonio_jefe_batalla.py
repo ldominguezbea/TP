@@ -2,6 +2,7 @@ import os
 import sys
 import re
 import pygame
+from menu_pausa import pausar_juego
 
 WIDTH, HEIGHT = 1280, 720
 SUELO_Y = 610
@@ -22,13 +23,13 @@ for r in rutas_sun_spirit:
     if os.path.exists(r):
         try:
             IMG_SUN_SPIRIT = pygame.image.load(r).convert_alpha()
-            print(f"✅ Textura 'sun_spirit.png' cargada con éxito desde: {r}")
+            print(f"[OK] Textura 'sun_spirit.png' cargada desde: {r}")
             break
         except Exception as e:
-            print(f"❌ Error al cargar {r}: {e}")
+            print(f"[ERROR] Error al cargar {r}: {e}")
 
 if IMG_SUN_SPIRIT is None:
-    print("⚠️ ADVERTENCIA: No se encontró 'sun_spirit.png' en 'assets/barras de vida/'.")
+    print("[ADVERTENCIA] No se encontró 'sun_spirit.png' en 'assets/barras de vida/'.")
 
 
 def cargar_animacion_con_altura_maxima(folder_path, altura_max):
@@ -155,6 +156,9 @@ def ejecutar_batalla_carnicero(screen, player, img_bar=None):
             if event.type == pygame.QUIT:
                 pygame.quit()
                 sys.exit()
+            elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                pausar_juego(screen)
+                continue
 
             if hasattr(player, "manejar_evento"):
                 player.manejar_evento(event)

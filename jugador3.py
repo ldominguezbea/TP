@@ -2,7 +2,10 @@ import pygame
 import os
 
 
-class p_fuego(pygame.sprite.Sprite):
+from habilidades_jugador import HabilidadesJugador
+
+
+class p_fuego(HabilidadesJugador, pygame.sprite.Sprite):
 
     def __init__(
         self,
@@ -12,6 +15,7 @@ class p_fuego(pygame.sprite.Sprite):
     ):
 
         super().__init__()
+        self.inicializar_habilidades((245, 55, 55))
 
         # ====================================================
         # CONFIGURACIÓN DEL PERSONAJE
@@ -51,14 +55,14 @@ class p_fuego(pygame.sprite.Sprite):
         self.dano_ataque_aereo = 15
         self.golpe_aereo_aplicado = False
 
-        self.dano_ataque_2 = 3
+        self.dano_ataque_2 = 7
         self.frames_golpe_ataque_2 = {}
 
-        self.dano_ataque_3 = 20
-        self.golpe_ataque_3_aplicado = False
+        self.dano_ataque_3 = 40
+        self.enemigos_golpeados_ataque_3 = set()
 
-        self.dano_ataque_especial = 30
-        self.golpe_especial_aplicado = False
+        self.dano_ataque_especial = 55
+        self.enemigos_golpeados_especial = set()
 
         # ====================================================
         # ANIMACIONES
@@ -122,6 +126,7 @@ class p_fuego(pygame.sprite.Sprite):
 
         self.rodando = False
         self.defendiendo = False
+        self.desbloqueando = False
         self.atacando = False
 
         self.combo_siguiente = False
@@ -362,6 +367,42 @@ class p_fuego(pygame.sprite.Sprite):
 
             self.animaciones["11_death"].append(img)
 
+        self.animaciones["unblock"] = list(
+            reversed(self.animaciones["defend"])
+        )
+
+    @staticmethod
+    def cargar_animaciones_batalla():
+
+        base_path = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)),
+            "assets",
+            "Heroes",
+            "p_fuego",
+            "p_fuego",
+        )
+        configuracion = {
+            "idle": ("idle", "idle", 8),
+            "run": ("run", "run", 8),
+            "j_up": ("j_up", "jump_up", 3),
+            "1_atk": ("1_atk", "1_atk", 11),
+        }
+        animaciones = {}
+
+        for nombre, (carpeta, prefijo, cantidad) in configuracion.items():
+            animaciones[nombre] = [
+                pygame.image.load(
+                    os.path.join(
+                        base_path,
+                        carpeta,
+                        f"{prefijo}_{indice}.png",
+                    )
+                ).convert_alpha()
+                for indice in range(1, cantidad + 1)
+            ]
+
+        return animaciones
+
     # ========================================================
     # HURTBOX
     # ========================================================
@@ -389,14 +430,17 @@ class p_fuego(pygame.sprite.Sprite):
     # RECIBIR DAÑO
     # ========================================================
 
-    def recibir_dano(self, cantidad):
+    def recibir_dano(self, cantidad, atacante=None):
 
         if self.muerto or self.recibiendo_dano:
             return
 
         if (
             self.rodando
-            or self.defendiendo
+            or (
+                self.defendiendo
+                and self.bloquea_ataque_en_direccion(atacante)
+            )
             or self.inmune_dano
             or (self.estado == "sp_atk" and self.atacando)
         ):
@@ -410,25 +454,11 @@ class p_fuego(pygame.sprite.Sprite):
         self.inmune_dano = True
         self.tiempo_ultimo_dano = pygame.time.get_ticks()
 
-        self.velocidad_x = 0
-
-        self.atacando = False
-        self.combo_siguiente = False
-        self.rodando = False
-        self.defendiendo = False
-
-        self.frame_index = 0
-
         if self.vida <= 0:
 
             self.muerto = True
             self.recibiendo_dano = False
             self.estado = "11_death"
-
-        else:
-
-            self.recibiendo_dano = True
-            self.estado = "take_hit"
 
     # ========================================================
     # HITBOX DE LOS ATAQUES
@@ -518,25 +548,22 @@ class p_fuego(pygame.sprite.Sprite):
                         100
                     )
 
-        # ATAQUE ESPECIAL: IMAGEN 14
+        # ATAQUE ESPECIAL: EXPLOSION ALREDEDOR DEL GOLPE DE ESPADA
         elif self.estado == "sp_atk" and self.atacando:
 
             if int(self.frame_index) == 13:
 
-                if self.mirando_derecha:
-                    self.hitbox = pygame.Rect(
-                        self.hurtbox.right - 5,
-                        self.hurtbox.centery - 40,
-                        120,
-                        80
-                    )
-                else:
-                    self.hitbox = pygame.Rect(
-                        self.hurtbox.left - 115,
-                        self.hurtbox.centery - 40,
-                        120,
-                        80
-                    )
+                ancho_explosion = 300
+                alto_explosion = 240
+                centro_impacto_x = self.hurtbox.centerx + (
+                    80 if self.mirando_derecha else -80
+                )
+                self.hitbox = pygame.Rect(
+                    centro_impacto_x - ancho_explosion // 2,
+                    self.hurtbox.centery - alto_explosion // 2,
+                    ancho_explosion,
+                    alto_explosion,
+                )
 
     def dibujar_hitbox(self, pantalla, scroll_x=0):
 
@@ -554,7 +581,16 @@ class p_fuego(pygame.sprite.Sprite):
 
     def comprobar_golpe(self, enemigo):
 
-        if self.hitbox.width <= 0:
+        if self.muerto or enemigo is None or self.hitbox.width <= 0:
+            return
+
+        esta_vivo = getattr(enemigo, "alive", None)
+        vida_enemigo = getattr(enemigo, "health", getattr(enemigo, "vida", None))
+        if (
+            (callable(esta_vivo) and not esta_vivo())
+            or getattr(enemigo, "muerto_definitivo", False)
+            or (vida_enemigo is not None and vida_enemigo <= 0)
+        ):
             return
 
         hurtbox_enemigo = getattr(
@@ -587,7 +623,7 @@ class p_fuego(pygame.sprite.Sprite):
             dano = self.dano_ataque_aereo
             self.golpe_aereo_aplicado = True
 
-        # ATAQUE 2: 3 DE DAÑO EN CADA IMAGEN 11 A 15
+        # ATAQUE 2: DAÑO POR IMPACTO EN CADA IMAGEN DE LA RÁFAGA
         elif self.estado == "2_atk":
 
             frame_actual = int(self.frame_index)
@@ -609,20 +645,21 @@ class p_fuego(pygame.sprite.Sprite):
         # ATAQUE 3: IMAGEN 24
         elif self.estado == "3_atk":
 
-            if self.golpe_ataque_3_aplicado:
+            id_enemigo = id(enemigo)
+            if id_enemigo in self.enemigos_golpeados_ataque_3:
                 return
 
             dano = self.dano_ataque_3
-            self.golpe_ataque_3_aplicado = True
+            self.enemigos_golpeados_ataque_3.add(id_enemigo)
 
         # ATAQUE ESPECIAL: IMAGEN 14
         elif self.estado == "sp_atk":
 
-            if self.golpe_especial_aplicado:
+            if enemigo in self.enemigos_golpeados_especial:
                 return
 
             dano = self.dano_ataque_especial
-            self.golpe_especial_aplicado = True
+            self.enemigos_golpeados_especial.add(enemigo)
 
         else:
             return
@@ -638,18 +675,43 @@ class p_fuego(pygame.sprite.Sprite):
         elif hasattr(enemigo, "vida"):
 
             enemigo.vida = max(0, enemigo.vida - dano)
+
+        elif hasattr(enemigo, "health"):
+
+            enemigo.health = max(0, enemigo.health - dano)
         # ========================================================
     # EVENTOS DEL JUGADOR
     # ========================================================
 
     def procesar_evento(self, evento):
 
+        if (
+            evento.type == pygame.MOUSEBUTTONUP
+            and evento.button == pygame.BUTTON_RIGHT
+        ):
+            if self.defendiendo:
+                frames_defensa = self.animaciones["defend"]
+                frame_defensa = (
+                    min(max(int(self.frame_index), 0), len(frames_defensa) - 1)
+                    if self.estado == "defend"
+                    else 0
+                )
+                self.frame_index = len(frames_defensa) - 1 - frame_defensa
+                self.defendiendo = False
+                self.desbloqueando = True
+                self.estado = "unblock"
+            return
+
+        if self.desbloqueando:
+            return
+
         if self.muerto or self.recibiendo_dano:
             return
 
         if evento.type not in (
             pygame.KEYDOWN,
-            pygame.MOUSEBUTTONDOWN
+            pygame.MOUSEBUTTONDOWN,
+            pygame.MOUSEBUTTONUP,
         ):
             return
 
@@ -660,7 +722,7 @@ class p_fuego(pygame.sprite.Sprite):
         if (
             evento.type == pygame.KEYDOWN
             and evento.key == pygame.K_w
-            and self.en_suelo
+            and self.saltos_restantes > 0
             and not (
                 self.atacando
                 or self.rodando
@@ -670,6 +732,7 @@ class p_fuego(pygame.sprite.Sprite):
 
             self.velocidad_y = self.fuerza_salto
             self.en_suelo = False
+            self.registrar_salto()
 
         # ====================================================
         # RODAR - Q
@@ -697,14 +760,14 @@ class p_fuego(pygame.sprite.Sprite):
             evento.type == pygame.MOUSEBUTTONDOWN
             and evento.button == pygame.BUTTON_RIGHT
             and self.en_suelo
-            and not (
-                self.rodando
-                or self.atacando
-                or self.defendiendo
-            )
+            and not self.rodando
         ):
 
+            self.desbloqueando = False
+            self.atacando = False
+            self.combo_siguiente = False
             self.defendiendo = True
+            self.estado = "defend"
             self.frame_index = 0
 
         # ====================================================
@@ -714,6 +777,7 @@ class p_fuego(pygame.sprite.Sprite):
         elif (
             evento.type == pygame.KEYDOWN
             and evento.key == pygame.K_e
+            and self.energia_lista
             and self.en_suelo
             and not (
                 self.rodando
@@ -725,7 +789,8 @@ class p_fuego(pygame.sprite.Sprite):
             self.atacando = True
             self.estado = "sp_atk"
             self.frame_index = 0
-            self.golpe_especial_aplicado = False
+            self.enemigos_golpeados_especial.clear()
+            self.usar_energia()
 
         # ====================================================
         # ATAQUE - CLICK IZQUIERDO
@@ -786,6 +851,7 @@ class p_fuego(pygame.sprite.Sprite):
             or self.recibiendo_dano
             or self.rodando
             or self.defendiendo
+            or self.desbloqueando
             or (
                 self.atacando
                 and self.en_suelo
@@ -832,6 +898,10 @@ class p_fuego(pygame.sprite.Sprite):
         elif self.defendiendo:
 
             self.estado = "defend"
+
+        elif self.desbloqueando:
+
+            self.estado = "unblock"
 
         elif self.atacando:
 
@@ -893,11 +963,12 @@ class p_fuego(pygame.sprite.Sprite):
 
                 self.rodando = False
 
+            elif self.desbloqueando:
+
+                self.desbloqueando = False
+                self.estado = "idle"
+
             # DEFENSA
-
-            elif self.defendiendo:
-
-                self.defendiendo = False
 
             # ATAQUES QUE TERMINAN
 
@@ -934,7 +1005,7 @@ class p_fuego(pygame.sprite.Sprite):
 
                     self.estado = "3_atk"
                     self.frame_index = 0
-                    self.golpe_ataque_3_aplicado = False
+                    self.enemigos_golpeados_ataque_3.clear()
                     self.combo_siguiente = False
                     self.golpe_aplicado = False
 
@@ -988,6 +1059,7 @@ class p_fuego(pygame.sprite.Sprite):
 
             self.velocidad_y = 0
             self.en_suelo = True
+            self.restaurar_saltos()
 
     # ========================================================
     # ACTUALIZAR JUGADOR
@@ -998,6 +1070,8 @@ class p_fuego(pygame.sprite.Sprite):
         scroll_x,
         ancho_mundo
     ):
+
+        self.actualizar_energia()
 
         # ACTUALIZAR INMUNIDAD TEMPORAL
 

@@ -6,6 +6,7 @@ from array import array
 from types import SimpleNamespace
 import pygame
 from personajes import crear_jugador
+from menu_pausa import NivelIntegradoFinalizado, pausar_juego
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -18,6 +19,8 @@ from enemigos import (
 
 pygame.init()
 pygame.font.init()
+NIVEL_INTEGRADO = __name__ == "_nivel2_integrado"
+nivel_completado = False
 
 # 1. Configuración de pantalla y mundo
 ANCHO, ALTO = 1350, 700
@@ -29,8 +32,17 @@ PORTAL_X = ANCHO_MUNDO - 500
 HUECO_INICIO = PORTAL_X - 150
 HUECO_FIN = PORTAL_X + 150
 
-pantalla = pygame.display.set_mode((ANCHO, ALTO))
+pantalla = pygame.display.get_surface()
+if pantalla is None:
+    pantalla = pygame.display.set_mode((ANCHO, ALTO))
 pygame.display.set_caption("Nivel 2 - Batalla de Jefe")
+
+
+def cerrar_nivel(action="exit"):
+    if NIVEL_INTEGRADO:
+        raise NivelIntegradoFinalizado(nivel_completado, action)
+    pygame.quit()
+    sys.exit()
 
 # Tamaño del sprite ajustado a escala humana
 ANCHO_HEROE, ALTO_HEROE = 300, 300
@@ -82,8 +94,7 @@ def mostrar_comic_inicio(screen):
     while esperando:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
-                pygame.quit()
-                sys.exit()
+                cerrar_nivel()
             if event.type == pygame.KEYDOWN and event.key == pygame.K_RETURN:
                 esperando = False
 
@@ -110,8 +121,7 @@ def mostrar_comic_final(screen):
     while esperando:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
-                pygame.quit()
-                sys.exit()
+                cerrar_nivel()
             if event.type == pygame.KEYDOWN:
                 esperando = False
 
@@ -175,10 +185,10 @@ def cargar_fondo_nivel2(nombre_archivo):
 
 
 fondos = [
-    cargar_fondo_nivel2("Nivel2_imagen1.png"),
     cargar_fondo_nivel2("Nivel2_imagen2.png"),
+    cargar_fondo_nivel2("Nivel2_imagen4.png"),
 ]
-fondo_jefe = cargar_fondo_nivel2("Nivel2_imagen3.png")
+fondo_jefe = cargar_fondo_nivel2("Nivel2_imagen1.png")
 fondo_autobus = cargar_fondo_nivel2("Nivel2_imagen5.png.png")
 
 
@@ -558,8 +568,8 @@ class VistaJugadorMundo:
         self.hitbox = j.hitbox.move(scroll_x, 0)
         self.pos_x = j.pos_x
 
-    def take_damage(self, damage):
-        self.jugador.take_damage(damage)
+    def take_damage(self, damage, attacker=None):
+        self.jugador.take_damage(damage, attacker=attacker)
 
 
 # 4. UI e Interactivos
@@ -649,6 +659,8 @@ def dibujar_barra_jugador(screen, player):
         lbl_player = fuente_ui.render(f"JUGADOR: {int(player.health)} / {player.max_health}", True, (255, 255, 255))
         screen.blit(lbl_player, (x_player, 8))
 
+    player.dibujar_barra_energia(screen)
+
 
 # 5. Escena de Batalla contra el Jefe
 def ejecutar_batalla_carnicero(screen, player, fondo_img):
@@ -680,8 +692,15 @@ def ejecutar_batalla_carnicero(screen, player, fondo_img):
 
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
-                pygame.quit()
-                sys.exit()
+                cerrar_nivel()
+            elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                action = pausar_juego(
+                    screen,
+                    devolver_accion=NIVEL_INTEGRADO,
+                )
+                if NIVEL_INTEGRADO and action in ("menu", "exit"):
+                    cerrar_nivel(action)
+                continue
 
             player.procesar_evento(event)
 
@@ -692,7 +711,7 @@ def ejecutar_batalla_carnicero(screen, player, fondo_img):
 
         for proj in jefe.proyectiles[:]:
             if proj.rect.colliderect(target_player_rect):
-                player.take_damage(8)
+                player.take_damage(8, attacker=proj)
                 if proj in jefe.proyectiles:
                     jefe.proyectiles.remove(proj)
 
@@ -720,7 +739,7 @@ def ejecutar_batalla_carnicero(screen, player, fondo_img):
                 tiempo_en_hitbox_jefe += dt
 
                 if tiempo_en_hitbox_jefe >= 1.0 and not getattr(jefe, 'has_hit', False):
-                    player.take_damage(20)
+                    player.take_damage(20, attacker=espada_hitbox)
                     setattr(jefe, 'has_hit', True)
             else:
                 tiempo_en_hitbox_jefe = 0.0
@@ -728,29 +747,9 @@ def ejecutar_batalla_carnicero(screen, player, fondo_img):
             tiempo_en_hitbox_jefe = 0.0
             setattr(jefe, 'has_hit', False)
 
-        if not getattr(jefe, 'muerto_definitivo', False) and player.atacando:
-            if player.estado == 'sp_atk':
-                num_imagen = int(player.frame_index) + 1
-                if num_imagen in (12, 18, 20):
-                    if not player.has_hit:
-                        if player.hitbox.colliderect(jefe.hurtbox):
-                            jefe.take_damage(18)
-                            player.has_hit = True
-                else:
-                    player.has_hit = False
-            else:
-                if not player.has_hit:
-                    if player.hitbox.colliderect(jefe.hurtbox):
-                        dano_basico = 10
-                        if player.estado == '2_atk':
-                            dano_basico = 12
-                        elif player.estado == '3_atk':
-                            dano_basico = 16
-                        elif player.estado == 'air_atk':
-                            dano_basico = 12
-
-                        jefe.take_damage(dano_basico)
-                        player.has_hit = True
+        if not getattr(jefe, 'muerto_definitivo', False):
+            player.comprobar_golpe(jefe)
+            player.comprobar_golpes_proyectiles((jefe,))
 
         screen.blit(fondo_img, (0, 0))
         screen.blit(player.image, player.rect)
@@ -853,6 +852,8 @@ def ejecutar_batalla_carnicero(screen, player, fondo_img):
 
 
 def ejecutar_batalla_werewolf(screen, player, fondo_img):
+    global nivel_completado
+
     from Jefes_enemigos import WerewolfBoss
 
     clock = pygame.time.Clock()
@@ -973,8 +974,15 @@ def ejecutar_batalla_werewolf(screen, player, fondo_img):
 
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
-                pygame.quit()
-                sys.exit()
+                cerrar_nivel()
+            elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                action = pausar_juego(
+                    screen,
+                    devolver_accion=NIVEL_INTEGRADO,
+                )
+                if NIVEL_INTEGRADO and action in ("menu", "exit"):
+                    cerrar_nivel(action)
+                continue
             if not transicion_fase:
                 player.procesar_evento(event)
 
@@ -1049,8 +1057,11 @@ def ejecutar_batalla_werewolf(screen, player, fondo_img):
                     bola["radio"] * 2,
                 )
                 if bola_rect.colliderect(player.hurtbox):
-                    player.take_damage(12)
-                    bolas_fuego.remove(bola)
+                    if player.rodando:
+                        bola["esquivada"] = True
+                    elif not bola.get("esquivada", False):
+                        player.take_damage(12, attacker=bola_rect)
+                        bolas_fuego.remove(bola)
                 elif bola["y"] >= POSICION_SUELO:
                     bolas_fuego.remove(bola)
 
@@ -1076,7 +1087,7 @@ def ejecutar_batalla_werewolf(screen, player, fondo_img):
                     proyectil["y"] += proyectil["vy"] * dt
                     proyectil["rect"].center = (int(proyectil["x"]), int(proyectil["y"]))
                     if proyectil["rect"].colliderect(player.hurtbox):
-                        player.take_damage(10)
+                        player.take_damage(10, attacker=proyectil["rect"])
                         proyectiles_demonio.remove(proyectil)
                     elif not screen.get_rect().inflate(100, 100).collidepoint(
                         proyectil["rect"].center
@@ -1100,30 +1111,9 @@ def ejecutar_batalla_werewolf(screen, player, fondo_img):
                     jefe.rect.bottom = POSICION_SUELO
                     jefe.hurtbox = jefe.rect.copy()
 
-        if (
-            not transicion_fase
-            and jefe.health > 0
-            and player.atacando
-            and not demonios_activos
-        ):
-            if player.estado == "sp_atk":
-                num_imagen = int(player.frame_index) + 1
-                if num_imagen in (12, 18, 20) and not player.has_hit:
-                    if player.hitbox.colliderect(jefe.hurtbox):
-                        jefe.take_damage(18)
-                        player.has_hit = True
-                elif num_imagen not in (12, 18, 20):
-                    player.has_hit = False
-            elif not player.has_hit and player.hitbox.colliderect(jefe.hurtbox):
-                dano = 10
-                if player.estado == "2_atk":
-                    dano = 12
-                elif player.estado == "3_atk":
-                    dano = 16
-                elif player.estado == "air_atk":
-                    dano = 12
-                jefe.take_damage(dano)
-                player.has_hit = True
+        if not transicion_fase and jefe.health > 0 and not demonios_activos:
+            player.comprobar_golpe(jefe)
+            player.comprobar_golpes_proyectiles((jefe,))
 
         if jefe.health <= 0:
             cancelar_fase_al_morir()
@@ -1247,6 +1237,7 @@ def ejecutar_batalla_werewolf(screen, player, fondo_img):
             screen.blit(texto, rect_texto)
             if timer_muerte_jefe >= 4.8:
                 mostrar_comic_final(screen)
+                nivel_completado = True
                 en_batalla = False
 
         pygame.display.flip()
@@ -1260,7 +1251,7 @@ DISTANCIA_ENTRE_GRUPOS = 850
 PRIMER_GRUPO_X = 800
 ULTIMO_GRUPO_X = HUECO_INICIO - 1100
 PUNTOS_GRUPO = list(range(PRIMER_GRUPO_X, ULTIMO_GRUPO_X + 1, DISTANCIA_ENTRE_GRUPOS))
-BUS_ESCENARIO_TRAMO = ANCHO_MUNDO // ANCHO - 2
+BUS_ESCENARIO_TRAMO = ANCHO_MUNDO // ANCHO - 3
 BUS_SCROLL_X = BUS_ESCENARIO_TRAMO * ANCHO
 BUS_EVENTO_X = BUS_SCROLL_X + int(ANCHO * 0.4)
 BUS_PUERTA_RECT = pygame.Rect(
@@ -1400,8 +1391,8 @@ def crear_enemigo(clase, x):
     """Instancia un enemigo y lo alinea con el suelo."""
     if clase in (HombreLoboRojo, HombreLoboNegro, Mushroom):
         enemigo = clase(x=x, y=POSICION_SUELO)
-        enemigo.health = 60
-        enemigo.max_health = 60
+        enemigo.health = 40
+        enemigo.max_health = 40
         enemigo.dano_ataque = 5
 
     enemigo.suelo_y = POSICION_SUELO
@@ -1446,8 +1437,8 @@ def crear_enemigo_autobus(indice):
     )
     enemigo.rect.centerx = posicion_salida
     enemigo.hurtbox.topleft = enemigo.rect.topleft
-    enemigo.health = 60
-    enemigo.max_health = 60
+    enemigo.health = 40
+    enemigo.max_health = 40
     enemigo.dano_ataque = 7
     enemigo.attack_range = 1
     enemigo.preferred_distance = 0
@@ -1660,7 +1651,17 @@ while ejecutando:
 
     for evento in pygame.event.get():
         if evento.type == pygame.QUIT:
+            if NIVEL_INTEGRADO:
+                cerrar_nivel()
             ejecutando = False
+        elif evento.type == pygame.KEYDOWN and evento.key == pygame.K_ESCAPE:
+            action = pausar_juego(
+                pantalla,
+                devolver_accion=NIVEL_INTEGRADO,
+            )
+            if NIVEL_INTEGRADO and action in ("menu", "exit"):
+                cerrar_nivel(action)
+            continue
 
         if autobus_perdido:
             if evento.type == pygame.KEYDOWN:
@@ -1779,17 +1780,14 @@ while ejecutando:
         enemigo.update(objetivo, dt, width=ANCHO_MUNDO)
 
         if enemigo.health > 0:
-            if (heroe.atacando and enemigo not in heroe.enemigos_golpeados
-                    and vista_heroe.hitbox.width > 0
-                    and vista_heroe.hitbox.colliderect(enemigo.hurtbox)):
-                enemigo.take_damage(20)
-                heroe.enemigos_golpeados.add(enemigo)
-                heroe.has_hit = True
-
+            heroe.comprobar_golpe(enemigo)
             hb = getattr(enemigo, 'hitbox', None)
             if hb is not None and hb.width > 0 and not getattr(enemigo, 'has_hit', False):
                 if hb.colliderect(vista_heroe.hurtbox):
-                    heroe.take_damage(getattr(enemigo, 'dano_ataque', 10))
+                    heroe.take_damage(
+                        getattr(enemigo, 'dano_ataque', 10),
+                        attacker=enemigo,
+                    )
                     enemigo.has_hit = True
 
         if (
@@ -1799,6 +1797,8 @@ while ejecutando:
         ):
             autobus_perdido = True
             autobus_activo = False
+
+    heroe.comprobar_golpes_proyectiles(enemigos_en_escena)
 
     if (
         autobus_activo
@@ -1838,8 +1838,7 @@ while ejecutando:
             pos_x_fondo = i * ANCHO - scroll_x
             if -ANCHO < pos_x_fondo < ANCHO:
                 fondo_tramo = (
-                    fondo_jefe if i == ANCHO_MUNDO // ANCHO - 1
-                    else fondo_autobus if i == BUS_ESCENARIO_TRAMO
+                    fondo_autobus if i == BUS_ESCENARIO_TRAMO
                     else fondos[i % len(fondos)]
                 )
                 pantalla.blit(fondo_tramo, (pos_x_fondo, 0))
@@ -1877,10 +1876,10 @@ while ejecutando:
         str_progreso = "CAMINO DESPEJADO: ACÉRCATE AL PORTAL"
         color_progreso = (90, 230, 130)
     elif enemigos_pendientes:
-        str_progreso = f"RUMBO HACIA ABBADON: {progreso}%  |  ENEMIGOS: {len(enemigos_pendientes)}"
+        str_progreso = f"RUMBO AL PORTAL: {progreso}%  |  ENEMIGOS: {len(enemigos_pendientes)}"
         color_progreso = (18, 42, 105)
     else:
-        str_progreso = f"RUMBO HACIA ABBADON: {progreso}%"
+        str_progreso = f"RUMBO AL PORTAL: {progreso}%"
         color_progreso = (18, 42, 105)
 
     txt_progreso_sombra = fuente_progreso.render(str_progreso, True, (0, 0, 0))
@@ -1944,5 +1943,6 @@ while ejecutando:
 
     pygame.display.flip()
 
-pygame.quit()
-sys.exit()
+if not NIVEL_INTEGRADO:
+    pygame.quit()
+    sys.exit()

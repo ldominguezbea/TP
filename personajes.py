@@ -46,8 +46,44 @@ class _AdaptadorJugadorNivel:
     def has_hit(self, value):
         self._has_hit = value
 
-    def take_damage(self, damage):
-        self.recibir_dano(damage)
+    def take_damage(self, damage, attacker=None):
+        self.recibir_dano(damage, attacker)
+
+    def set_position(self, x, suelo_y):
+        self.posicion_suelo = suelo_y
+        self.pos_x = float(x)
+        self.rect.midbottom = (round(x), suelo_y)
+        self.velocidad_x = 0
+        self.velocidad_y = 0
+        self.en_suelo = True
+        self.plataforma_actual = None
+        self.plataforma_ignorada = None
+        self.scroll_x_actual = 0
+        self.restaurar_saltos()
+        self.actualizar_hitboxes()
+
+    def comprobar_golpe(self, enemigo):
+        hitbox = self.hitbox
+        self.hitbox = hitbox.move(self.scroll_x_actual, 0)
+        try:
+            return super().comprobar_golpe(enemigo)
+        finally:
+            self.hitbox = hitbox
+
+    def comprobar_golpes_proyectiles(self, enemigos):
+        proyectiles = getattr(self, "proyectiles", None)
+        if proyectiles is None:
+            return
+
+        for proyectil in list(proyectiles):
+            comprobar_golpe = getattr(proyectil, "comprobar_golpe", None)
+            if not callable(comprobar_golpe):
+                continue
+
+            for enemigo in enemigos:
+                if proyectil not in proyectiles:
+                    break
+                comprobar_golpe(enemigo)
 
     def procesar_evento(self, evento):
         if (
@@ -107,6 +143,9 @@ class _AdaptadorJugadorNivel:
             self.rect.bottom = self.posicion_suelo
             self.velocidad_y = 0
             self.en_suelo = True
+
+        if self.en_suelo:
+            self.restaurar_saltos()
 
     def actualizar_hitboxes(self):
         self.actualizar_hurtbox()

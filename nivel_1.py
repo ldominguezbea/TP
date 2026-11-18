@@ -10,26 +10,103 @@ from enemigos import (
     cargar_spritesheet_jokai,
 )
 from personajes import crear_jugador
+from menu_pausa import (
+    EXIT_GAME_EXIT_CODE,
+    RETURN_TO_MENU_EXIT_CODE,
+    NivelIntegradoFinalizado,
+    pausar_juego,
+)
 
 pygame.init()
 pygame.font.init()
 
 NIVEL_INTEGRADO = __name__ == "_nivel1_integrado"
+accion_cierre_nivel = None
+nivel_completado = False
 
 # 1. Configuración de pantalla y mundo
 ANCHO, ALTO = 1350, 700
 POSICION_SUELO = 620
 ORDEN_FONDOS_NIVEL = (1, 4, 5, 6, 7, 8, 9, 10)
 
-# Recorrido lateral continuo hasta la entrada del jefe.
+# Recorrido lateral inicial hasta la entrada de la biblioteca.
 CANTIDAD_FONDOS = len(ORDEN_FONDOS_NIVEL)
 ANCHO_MUNDO = ANCHO * CANTIDAD_FONDOS + 500
 PORTAL_X = ANCHO_MUNDO - 500
 HUECO_INICIO = PORTAL_X - 150
 HUECO_FIN = PORTAL_X + 150
 ZONA_BIBLIOTECA_X = ANCHO * 3 + int(ANCHO * 0.75)
-ZONA_ENFERMERIA_X = ANCHO * 7 + int(ANCHO * 0.75)
 RADIO_INTERACCION_FONDO = 100
+PUERTA_ESCENA_X = ANCHO - 130
+VENTILACION_X = int(ANCHO * 0.48)
+HUECO_FINAL_X = ANCHO - 130
+ESCALA_ORCO_NIVEL = 1.5
+VELOCIDAD_PERSEGUIDOR = 420
+VELOCIDAD_ANIM_MONSTRUO = 8
+DISTANCIA_CONTACTO_MONSTRUO = 80
+DURACION_BOCA_CERRADA = 0.8
+
+FASE_RECORRIDO = "RECORRIDO"
+FASE_BIBLIOTECA_7 = "BIBLIOTECA_7"
+FASE_BIBLIOTECA_9 = "BIBLIOTECA_9"
+FASE_PASILLO_HOSPITAL = "PASILLO_HOSPITAL"
+FASE_HOSPITAL_11 = "HOSPITAL_11"
+FASE_CONDUCTO_1 = "CONDUCTO_1"
+FASE_CONDUCTO_2 = "CONDUCTO_2"
+FASE_CONDUCTO_3 = "CONDUCTO_3"
+FASE_HUECO_FINAL = "HUECO_FINAL"
+FASES_CONDUCTO = (
+    FASE_CONDUCTO_1,
+    FASE_CONDUCTO_2,
+    FASE_CONDUCTO_3,
+)
+PLATAFORMAS_ESCENA = {
+    FASE_BIBLIOTECA_7: [
+        pygame.Rect(300, 505, 230, 18),
+        pygame.Rect(760, 455, 230, 18),
+        pygame.Rect(1080, 515, 190, 18),
+    ],
+    FASE_BIBLIOTECA_9: [
+        pygame.Rect(250, 510, 220, 18),
+        pygame.Rect(650, 455, 230, 18),
+        pygame.Rect(1010, 500, 220, 18),
+    ],
+    FASE_PASILLO_HOSPITAL: [
+        pygame.Rect(330, 510, 230, 18),
+        pygame.Rect(800, 465, 230, 18),
+    ],
+}
+
+TRAZADOS_CONDUCTOS = {
+    FASE_CONDUCTO_1: (
+        (0.0, 0.688),
+        (0.20, 0.688),
+        (0.25, 0.667),
+        (0.30, 0.486),
+        (0.35, 0.378),
+        (0.50, 0.378),
+        (0.55, 0.395),
+        (0.60, 0.582),
+        (0.65, 0.755),
+        (1.0, 0.755),
+    ),
+    FASE_CONDUCTO_2: (
+        (0.0, 0.706),
+        (0.40, 0.706),
+        (0.45, 0.592),
+        (0.50, 0.431),
+        (0.55, 0.369),
+        (1.0, 0.369),
+    ),
+    FASE_CONDUCTO_3: (
+        (0.0, 0.296),
+        (0.35, 0.296),
+        (0.40, 0.425),
+        (0.45, 0.620),
+        (0.50, 0.806),
+        (1.0, 0.806),
+    ),
+}
 
 pantalla = pygame.display.get_surface()
 if pantalla is None:
@@ -37,9 +114,15 @@ if pantalla is None:
 pygame.display.set_caption("Nivel 1 - Batalla de Jefe")
 
 
-def cerrar_nivel():
+def cerrar_nivel(action=None):
     if NIVEL_INTEGRADO:
-        raise _Nivel1Finalizado
+        if action is not None:
+            raise NivelIntegradoFinalizado(nivel_completado, action)
+        raise NivelIntegradoFinalizado(nivel_completado)
+    if action == "menu":
+        raise SystemExit(RETURN_TO_MENU_EXIT_CODE)
+    if action == "exit":
+        raise SystemExit(EXIT_GAME_EXIT_CODE)
     pygame.quit()
     sys.exit()
 
@@ -61,6 +144,7 @@ fuente_progreso = pygame.font.SysFont("Impact", 22)
 # ==============================================================================
 def cargar_imagen_comic(nombre_archivo):
     rutas = [
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), "imagenes", "Nivel1", nombre_archivo),
         os.path.join("imagenes", "Nivel1", nombre_archivo),
         os.path.join("assets", "imagenes", "Nivel1", nombre_archivo)
     ]
@@ -68,7 +152,16 @@ def cargar_imagen_comic(nombre_archivo):
         if os.path.exists(ruta):
             try:
                 img = pygame.image.load(ruta).convert()
-                return pygame.transform.scale(img, (ANCHO, ALTO))
+                escala = min(ANCHO / img.get_width(), ALTO / img.get_height())
+                tamano = (
+                    max(1, round(img.get_width() * escala)),
+                    max(1, round(img.get_height() * escala)),
+                )
+                ajustada = pygame.transform.smoothscale(img, tamano)
+                lienzo = pygame.Surface((ANCHO, ALTO))
+                lienzo.fill((0, 0, 0))
+                lienzo.blit(ajustada, ajustada.get_rect(center=lienzo.get_rect().center))
+                return lienzo
             except Exception as e:
                 print(f"Error al cargar {ruta}: {e}")
 
@@ -87,7 +180,7 @@ def mostrar_comic_inicio(screen):
     while esperando:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
-                cerrar_nivel()
+                cerrar_nivel("exit")
             if event.type == pygame.KEYDOWN and event.key == pygame.K_RETURN:
                 esperando = False
 
@@ -114,7 +207,7 @@ def mostrar_comic_final(screen):
     while esperando:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
-                cerrar_nivel()
+                cerrar_nivel("exit")
             if event.type == pygame.KEYDOWN:
                 esperando = False
 
@@ -174,16 +267,160 @@ def cargar_fondo_nivel1(numero):
             ruta = os.path.join(carpeta, nombre)
             if os.path.exists(ruta):
                 img = pygame.image.load(ruta).convert()
-                return pygame.transform.scale(img, (ANCHO, ALTO))
+                if numero == 7:
+                    recorte_x = round(img.get_width() * 0.15)
+                    img = img.subsurface(
+                        pygame.Rect(
+                            recorte_x,
+                            0,
+                            img.get_width() - recorte_x,
+                            img.get_height(),
+                        )
+                    ).copy()
+                escala = min(ANCHO / img.get_width(), ALTO / img.get_height())
+                tamano = (
+                    max(1, round(img.get_width() * escala)),
+                    max(1, round(img.get_height() * escala)),
+                )
+                ajustada = pygame.transform.smoothscale(img, tamano)
+                lienzo = pygame.Surface((ANCHO, ALTO))
+                lienzo.fill((0, 0, 0))
+                lienzo.blit(ajustada, ajustada.get_rect(center=lienzo.get_rect().center))
+                return lienzo
 
     surf = pygame.Surface((ANCHO, ALTO))
     surf.fill((20, 15, 25))
     return surf
 
 
+def cargar_fondo_archivo(nombre_archivo):
+    ruta = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)),
+        "imagenes",
+        "Nivel1",
+        nombre_archivo,
+    )
+    if not os.path.isfile(ruta):
+        raise FileNotFoundError(f"No se encontró el fondo del nivel: {ruta}")
+    img = pygame.image.load(ruta).convert()
+    return pygame.transform.scale(img, (ANCHO, ALTO))
+
+
+def cargar_frames_monstruo_carne(altura, nombres):
+    carpeta = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)),
+        "assets",
+        "enemigos",
+        "Monstruo_carne",
+    )
+    if not os.path.isdir(carpeta):
+        raise FileNotFoundError(f"No se encontraron los sprites del monstruo: {carpeta}")
+
+    frames = []
+    for nombre in nombres:
+        ruta = os.path.join(carpeta, nombre)
+        if not os.path.isfile(ruta):
+            raise FileNotFoundError(f"No se encontró un frame del monstruo: {ruta}")
+        imagen = pygame.image.load(ruta).convert_alpha()
+        bounds = imagen.get_bounding_rect()
+        if bounds.width and bounds.height:
+            imagen = imagen.subsurface(bounds).copy()
+        factor = altura / imagen.get_height()
+        frames.append(
+            pygame.transform.scale(
+                imagen,
+                (max(1, round(imagen.get_width() * factor)), altura),
+            )
+        )
+    return frames
+
+
+def colocar_jugador_en_escena(jugador, x, fase):
+    jugador.pos_x = float(x)
+    jugador.posicion_suelo = POSICION_SUELO
+    jugador.velocidad_x = 0
+    jugador.velocidad_y = 0
+    jugador.scroll_x_actual = 0
+    jugador.plataformas = PLATAFORMAS_ESCENA.get(fase, [])
+    jugador.plataforma_actual = None
+    jugador.plataforma_ignorada = None
+    jugador.rect.centerx = round(x)
+    jugador.rect.bottom = POSICION_SUELO
+    jugador.en_suelo = True
+    jugador.actualizar_hitboxes()
+
+
+def obtener_suelo_conducto(fase, x):
+    progreso = max(0.0, min(1.0, x / ANCHO))
+    puntos = TRAZADOS_CONDUCTOS[fase]
+    for (x1, y1), (x2, y2) in zip(puntos, puntos[1:]):
+        if progreso <= x2:
+            tramo = (progreso - x1) / (x2 - x1)
+            return round((y1 + (y2 - y1) * tramo) * ALTO)
+    return round(puntos[-1][1] * ALTO)
+
+
+def obtener_limite_derecho(fase):
+    limites = {
+        FASE_RECORRIDO: ZONA_BIBLIOTECA_X,
+        FASE_BIBLIOTECA_7: ANCHO - 80,
+        FASE_BIBLIOTECA_9: PUERTA_ESCENA_X,
+        FASE_PASILLO_HOSPITAL: int(ANCHO * 0.79),
+        FASE_HOSPITAL_11: VENTILACION_X,
+        FASE_CONDUCTO_1: ANCHO - 80,
+        FASE_CONDUCTO_2: ANCHO - 80,
+        FASE_CONDUCTO_3: ANCHO - 80,
+        FASE_HUECO_FINAL: HUECO_FINAL_X,
+    }
+    return limites[fase]
+
+
+def requiere_interaccion(fase, x):
+    if fase == FASE_RECORRIDO:
+        return abs(x - ZONA_BIBLIOTECA_X) <= RADIO_INTERACCION_FONDO
+    if fase == FASE_HOSPITAL_11:
+        return abs(x - VENTILACION_X) <= 90
+    if fase in (
+        FASE_BIBLIOTECA_9,
+        FASE_PASILLO_HOSPITAL,
+        FASE_CONDUCTO_3,
+        FASE_HUECO_FINAL,
+    ):
+        return x >= obtener_limite_derecho(fase) - 90
+    return False
+
+
 # 2. Carga de fondos
 fondos = [cargar_fondo_nivel1(numero) for numero in ORDEN_FONDOS_NIVEL]
 fondo_batalla = cargar_fondo_nivel1(3)
+fondos_escena = {
+    FASE_BIBLIOTECA_7: fondos[4],
+    FASE_BIBLIOTECA_9: fondos[6],
+    FASE_PASILLO_HOSPITAL: cargar_fondo_archivo(
+        "Pasillo de hospital en llamas.png"
+    ),
+    FASE_HOSPITAL_11: cargar_fondo_nivel1(11),
+    FASE_CONDUCTO_1: cargar_fondo_archivo("Conducto1.png"),
+    FASE_CONDUCTO_2: cargar_fondo_archivo("Conducto2.png"),
+    FASE_CONDUCTO_3: cargar_fondo_archivo("Conducto3.png"),
+    FASE_HUECO_FINAL: cargar_fondo_nivel1(2),
+}
+frames_monstruo_carne = cargar_frames_monstruo_carne(
+    70,
+    (
+        "Monstruo de carne.png",
+        "Monstruo de carne2.png",
+        "Monstruo de carne3.png",
+    ),
+)
+frame_monstruo_boca_cerrada = cargar_frames_monstruo_carne(
+    70,
+    ("Monstruo de carne_ataque.png",),
+)[0]
+tamano_monstruo = frames_monstruo_carne[0].get_size()
+frame_monstruo_boca_cerrada = pygame.transform.scale(
+    frame_monstruo_boca_cerrada, tamano_monstruo
+)
 
 
 # 3. Clase para el Jugador (P_viento)
@@ -443,7 +680,13 @@ class Jugador(pygame.sprite.Sprite):
             return
         self.health = max(0, self.health - damage)
 
-    def update(self, scroll_x, transicion_realizada, limite_max_x=HUECO_FIN):
+    def update(
+        self,
+        scroll_x,
+        transicion_realizada,
+        limite_max_x=HUECO_FIN,
+        limite_min_x=80,
+    ):
         self.scroll_x_actual = scroll_x
         self.manejar_movimiento_continuo()
 
@@ -452,7 +695,7 @@ class Jugador(pygame.sprite.Sprite):
 
         self.pos_x += self.velocidad_x
 
-        limite_izquierdo = scroll_x + 80
+        limite_izquierdo = max(scroll_x + 80, limite_min_x)
 
         if transicion_realizada and scroll_x == 0:
             limite_izquierdo = 80
@@ -483,8 +726,8 @@ class VistaJugadorMundo:
         self.hitbox = j.hitbox.move(scroll_x, 0)
         self.pos_x = j.pos_x
 
-    def take_damage(self, damage):
-        self.jugador.take_damage(damage)
+    def take_damage(self, damage, attacker=None):
+        self.jugador.take_damage(damage, attacker=attacker)
 
 
 # 4. UI e Interactivos
@@ -573,9 +816,13 @@ def dibujar_barra_jugador(screen, player):
         lbl_player = fuente_ui.render(f"JUGADOR: {int(player.health)} / {player.max_health}", True, (255, 255, 255))
         screen.blit(lbl_player, (x_player, 8))
 
+    player.dibujar_barra_energia(screen)
+
 
 # 5. Escena de Batalla contra el Jefe
 def ejecutar_batalla_carnicero(screen, player, fondo_img):
+    global nivel_completado
+
     from Jefes_enemigos import CarniceroBoss
 
     clock = pygame.time.Clock()
@@ -611,8 +858,20 @@ def ejecutar_batalla_carnicero(screen, player, fondo_img):
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 cerrar_nivel()
+                en_batalla = False
+                break
+            elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                accion = pausar_juego(screen, devolver_accion=True)
+                if accion in ("menu", "exit"):
+                    cerrar_nivel(accion)
+                    en_batalla = False
+                    break
+                continue
 
             player.procesar_evento(event)
+
+        if not en_batalla:
+            break
 
         player.update(0, transicion_realizada=True)
         jefe.update(player, dt, width=ANCHO, suelo_y=POSICION_SUELO)
@@ -620,10 +879,16 @@ def ejecutar_batalla_carnicero(screen, player, fondo_img):
         target_player_rect = player.hurtbox
 
         for proj in jefe.proyectiles[:]:
-            if proj.rect.colliderect(target_player_rect):
-                player.take_damage(8)
-                if proj in jefe.proyectiles:
-                    jefe.proyectiles.remove(proj)
+            if (
+                proj.rect.colliderect(target_player_rect)
+                and not getattr(proj, "esquivado", False)
+            ):
+                if player.rodando:
+                    proj.esquivado = True
+                else:
+                    player.take_damage(7, attacker=proj)
+                    if proj in jefe.proyectiles:
+                        jefe.proyectiles.remove(proj)
 
         jefe_atacando = (
             getattr(jefe, 'attacking', False) or
@@ -649,7 +914,7 @@ def ejecutar_batalla_carnicero(screen, player, fondo_img):
                 tiempo_en_hitbox_jefe += dt
 
                 if tiempo_en_hitbox_jefe >= 1.0 and not getattr(jefe, 'has_hit', False):
-                    player.take_damage(20)
+                    player.take_damage(16, attacker=espada_hitbox)
                     setattr(jefe, 'has_hit', True)
             else:
                 tiempo_en_hitbox_jefe = 0.0
@@ -657,29 +922,9 @@ def ejecutar_batalla_carnicero(screen, player, fondo_img):
             tiempo_en_hitbox_jefe = 0.0
             setattr(jefe, 'has_hit', False)
 
-        if not getattr(jefe, 'muerto_definitivo', False) and player.atacando:
-            if player.estado == 'sp_atk':
-                num_imagen = int(player.frame_index) + 1
-                if num_imagen in (12, 18, 20):
-                    if not player.has_hit:
-                        if player.hitbox.colliderect(jefe.hurtbox):
-                            jefe.take_damage(18)
-                            player.has_hit = True
-                else:
-                    player.has_hit = False
-            else:
-                if not player.has_hit:
-                    if player.hitbox.colliderect(jefe.hurtbox):
-                        dano_basico = 10
-                        if player.estado == '2_atk':
-                            dano_basico = 12
-                        elif player.estado == '3_atk':
-                            dano_basico = 16
-                        elif player.estado == 'air_atk':
-                            dano_basico = 12
-
-                        jefe.take_damage(dano_basico)
-                        player.has_hit = True
+        if not getattr(jefe, 'muerto_definitivo', False):
+            player.comprobar_golpe(jefe)
+            player.comprobar_golpes_proyectiles((jefe,))
 
         screen.blit(fondo_img, (0, 0))
         screen.blit(player.image, player.rect)
@@ -776,6 +1021,7 @@ def ejecutar_batalla_carnicero(screen, player, fondo_img):
 
             if timer_muerte_jefe >= (TIEMPO_FADE_LETRERO + TIEMPO_ESPERA_POST):
                 mostrar_comic_final(screen)
+                nivel_completado = True
                 en_batalla = False
 
         pygame.display.flip()
@@ -787,7 +1033,7 @@ def ejecutar_batalla_carnicero(screen, player, fondo_img):
 TIPOS_ENEMIGO = [OrcoRojo, OjoVolador, Karasu_tengu]
 DISTANCIA_ENTRE_GRUPOS = 850
 PRIMER_GRUPO_X = 800
-ULTIMO_GRUPO_X = HUECO_INICIO - 1100
+ULTIMO_GRUPO_X = ZONA_BIBLIOTECA_X - 1800
 PUNTOS_GRUPO = list(range(PRIMER_GRUPO_X, ULTIMO_GRUPO_X + 1, DISTANCIA_ENTRE_GRUPOS))
 DISTANCIA_VISION_ENEMIGO = 270
 ANTICIPACION_APARICION_ENEMIGOS = 600
@@ -806,9 +1052,12 @@ def generar_plataformas_nivel():
         ancho = random.randint(190, 280)
         plataformas.append(pygame.Rect(x, y, ancho, 18))
 
-        # El hueco y el cambio de altura quedan dentro del alcance de un salto.
+        # Las primeras cuatro imágenes mantienen el piso plano; después varía.
         x += ancho + random.randint(35, 105)
-        y = max(325, min(560, y + random.randint(-75, 75)))
+        if x < ANCHO * 4:
+            y = 520
+        else:
+            y = max(325, min(560, y + random.randint(-75, 75)))
 
     return plataformas
 
@@ -885,20 +1134,27 @@ def dibujar_plataformas(screen, scroll_x, plataformas, disenos):
 def crear_enemigo(clase, x):
     """Instancia un enemigo. OrcoRojo y Karasu_tengu se alinean con el suelo; OjoVolador flota."""
     if clase is OrcoRojo:
-        enemigo = OrcoRojo(x=x, y=POSICION_SUELO, escala=2.0)
-        enemigo.dano_ataque = 10
+        enemigo = OrcoRojo(
+            x=x, y=POSICION_SUELO, escala=ESCALA_ORCO_NIVEL
+        )
+        enemigo.dano_ataque = 8
     elif clase is Karasu_tengu:
         enemigo = Karasu_tengu(x=x, y=POSICION_SUELO)
-        enemigo.dano_ataque = 5
+        enemigo.dano_ataque = 4
     else:
         # El OjoVolador conserva la altura flotante que tenías configurada
         enemigo = OjoVolador(x=x, y=POSICION_SUELO, suelo_y=POSICION_SUELO)
-        enemigo.DANO_PROYECTIL = 10
+        enemigo.DANO_PROYECTIL = 7
 
+    enemigo.health = 40
+    enemigo.max_health = 40
     enemigo.suelo_y = POSICION_SUELO
     if isinstance(enemigo, (OrcoRojo, Karasu_tengu)):
         enemigo.rect.bottom = POSICION_SUELO
         enemigo.jump_force = -15
+        enemigo.velocity_y = 0
+        enemigo.on_ground = True
+        enemigo.hurtbox.topleft = enemigo.rect.topleft
     return enemigo
 
 
@@ -977,12 +1233,58 @@ def generar_grupo_enemigos(posicion, indice_grupo=0):
         if usa_plataforma:
             enemigo.rect.centerx = plataforma_enemigo.centerx
             enemigo.rect.bottom = plataforma_enemigo.top
-            enemigo.on_ground = True
+        if clase is not OjoVolador:
             enemigo.velocity_y = 0
+            enemigo.on_ground = True
             enemigo.hurtbox.topleft = enemigo.rect.topleft
         enemigo.jump_cooldown = random.uniform(0.4, 1.4)
         enemigo.speed = random.randint(3, 5)
         enemigos.append(enemigo)
+    for enemigo in enemigos:
+        enemigo.allies = enemigos
+    return enemigos
+
+
+ENEMIGOS_POR_ESCENA = {
+    FASE_BIBLIOTECA_7: (
+        (OrcoRojo, 650),
+        (Karasu_tengu, 1050),
+    ),
+    FASE_BIBLIOTECA_9: (
+        (OrcoRojo, 650),
+        (Karasu_tengu, 1050),
+    ),
+    FASE_PASILLO_HOSPITAL: (
+        (OrcoRojo, 650),
+        (Karasu_tengu, 950),
+    ),
+    FASE_HOSPITAL_11: (
+        (OrcoRojo, 350),
+        (Karasu_tengu, 570),
+    ),
+}
+
+
+def generar_enemigos_escena(fase):
+    enemigos = []
+    for clase, x in ENEMIGOS_POR_ESCENA.get(fase, ()):
+        enemigo = crear_enemigo(clase, x)
+        enemigo.rect.centerx = x
+        enemigo.rect.bottom = POSICION_SUELO
+        enemigo.hurtbox.topleft = enemigo.rect.topleft
+        enemigo.plataformas = []
+        enemigo.velocity_y = 0
+        enemigo.on_ground = True
+        enemigo.esperando_jugador = True
+        enemigo.distancia_vision = DISTANCIA_VISION_ENEMIGO
+        enemigo.attack_range = 240
+        enemigo.ataque_coordinado = True
+        enemigo.preferred_distance = 65
+        enemigo.direction = "left"
+        enemigo.animaciones["idle"] = obtener_animacion_idle(enemigo)
+        enemigo.frame_idle = 0.0
+        enemigos.append(enemigo)
+
     for enemigo in enemigos:
         enemigo.allies = enemigos
     return enemigos
@@ -1066,13 +1368,27 @@ plataformas_nivel = generar_plataformas_nivel()
 disenos_plataformas = [
     generar_diseno_plataforma() for _ in plataformas_nivel
 ]
+disenos_plataformas_escena = {
+    fase: [generar_diseno_plataforma() for _ in plataformas]
+    for fase, plataformas in PLATAFORMAS_ESCENA.items()
+}
 heroe.plataformas = plataformas_nivel
 
 enemigos_nivel = []
+enemigos_escena = []
 proximo_grupo = 0
 
 scroll_x = 0
 transicion_realizada = False
+biblioteca_ingresada = False
+fase_nivel = FASE_RECORRIDO
+perseguidor_activo = False
+perseguidor_x = 0.0
+monstruo_frame = 0.0
+perseguidor_comiendo = False
+tiempo_boca_cerrada = 0.0
+posicion_devoracion_x = None
+jugador_devorado = False
 
 ejecutando = True
 reloj = pygame.time.Clock()
@@ -1080,188 +1396,438 @@ reloj = pygame.time.Clock()
 while ejecutando:
     dt = reloj.tick(60) / 1000.0
 
-    while (
-        proximo_grupo < len(PUNTOS_GRUPO)
-        and heroe.pos_x
-        >= PUNTOS_GRUPO[proximo_grupo] - ANTICIPACION_APARICION_ENEMIGOS
-    ):
-        enemigos_nivel.extend(
-            generar_grupo_enemigos(
-                PUNTOS_GRUPO[proximo_grupo], proximo_grupo
+    if fase_nivel == FASE_RECORRIDO:
+        while (
+            proximo_grupo < len(PUNTOS_GRUPO)
+            and heroe.pos_x
+            >= PUNTOS_GRUPO[proximo_grupo] - ANTICIPACION_APARICION_ENEMIGOS
+        ):
+            enemigos_nivel.extend(
+                generar_grupo_enemigos(
+                    PUNTOS_GRUPO[proximo_grupo], proximo_grupo
+                )
             )
-        )
-        proximo_grupo += 1
+            proximo_grupo += 1
 
-    todos_los_grupos_generados = proximo_grupo == len(PUNTOS_GRUPO)
+        if heroe.pos_x >= ZONA_BIBLIOTECA_X - 500:
+            enemigos_nivel.clear()
+
     enemigos_pendientes = [
         enemigo for enemigo in enemigos_nivel if not enemigo_derrotado(enemigo)
     ]
-    portal_liberado = todos_los_grupos_generados and not enemigos_pendientes
-    limite_max_x = HUECO_FIN if portal_liberado else HUECO_INICIO - 40
-
-    en_zona_hueco = (
-        portal_liberado
-        and HUECO_INICIO <= heroe.pos_x <= HUECO_FIN
-        and not transicion_realizada
-    )
-    en_zona_biblioteca = (
-        abs(heroe.pos_x - ZONA_BIBLIOTECA_X) <= RADIO_INTERACCION_FONDO
-    )
-    en_zona_enfermeria = (
-        abs(heroe.pos_x - ZONA_ENFERMERIA_X) <= RADIO_INTERACCION_FONDO
-    )
+    limite_max_x = obtener_limite_derecho(fase_nivel)
+    interaccion_disponible = requiere_interaccion(fase_nivel, heroe.pos_x)
 
     for evento in pygame.event.get():
         if evento.type == pygame.QUIT:
-            ejecutando = False
+            cerrar_nivel("exit")
+        elif evento.type == pygame.KEYDOWN and evento.key == pygame.K_ESCAPE:
+            accion = pausar_juego(pantalla, devolver_accion=True)
+            if accion in ("menu", "exit"):
+                cerrar_nivel(accion)
+                break
+            continue
 
-        if evento.type == pygame.KEYDOWN and evento.key == pygame.K_c and en_zona_hueco:
-            heroe.health = heroe.max_health
+        if (
+            evento.type == pygame.KEYDOWN
+            and evento.key == pygame.K_c
+            and interaccion_disponible
+            and not perseguidor_comiendo
+            and not heroe.muerto
+        ):
+            if fase_nivel == FASE_RECORRIDO:
+                biblioteca_ingresada = True
+                enemigos_nivel.clear()
+                fase_nivel = FASE_BIBLIOTECA_7
+                enemigos_escena = generar_enemigos_escena(fase_nivel)
+                colocar_jugador_en_escena(heroe, 180, fase_nivel)
+                scroll_x = 0
 
-            pantalla.fill((0, 0, 0))
+            elif fase_nivel == FASE_BIBLIOTECA_9:
+                fase_nivel = FASE_PASILLO_HOSPITAL
+                enemigos_escena = generar_enemigos_escena(fase_nivel)
+                colocar_jugador_en_escena(heroe, 180, fase_nivel)
+                scroll_x = 0
 
-            txt_title = fuente_boss_title.render("Athros", True, (180, 20, 20))
-            txt_subtitle = fuente_boss_subtitle.render("the bloodred", True, (140, 15, 15))
+            elif fase_nivel == FASE_PASILLO_HOSPITAL:
+                fase_nivel = FASE_HOSPITAL_11
+                enemigos_escena = generar_enemigos_escena(fase_nivel)
+                colocar_jugador_en_escena(heroe, 180, fase_nivel)
+                scroll_x = 0
 
-            pantalla.blit(txt_title, txt_title.get_rect(center=(ANCHO // 2, ALTO // 2 - 25)))
-            pantalla.blit(txt_subtitle, txt_subtitle.get_rect(center=(ANCHO // 2, ALTO // 2 + 45)))
+            elif fase_nivel == FASE_HOSPITAL_11:
+                fase_nivel = FASE_CONDUCTO_1
+                enemigos_escena.clear()
+                colocar_jugador_en_escena(heroe, 110, fase_nivel)
+                heroe.rect.bottom = obtener_suelo_conducto(
+                    fase_nivel, heroe.pos_x
+                )
+                heroe.actualizar_hitboxes()
+                perseguidor_activo = False
+                perseguidor_x = 0.0
+                monstruo_frame = 0.0
+                perseguidor_comiendo = False
+                tiempo_boca_cerrada = 0.0
+                posicion_devoracion_x = None
+                jugador_devorado = False
+                scroll_x = 0
 
-            pygame.display.flip()
-            pygame.time.wait(2000)
+            elif fase_nivel == FASE_CONDUCTO_3:
+                fase_nivel = FASE_HUECO_FINAL
+                enemigos_escena.clear()
+                colocar_jugador_en_escena(heroe, 180, fase_nivel)
+                perseguidor_activo = False
+                scroll_x = 0
 
-            transicion_realizada = True
-            ejecutar_batalla_carnicero(pantalla, heroe, fondo_batalla)
-            ejecutando = False
-            break
+            elif fase_nivel == FASE_HUECO_FINAL:
+                heroe.health = heroe.max_health
 
-        heroe.procesar_evento(evento)
+                pantalla.fill((0, 0, 0))
+
+                txt_title = fuente_boss_title.render("Athros", True, (180, 20, 20))
+                txt_subtitle = fuente_boss_subtitle.render("the bloodred", True, (140, 15, 15))
+
+                pantalla.blit(txt_title, txt_title.get_rect(center=(ANCHO // 2, ALTO // 2 - 25)))
+                pantalla.blit(txt_subtitle, txt_subtitle.get_rect(center=(ANCHO // 2, ALTO // 2 + 45)))
+
+                pygame.display.flip()
+                pygame.time.wait(2000)
+
+                transicion_realizada = True
+                ejecutar_batalla_carnicero(pantalla, heroe, fondo_batalla)
+                ejecutando = False
+                break
+
+        if not perseguidor_comiendo and not heroe.muerto:
+            heroe.procesar_evento(evento)
 
     if not ejecutando:
         break
 
-    todos_los_sprites.update(scroll_x, transicion_realizada, limite_max_x=limite_max_x)
-    scroll_x = max(0, min(heroe.pos_x - ANCHO * 0.4, ANCHO_MUNDO - ANCHO))
+    if fase_nivel in FASES_CONDUCTO:
+        heroe.posicion_suelo = obtener_suelo_conducto(
+            fase_nivel, heroe.pos_x
+        )
+    else:
+        heroe.posicion_suelo = POSICION_SUELO
+
+    todos_los_sprites.update(
+        scroll_x,
+        transicion_realizada,
+        limite_max_x=limite_max_x,
+        limite_min_x=80,
+    )
+    if perseguidor_comiendo and posicion_devoracion_x is not None:
+        heroe.pos_x = posicion_devoracion_x
+        heroe.velocidad_x = 0
+
+    if fase_nivel == FASE_RECORRIDO:
+        scroll_x = max(0, min(heroe.pos_x - ANCHO * 0.4, ANCHO_MUNDO - ANCHO))
+    else:
+        scroll_x = 0
     heroe.rect.centerx = int(heroe.pos_x - scroll_x)
+    if fase_nivel in FASES_CONDUCTO:
+        heroe.velocidad_y = 0
+        heroe.rect.bottom = obtener_suelo_conducto(
+            fase_nivel, heroe.pos_x
+        )
+        heroe.en_suelo = True
     heroe.actualizar_hitboxes()
     vista_heroe.sync(scroll_x)
 
-    # --- Enemigos y combate en mundo ---
-    for enemigo in enemigos_nivel:
-        enemigo.allies = enemigos_nivel
+    if (
+        fase_nivel == FASE_BIBLIOTECA_7
+        and heroe.pos_x >= obtener_limite_derecho(fase_nivel)
+    ):
+        fase_nivel = FASE_BIBLIOTECA_9
+        enemigos_escena = generar_enemigos_escena(fase_nivel)
+        colocar_jugador_en_escena(heroe, 100, fase_nivel)
+        scroll_x = 0
+        vista_heroe.sync(scroll_x)
+    elif (
+        fase_nivel in FASES_CONDUCTO[:2]
+        and heroe.pos_x >= obtener_limite_derecho(fase_nivel)
+    ):
+        indice_conducto = FASES_CONDUCTO.index(fase_nivel) + 1
+        fase_nivel = FASES_CONDUCTO[indice_conducto]
+        colocar_jugador_en_escena(heroe, 100, fase_nivel)
+        heroe.rect.bottom = obtener_suelo_conducto(
+            fase_nivel, heroe.pos_x
+        )
+        heroe.actualizar_hitboxes()
+        vista_heroe.sync(0)
 
-    for enemigo in enemigos_nivel:
-        if enemigo_derrotado(enemigo) and getattr(enemigo, 'muerto_definitivo', False):
-            if isinstance(enemigo, OjoVolador):
-                enemigo.update(vista_heroe, dt, width=ANCHO_MUNDO)
-            continue
+    if fase_nivel == FASE_RECORRIDO:
+        for enemigo in enemigos_nivel:
+            enemigo.allies = enemigos_nivel
 
-        if getattr(enemigo, "esperando_jugador", False):
-            distancia_horizontal = abs(
-                vista_heroe.pos_x - enemigo.rect.centerx
-            )
-            distancia_vertical = abs(
-                vista_heroe.hurtbox.centery - enemigo.rect.centery
-            )
-            if (
-                distancia_horizontal <= enemigo.distancia_vision
-                and distancia_vertical <= 300
-            ):
-                enemigo.esperando_jugador = False
-            else:
-                actualizar_animacion_idle(enemigo, dt)
+        for enemigo in enemigos_nivel:
+            if enemigo_derrotado(enemigo) and getattr(enemigo, 'muerto_definitivo', False):
+                if isinstance(enemigo, OjoVolador):
+                    enemigo.update(vista_heroe, dt, width=ANCHO_MUNDO)
                 continue
 
-        enemigo.suelo_y = POSICION_SUELO
-        enemigo.plataformas = plataformas_nivel
-        enemigo.update(vista_heroe, dt, width=ANCHO_MUNDO)
+            if getattr(enemigo, "esperando_jugador", False):
+                distancia_horizontal = abs(
+                    vista_heroe.pos_x - enemigo.rect.centerx
+                )
+                distancia_vertical = abs(
+                    vista_heroe.hurtbox.centery - enemigo.rect.centery
+                )
+                if (
+                    distancia_horizontal <= enemigo.distancia_vision
+                    and distancia_vertical <= 300
+                ):
+                    enemigo.esperando_jugador = False
+                else:
+                    actualizar_animacion_idle(enemigo, dt)
+                    continue
 
-        if enemigo.health <= 0:
-            continue
+            enemigo.suelo_y = POSICION_SUELO
+            enemigo.plataformas = plataformas_nivel
+            enemigo.update(vista_heroe, dt, width=ANCHO_MUNDO)
 
-        # Ataque héroe a enemigo
-        if (heroe.atacando and enemigo not in heroe.enemigos_golpeados
-                and vista_heroe.hitbox.width > 0
-                and vista_heroe.hitbox.colliderect(enemigo.hurtbox)):
-            enemigo.take_damage(20)
-            heroe.enemigos_golpeados.add(enemigo)
-            heroe.has_hit = True
+            if enemigo.health <= 0:
+                continue
 
-        # Ataque enemigo a héroe
-        hb = getattr(enemigo, 'hitbox', None)
-        if hb is not None and hb.width > 0 and not getattr(enemigo, 'has_hit', False):
-            if hb.colliderect(vista_heroe.hurtbox):
-                heroe.take_damage(getattr(enemigo, 'dano_ataque', 10))
+            if not getattr(enemigo, "es_cofre_cerrado", False):
+                heroe.comprobar_golpe(enemigo)
+
+            hb = getattr(enemigo, 'hitbox', None)
+            if hb is not None and hb.width > 0 and not getattr(enemigo, 'has_hit', False):
+                if hb.colliderect(vista_heroe.hurtbox):
+                    heroe.take_damage(
+                        getattr(enemigo, 'dano_ataque', 8),
+                        attacker=enemigo,
+                    )
+                    enemigo.has_hit = True
+
+        heroe.comprobar_golpes_proyectiles(enemigos_nivel)
+
+        enemigos_cercanos = [
+            enemigo for enemigo in enemigos_nivel
+            if isinstance(enemigo, (OrcoRojo, Karasu_tengu))
+            and enemigo.health > 0
+            and not getattr(enemigo, "esperando_jugador", False)
+            and not getattr(enemigo, "muerto_definitivo", False)
+            and abs(enemigo.rect.centerx - vista_heroe.pos_x) <= 175
+            and abs(enemigo.rect.centery - vista_heroe.hurtbox.centery) <= 95
+        ]
+        grupo_listo_para_atacar = bool(enemigos_cercanos) and all(
+            not enemigo.attacking and enemigo.attack_cooldown <= 0
+            for enemigo in enemigos_cercanos
+        )
+        if grupo_listo_para_atacar:
+            for enemigo in enemigos_cercanos:
+                enemigo.attack()
+
+        separar_enemigos(enemigos_nivel, ANCHO_MUNDO)
+
+    elif fase_nivel in ENEMIGOS_POR_ESCENA:
+        for enemigo in enemigos_escena:
+            enemigo.allies = enemigos_escena
+
+        for enemigo in enemigos_escena:
+            if enemigo_derrotado(enemigo) and getattr(
+                enemigo, "muerto_definitivo", False
+            ):
+                continue
+
+            if getattr(enemigo, "esperando_jugador", False):
+                distancia_horizontal = abs(
+                    vista_heroe.pos_x - enemigo.rect.centerx
+                )
+                distancia_vertical = abs(
+                    vista_heroe.hurtbox.centery - enemigo.rect.centery
+                )
+                if (
+                    distancia_horizontal <= enemigo.distancia_vision
+                    and distancia_vertical <= 300
+                ):
+                    enemigo.esperando_jugador = False
+                else:
+                    actualizar_animacion_idle(enemigo, dt)
+                    continue
+
+            enemigo.suelo_y = POSICION_SUELO
+            enemigo.plataformas = []
+            enemigo.update(vista_heroe, dt, width=ANCHO)
+
+            if enemigo.health <= 0:
+                continue
+
+            heroe.comprobar_golpe(enemigo)
+            hb = getattr(enemigo, "hitbox", None)
+            if (
+                hb is not None
+                and hb.width > 0
+                and not getattr(enemigo, "has_hit", False)
+                and hb.colliderect(vista_heroe.hurtbox)
+            ):
+                heroe.take_damage(
+                    getattr(enemigo, "dano_ataque", 8),
+                    attacker=enemigo,
+                )
                 enemigo.has_hit = True
 
-    enemigos_cercanos = [
-        enemigo for enemigo in enemigos_nivel
-        if isinstance(enemigo, (OrcoRojo, Karasu_tengu))
-        and enemigo.health > 0
-        and not getattr(enemigo, "esperando_jugador", False)
-        and not getattr(enemigo, "muerto_definitivo", False)
-        and abs(enemigo.rect.centerx - vista_heroe.pos_x) <= 175
-        and abs(enemigo.rect.centery - vista_heroe.hurtbox.centery) <= 95
-    ]
-    grupo_listo_para_atacar = bool(enemigos_cercanos) and all(
-        not enemigo.attacking and enemigo.attack_cooldown <= 0
-        for enemigo in enemigos_cercanos
-    )
-    if grupo_listo_para_atacar:
+        heroe.comprobar_golpes_proyectiles(enemigos_escena)
+
+        enemigos_cercanos = [
+            enemigo
+            for enemigo in enemigos_escena
+            if enemigo.health > 0
+            and not getattr(enemigo, "esperando_jugador", False)
+            and not getattr(enemigo, "muerto_definitivo", False)
+            and abs(enemigo.rect.centerx - vista_heroe.pos_x) <= 175
+            and abs(enemigo.rect.centery - vista_heroe.hurtbox.centery) <= 95
+        ]
         for enemigo in enemigos_cercanos:
-            enemigo.attack()
+            if not enemigo.attacking and enemigo.attack_cooldown <= 0:
+                enemigo.attack()
 
-    separar_enemigos(enemigos_nivel, ANCHO_MUNDO)
+        separar_enemigos(enemigos_escena, ANCHO)
 
-    # --- Fondo continuo: cada tramo da paso al siguiente escenario ---
-    for i in range((ANCHO_MUNDO + ANCHO - 1) // ANCHO):
-        pos_x_fondo = i * ANCHO - scroll_x
-        if -ANCHO < pos_x_fondo < ANCHO:
-            pantalla.blit(fondos[min(i, len(fondos) - 1)], (pos_x_fondo, 0))
+    elif fase_nivel in FASES_CONDUCTO:
+        indice_conducto = FASES_CONDUCTO.index(fase_nivel)
+        progreso_jugador_conducto = (
+            indice_conducto * ANCHO + heroe.pos_x
+        )
+        if fase_nivel == FASE_CONDUCTO_1 and heroe.pos_x >= 350:
+            if not perseguidor_activo:
+                perseguidor_activo = True
+                perseguidor_x = progreso_jugador_conducto - 500
 
-    dibujar_plataformas(
-        pantalla, scroll_x, plataformas_nivel, disenos_plataformas
-    )
-    # Renderizado de héroe y enemigos
-    todos_los_sprites.draw(pantalla)
+        if perseguidor_activo and not perseguidor_comiendo:
+            if perseguidor_x < progreso_jugador_conducto:
+                perseguidor_x = min(
+                    perseguidor_x + VELOCIDAD_PERSEGUIDOR * dt,
+                    progreso_jugador_conducto,
+                )
+            monstruo_frame = (
+                monstruo_frame + dt * VELOCIDAD_ANIM_MONSTRUO
+            ) % len(frames_monstruo_carne)
+
+            distancia_contacto = DISTANCIA_CONTACTO_MONSTRUO
+            if abs(progreso_jugador_conducto - perseguidor_x) <= distancia_contacto:
+                perseguidor_comiendo = True
+                tiempo_boca_cerrada = 0.0
+                posicion_devoracion_x = heroe.pos_x
+                jugador_devorado = True
+                perseguidor_x = progreso_jugador_conducto
+                heroe.velocidad_x = 0
+
+        elif perseguidor_comiendo:
+            heroe.velocidad_x = 0
+            tiempo_boca_cerrada += dt
+
+    if fase_nivel == FASE_RECORRIDO:
+        for i in range((ANCHO_MUNDO + ANCHO - 1) // ANCHO):
+            pos_x_fondo = i * ANCHO - scroll_x
+            if -ANCHO < pos_x_fondo < ANCHO:
+                indice_fondo = min(i, len(fondos) - 1)
+                if not biblioteca_ingresada and i == 4:
+                    indice_fondo = 3
+                pantalla.blit(fondos[indice_fondo], (pos_x_fondo, 0))
+
+        dibujar_plataformas(
+            pantalla, scroll_x, plataformas_nivel, disenos_plataformas
+        )
+    else:
+        pantalla.blit(fondos_escena[fase_nivel], (0, 0))
+        if fase_nivel in PLATAFORMAS_ESCENA:
+            dibujar_plataformas(
+                pantalla,
+                0,
+                PLATAFORMAS_ESCENA[fase_nivel],
+                disenos_plataformas_escena[fase_nivel],
+            )
+
+        if (
+            fase_nivel in FASES_CONDUCTO
+            and perseguidor_activo
+            and not perseguidor_comiendo
+        ):
+            indice_conducto = FASES_CONDUCTO.index(fase_nivel)
+            posicion_local_perseguidor = (
+                perseguidor_x - indice_conducto * ANCHO
+            )
+            if -200 < posicion_local_perseguidor < ANCHO + 200:
+                imagen_perseguidor = frames_monstruo_carne[
+                    int(monstruo_frame)
+                ]
+                posicion_perseguidor_y = obtener_suelo_conducto(
+                    fase_nivel,
+                    max(0, min(ANCHO, posicion_local_perseguidor)),
+                )
+                rect_perseguidor = imagen_perseguidor.get_rect(
+                    midbottom=(
+                        round(posicion_local_perseguidor),
+                        posicion_perseguidor_y,
+                    )
+                )
+                pantalla.blit(imagen_perseguidor, rect_perseguidor)
+
+        if fase_nivel in ENEMIGOS_POR_ESCENA:
+            for enemigo in enemigos_escena:
+                if not getattr(enemigo, "muerto_definitivo", False):
+                    enemigo.draw(pantalla)
+
+    if fase_nivel in FASES_CONDUCTO:
+        imagen_heroe = heroe.image
+        rect_heroe = imagen_heroe.get_rect(
+            midbottom=(heroe.rect.centerx, heroe.rect.bottom)
+        )
+        if not jugador_devorado:
+            pantalla.blit(imagen_heroe, rect_heroe)
+        if perseguidor_comiendo:
+            rect_mordida = frame_monstruo_boca_cerrada.get_rect(
+                midbottom=(heroe.rect.centerx, heroe.rect.bottom)
+            )
+            pantalla.blit(frame_monstruo_boca_cerrada, rect_mordida)
+    else:
+        todos_los_sprites.draw(pantalla)
     if hasattr(heroe, "proyectiles"):
         heroe.proyectiles.draw(pantalla)
 
-    for enemigo in enemigos_nivel:
-        if isinstance(enemigo, OjoVolador):
-            enemigo.draw(pantalla, scroll_x)
-        elif not getattr(enemigo, 'muerto_definitivo', False):
-            pos_x_orig = enemigo.rect.x
-            enemigo.rect.x -= scroll_x
-            enemigo.draw(pantalla)
-            enemigo.rect.x = pos_x_orig
+    if fase_nivel == FASE_RECORRIDO:
+        for enemigo in enemigos_nivel:
+            if isinstance(enemigo, OjoVolador):
+                enemigo.draw(pantalla, scroll_x)
+            elif not getattr(enemigo, 'muerto_definitivo', False):
+                pos_x_orig = enemigo.rect.x
+                enemigo.rect.x -= scroll_x
+                enemigo.draw(pantalla)
+                enemigo.rect.x = pos_x_orig
 
-    # --- Progreso del recorrido y acceso al jefe ---
+        progreso = min(
+            100, int(heroe.pos_x * 100 / ZONA_BIBLIOTECA_X)
+        )
+        if enemigos_pendientes:
+            str_progreso = (
+                f"RUMBO AL PORTAL: {progreso}%"
+                f"  |  ENEMIGOS: {len(enemigos_pendientes)}"
+            )
+            color_progreso = (255, 190, 90)
+        else:
+            str_progreso = f"RUMBO AL PORTAL: {progreso}%"
+            color_progreso = (230, 210, 160)
+
+        txt_progreso_sombra = fuente_progreso.render(str_progreso, True, (0, 0, 0))
+        txt_progreso = fuente_progreso.render(str_progreso, True, color_progreso)
+        rect_progreso = txt_progreso.get_rect(topright=(ANCHO - 30, 20))
+        pantalla.blit(
+            txt_progreso_sombra, (rect_progreso.x + 2, rect_progreso.y + 2)
+        )
+        pantalla.blit(txt_progreso, rect_progreso)
+
     dibujar_barra_jugador(pantalla, heroe)
 
-    progreso = min(100, int(heroe.pos_x * 100 / PORTAL_X))
-    if portal_liberado:
-        str_progreso = "CAMINO DESPEJADO: ACÉRCATE AL PORTAL"
-        color_progreso = (90, 230, 130)
-    elif enemigos_pendientes:
-        str_progreso = f"RUMBO A ATHROS: {progreso}%  |  ENEMIGOS: {len(enemigos_pendientes)}"
-        color_progreso = (255, 190, 90)
-    else:
-        str_progreso = f"RUMBO A ATHROS: {progreso}%"
-        color_progreso = (230, 210, 160)
-
-    txt_progreso_sombra = fuente_progreso.render(str_progreso, True, (0, 0, 0))
-    txt_progreso = fuente_progreso.render(str_progreso, True, color_progreso)
-    rect_progreso = txt_progreso.get_rect(topright=(ANCHO - 30, 20))
-
-    pantalla.blit(txt_progreso_sombra, (rect_progreso.x + 2, rect_progreso.y + 2))
-    pantalla.blit(txt_progreso, rect_progreso)
-
-    if en_zona_biblioteca or en_zona_enfermeria:
+    if requiere_interaccion(fase_nivel, heroe.pos_x):
         dibujar_boton_demoniaco(pantalla, "PRESIONA C PARA ENTRAR")
-    elif en_zona_hueco:
-        dibujar_boton_demoniaco(pantalla)
 
     pygame.display.flip()
+    if jugador_devorado and tiempo_boca_cerrada >= DURACION_BOCA_CERRADA:
+        cerrar_nivel()
 
 if not NIVEL_INTEGRADO:
     pygame.quit()

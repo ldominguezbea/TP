@@ -355,7 +355,12 @@ class Enemigo:
     def take_damage(self, damage):
         if self.health <= 0:
             return
+        previous_health = self.health
         self.health = max(0, self.health - damage)
+        if self.health < previous_health and getattr(
+            self, "esperando_jugador", False
+        ):
+            self.esperando_jugador = False
         accion = "muerte" if self.health <= 0 else "danio"
         _reproducir_sonido_accion(self.name, accion)
         print(
@@ -735,7 +740,7 @@ class OjoVolador(Enemigo):
  
                     if self.rect.colliderect(target_box):
                         if hasattr(player, "take_damage"):
-                            player.take_damage(self.dano)
+                            player.take_damage(self.dano, attacker=self)
                         self.estado = "impacto"
                         self.frame_actual = 0.0
  

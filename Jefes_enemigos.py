@@ -24,6 +24,14 @@ except ImportError:
 WIDTH = 1350
 SUELO_Y = 638
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+FACTOR_DANO_RECIBIDO_JEFE = 0.4
+
+
+def reducir_dano_de_jefe(damage):
+    if damage <= 0:
+        return 0
+    return max(1, round(damage * FACTOR_DANO_RECIBIDO_JEFE))
+
 
 def extraer_numero(nombre_archivo):
     numeros = re.findall(r'\d+', nombre_archivo)
@@ -55,7 +63,7 @@ def cargar_animacion_con_altura_maxima(ruta_carpeta, altura_maxima=135, rango_fr
                     img = img.subsurface(bbox)
 
                 ancho_orig, alto_orig = img.get_size()
-                if alto_orig > 0:
+                if alto_orig > 0 and alto_orig != altura_maxima:
                     # Reescalado proporcional fijando la altura máxima a altura_maxima (135)
                     factor_escala = altura_maxima / float(alto_orig)
                     nuevo_ancho = max(1, int(ancho_orig * factor_escala))
@@ -77,7 +85,10 @@ class ImpalerBoss(Enemigo):
     def __init__(self, x=900, y=500):
         super().__init__("Impaler Boss", 10, x, y)
 
-        base_path = os.path.join("assets", "Jefes", "Impaler Boss")
+        base_path = os.path.join(BASE_DIR, "assets", "Jefes", "Impaler Boss")
+        runtime_path = os.path.join(base_path, "runtime")
+        if os.path.isdir(runtime_path):
+            base_path = runtime_path
         ALTURA_MAX = 150
 
         self.animaciones = {
@@ -220,10 +231,10 @@ class ImpalerBoss(Enemigo):
             self.velocity_y = 0
             self.on_ground = True
 
-        distancia = player.rect.centerx - self.rect.centerx
+        distancia = player.hurtbox.centerx - self.rect.centerx
 
         if self.on_ground and self.cooldown_salto <= 0 and not self.attacking:
-            if player.rect.y < self.rect.y - 50 or random.random() < 0.02:
+            if player.hurtbox.top < self.rect.y - 50 or random.random() < 0.02:
                 self.realizar_salto()
                 self.cooldown_salto = 3.0
 
@@ -247,6 +258,9 @@ class ImpalerBoss(Enemigo):
 
     def take_damage(self, damage):
         if self.health <= 0:
+            return
+        damage = reducir_dano_de_jefe(damage)
+        if damage <= 0:
             return
         self.health = max(0, self.health - damage)
         self.esta_rojo = True
@@ -354,6 +368,13 @@ class WerewolfBoss(Enemigo):
                 self.rect.right, self.rect.y, ancho_hitbox, alto_hitbox,
             )
 
+    def take_damage(self, damage):
+        if self.health <= 0:
+            return
+        damage = reducir_dano_de_jefe(damage)
+        if damage > 0:
+            super().take_damage(damage)
+
     def actualizar_animacion(self):
         frames = self.animaciones.get(self.estado_actual, [])
         if not frames:
@@ -443,7 +464,7 @@ class WerewolfBoss(Enemigo):
             cuerpo_jugador = getattr(player, 'hurtbox', player.rect)
             if self.hitbox.colliderect(cuerpo_jugador):
                 if hasattr(player, 'take_damage'):
-                    player.take_damage(self.dano_ataque)
+                    player.take_damage(self.dano_ataque, attacker=self)
                 elif hasattr(player, 'recibir_danio'):
                     player.recibir_danio(self.dano_ataque)
                 elif hasattr(player, 'health'):
@@ -482,6 +503,9 @@ class CiclopeBoss(WerewolfBoss):
             "attack1": cargar_animacion_con_altura_maxima(
                 os.path.join(base_path, "Attack"), altura_maxima
             ),
+            "cast": cargar_animacion_con_altura_maxima(
+                os.path.join(base_path, "Cast"), altura_maxima
+            ),
         }
 
         self.estado_actual = "idle"
@@ -504,6 +528,37 @@ class CiclopeBoss(WerewolfBoss):
         self.desaparecer_timer = 3.0
         self.muerto_definitivo = False
         self.invertir_orientacion_sprite = True
+        self.fase_actual = 1
+        self.vulnerable = False
+        self.transicionando = False
+        self.dano_en_vulnerabilidad = 0
+        self.dano_maximo_vulnerabilidad = 55
+
+    def take_damage(self, damage):
+        if self.health <= 0 or self.transicionando:
+            return
+
+        damage_permitido = reducir_dano_de_jefe(damage)
+        if self.fase_actual == 3:
+            if not self.vulnerable:
+                return
+            restante = self.dano_maximo_vulnerabilidad - self.dano_en_vulnerabilidad
+            damage_permitido = min(damage_permitido, max(0, restante))
+        else:
+            limite_porcentaje = 0.75 if self.fase_actual == 1 else 0.35
+            vida_minima_fase = round(self.max_health * limite_porcentaje)
+            damage_permitido = min(
+                damage_permitido,
+                max(0, self.health - vida_minima_fase),
+            )
+
+        if damage_permitido <= 0:
+            return
+
+        vida_anterior = self.health
+        Enemigo.take_damage(self, damage_permitido)
+        if self.fase_actual == 3 and self.vulnerable:
+            self.dano_en_vulnerabilidad += vida_anterior - self.health
 
 
 class CarniceroBoss(Enemigo):
@@ -824,6 +879,9 @@ class CarniceroBoss(Enemigo):
 
     def take_damage(self, damage):
         if self.health <= 0:
+            return
+        damage = reducir_dano_de_jefe(damage)
+        if damage <= 0:
             return
         self.health = max(0, self.health - damage)
         self.esta_rojo = True
