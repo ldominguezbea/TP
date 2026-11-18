@@ -37,7 +37,7 @@ from prologo import prologue
 from selector_niveles import LevelSelector
 from sonidos_selector_niveles import Audio
 from personajes import PERSONAJE_SELECCIONADO_ENV
-from pergamino_controles import ControlsScroll
+from pergamino_controles import ControlsBook
 
 
 # ============================================================
@@ -288,7 +288,7 @@ level_select_overlay = pygame.Surface(
 level_select_overlay.fill((0, 0, 0, 155))
 controls_overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
 controls_overlay.fill((0, 0, 0, 110))
-controls_scroll = ControlsScroll(
+controls_scroll = ControlsBook(
     (SCREEN_WIDTH, SCREEN_HEIGHT), BASE_DIR / "assets" / "pergamino_controles"
 )
 
