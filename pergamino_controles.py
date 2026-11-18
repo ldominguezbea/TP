@@ -16,11 +16,9 @@ class ControlsBook:
         self.scale = min(screen_size[0] / 1350, screen_size[1] / 720)
         self.animation_elapsed = 0.0
         self.closing = False
-        self.background = self._make_background()
-        self.font_title = pygame.font.SysFont("Georgia", self._px(29), bold=True)
-        self.font_body = pygame.font.SysFont("Georgia", self._px(19), bold=True)
-        self.font_small = pygame.font.SysFont("Georgia", self._px(15))
-        self.font_controls = pygame.font.SysFont("Arial", self._px(16), bold=True)
+        self.font_title = pygame.font.SysFont("Constantia", self._px(29), bold=True)
+        self.font_small = pygame.font.SysFont("Constantia", self._px(12), bold=True)
+        self.font_controls = pygame.font.SysFont("Constantia", self._px(15), bold=True)
         self.sounds = self._make_sounds()
         self.animations = self._load_animations(hero_assets_dir)
 
@@ -48,18 +46,25 @@ class ControlsBook:
             self.page_width,
             self.page_height,
         )
+        self.background = self._make_background()
 
     def _px(self, value):
         return max(1, round(value * self.scale))
 
     def _load_animations(self, assets_dir):
-        frame_directories = {
-            "run": ("02_run",),
-            "jump": ("03_jump_up", "03_jump", "03_jump_down"),
-            "roll": ("04_roll",),
-            "attack": ("05_1_atk",),
-            "special": ("08_sp_atk",),
-            "defend": ("09_defend",),
+        hero_directories = {
+            "VIENTO": assets_dir / "P_viento",
+            "TIERRA": assets_dir / "P_tierra",
+            "PLANTA": assets_dir / "P_planta",
+            "FUEGO": assets_dir / "p_fuego" / "p_fuego",
+        }
+        action_directories = {
+            "run": ("run",),
+            "jump": ("j_up", "jump_full", "jump_down", "j_down", "03_jump", "03_jump_down"),
+            "roll": ("roll",),
+            "attack": ("1_atk",),
+            "special": ("sp_atk",),
+            "defend": ("defend",),
         }
         animations = {}
 
@@ -71,34 +76,44 @@ class ControlsBook:
             pygame.draw.line(surface, (228, 199, 120), (rect.left + 12, rect.centery), (rect.right - 12, rect.centery), 2)
             return [surface]
 
-        for animation, directories in frame_directories.items():
-            frames = []
-            for directory in directories:
-                directory_path = assets_dir / directory
-                if not directory_path.exists():
-                    continue
-                frame_paths = list(directory_path.glob("*.png"))
-                if not frame_paths:
-                    continue
-                frame_paths.sort(
-                    key=lambda path: int(re.search(r"(\d+)\.png$", path.name).group(1))
-                )
-                for frame_path in frame_paths:
-                    try:
+        for hero, hero_dir in hero_directories.items():
+            for action, directories in action_directories.items():
+                frames = []
+                for directory in directories:
+                    directory_path = hero_dir / directory
+                    frame_paths = list(directory_path.glob("*.png"))
+                    frame_paths.sort(
+                        key=lambda path: int(
+                            re.search(r"(\d+)\.png$", path.name).group(1)
+                        )
+                    )
+                    for frame_path in frame_paths:
                         image = pygame.image.load(str(frame_path)).convert_alpha()
-                    except pygame.error:
-                        continue
-                    bounds = image.get_bounding_rect(min_alpha=1)
-                    if bounds.width and bounds.height:
-                        frames.append(image.subsurface(bounds).copy())
-            if not frames:
-                frames = fallback_frames()
-            animations[animation] = frames
+                        bounds = image.get_bounding_rect(min_alpha=1)
+                        if bounds.width and bounds.height:
+                            frames.append(image.subsurface(bounds).copy())
 
-        animations["movement"] = (
-            animations["run"] + animations["jump"] + animations["roll"]
-        )
-        animations["combat"] = animations["attack"] + animations["special"] + animations["defend"]
+                if not frames:
+                    frames = fallback_frames()
+
+                max_size = (self._px(48), self._px(62))
+                scaled_frames = []
+                for frame in frames:
+                    scale = min(
+                        max_size[0] / frame.get_width(),
+                        max_size[1] / frame.get_height(),
+                    )
+                    scaled_frames.append(
+                        pygame.transform.scale(
+                            frame,
+                            (
+                                max(1, round(frame.get_width() * scale)),
+                                max(1, round(frame.get_height() * scale)),
+                            ),
+                        )
+                    )
+                animations[(hero, action)] = scaled_frames
+
         return animations
 
     def _make_sounds(self):
@@ -202,12 +217,24 @@ class ControlsBook:
         margin = self._px(46)
         spacing = self._px(78)
         radius = self._px(13)
-        for x in range(margin, width - margin, spacing):
-            for y in (margin, height - margin):
-                if y == height - margin and abs(x - width // 2) < self._px(240):
-                    continue
-                pygame.draw.circle(surface, glow, (x, y), radius + self._px(4), self._px(1))
-                pygame.draw.circle(surface, gold, (x, y), radius, self._px(1))
+
+        safe_book_area = self.book_rect.inflate(self._px(36), self._px(36))
+
+        def draw_rune(x, y, diagonal=True):
+            bounds = pygame.Rect(
+                x - radius - self._px(4),
+                y - radius - self._px(4),
+                (radius + self._px(4)) * 2,
+                (radius + self._px(4)) * 2,
+            )
+            if bounds.colliderect(safe_book_area):
+                return
+
+            pygame.draw.circle(
+                surface, glow, (x, y), radius + self._px(4), self._px(1)
+            )
+            pygame.draw.circle(surface, gold, (x, y), radius, self._px(1))
+            if diagonal:
                 pygame.draw.line(
                     surface,
                     glow,
@@ -222,9 +249,7 @@ class ControlsBook:
                     (x + radius // 2, y + radius // 2),
                     self._px(1),
                 )
-        for y in range(margin + spacing, height - margin, spacing):
-            for x in (margin, width - margin):
-                pygame.draw.circle(surface, glow, (x, y), radius + self._px(4), self._px(1))
+            else:
                 pygame.draw.polygon(
                     surface,
                     gold,
@@ -237,13 +262,25 @@ class ControlsBook:
                     self._px(1),
                 )
 
+        for x in range(margin, width - margin, spacing):
+            for y in (margin, height - margin):
+                if y == height - margin and abs(x - width // 2) < self._px(240):
+                    continue
+                draw_rune(x, y)
+        for y in range(margin + spacing, height - margin, spacing):
+            for x in (margin, width - margin):
+                draw_rune(x, y, diagonal=False)
+
     def reset(self):
         self.animation_elapsed = 0.0
         self.closing = False
         self._play_sound("open")
 
     def handle_key(self, key):
-        if key in (pygame.K_ESCAPE, pygame.K_RETURN, pygame.K_SPACE):
+        if (
+            key in (pygame.K_ESCAPE, pygame.K_RETURN, pygame.K_SPACE)
+            and not self.closing
+        ):
             self.closing = True
             self.animation_elapsed = 0.0
             self._play_sound("close")
@@ -274,28 +311,32 @@ class ControlsBook:
             (
                 self.left_page_rect,
                 "MOVIMIENTO",
-                (("A / D", "Caminar"), ("W", "Saltar"), ("Q", "Esquivar")),
-                "movement",
+                (("A / D", "CAMINAR", "run"), ("W", "SALTAR", "jump"), ("Q", "ESQUIVAR", "roll")),
             ),
             (
                 self.right_page_rect,
                 "COMBATE",
                 (
-                    ("Clic izquierdo", "Atacar"),
-                    ("Clic derecho", "Defender"),
-                    ("E", "Habilidad especial"),
+                    ("CLIC IZQ.", "ATACAR", "attack"),
+                    ("CLIC DER.", "DEFENDER", "defend"),
+                    ("E", "HABILIDAD ESPECIAL", "special"),
                 ),
-                "combat",
             ),
         )
+        heroes = ("VIENTO", "TIERRA", "PLANTA", "FUEGO")
 
-        for page, title, rows, animation_name in sections:
-            title_image = self.font_title.render(title, True, (83, 43, 22))
+        for page, title, rows in sections:
+            title_shadow = self.font_title.render(title, True, (78, 40, 23))
+            title_image = self.font_title.render(title, True, (178, 132, 59))
+            surface.blit(
+                title_shadow,
+                title_shadow.get_rect(
+                    center=(page.centerx + self._px(1), page.top + self._px(51))
+                ),
+            )
             surface.blit(
                 title_image,
-                title_image.get_rect(
-                    center=(page.centerx, page.top + self._px(50))
-                ),
+                title_image.get_rect(center=(page.centerx, page.top + self._px(49))),
             )
             pygame.draw.line(
                 surface,
@@ -304,42 +345,63 @@ class ControlsBook:
                 (page.right - self._px(28), page.top + self._px(82)),
                 self._px(2),
             )
-
-            y = page.top + self._px(112)
-            for key, description in rows:
-                key_image = self.font_controls.render(
-                    key, True, (104, 57, 28)
+            ornament_y = page.top + self._px(82)
+            for ornament_x in (page.left + self._px(20), page.right - self._px(20)):
+                diamond = (
+                    (ornament_x, ornament_y - self._px(6)),
+                    (ornament_x + self._px(6), ornament_y),
+                    (ornament_x, ornament_y + self._px(6)),
+                    (ornament_x - self._px(6), ornament_y),
                 )
-                text_image = self.font_body.render(
-                    description, True, (55, 39, 27)
-                )
-                surface.blit(key_image, (page.left + self._px(30), y))
-                surface.blit(text_image, (page.left + self._px(145), y))
-                y += self._px(44)
+                pygame.draw.polygon(surface, (205, 166, 83), diamond, self._px(1))
 
-            frames = self.animations[animation_name]
-            frame_index = int(self.animation_elapsed / self.FRAME_DURATION) % len(
-                frames
-            )
-            frame = frames[frame_index]
-            max_size = (self._px(132), self._px(150))
-            scale = min(
-                max_size[0] / frame.get_width(),
-                max_size[1] / frame.get_height(),
-            )
-            image = pygame.transform.smoothscale(
-                frame,
-                (
-                    max(1, round(frame.get_width() * scale)),
-                    max(1, round(frame.get_height() * scale)),
-                ),
-            )
-            surface.blit(
-                image,
-                image.get_rect(
-                    center=(page.centerx, page.bottom - self._px(105))
-                ),
-            )
+            row_height = self._px(142)
+            first_row_top = page.top + self._px(94)
+            for row_index, (key, description, action) in enumerate(rows):
+                row_top = first_row_top + row_index * row_height
+                label_image = self.font_controls.render(
+                    f"{key} : {description}", True, (104, 57, 28)
+                )
+                surface.blit(
+                    label_image,
+                    label_image.get_rect(
+                        center=(page.centerx, row_top + self._px(14))
+                    ),
+                )
+
+                for hero_index, hero in enumerate(heroes):
+                    frames = self.animations[(hero, action)]
+                    frame_index = int(
+                        self.animation_elapsed / self.FRAME_DURATION
+                    ) % len(frames)
+                    frame = frames[frame_index]
+                    center_x = page.left + round(
+                        (hero_index + 0.5) * page.width / len(heroes)
+                    )
+                    surface.blit(
+                        frame,
+                        frame.get_rect(
+                            midbottom=(center_x, row_top + self._px(104))
+                        ),
+                    )
+                    hero_label = self.font_small.render(
+                        hero, True, (110, 75, 43)
+                    )
+                    surface.blit(
+                        hero_label,
+                        hero_label.get_rect(
+                            center=(center_x, row_top + self._px(119))
+                        ),
+                    )
+
+                if row_index < len(rows) - 1:
+                    pygame.draw.line(
+                        surface,
+                        (190, 155, 102),
+                        (page.left + self._px(34), row_top + row_height - self._px(7)),
+                        (page.right - self._px(34), row_top + row_height - self._px(7)),
+                        self._px(1),
+                    )
 
         hint = self.font_small.render(
             "ESC / ENTER / ESPACIO: volver",
