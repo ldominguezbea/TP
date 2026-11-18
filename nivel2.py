@@ -568,8 +568,8 @@ class VistaJugadorMundo:
         self.hitbox = j.hitbox.move(scroll_x, 0)
         self.pos_x = j.pos_x
 
-    def take_damage(self, damage):
-        self.jugador.take_damage(damage)
+    def take_damage(self, damage, attacker=None):
+        self.jugador.take_damage(damage, attacker=attacker)
 
 
 # 4. UI e Interactivos
@@ -711,7 +711,7 @@ def ejecutar_batalla_carnicero(screen, player, fondo_img):
 
         for proj in jefe.proyectiles[:]:
             if proj.rect.colliderect(target_player_rect):
-                player.take_damage(8)
+                player.take_damage(8, attacker=proj)
                 if proj in jefe.proyectiles:
                     jefe.proyectiles.remove(proj)
 
@@ -739,7 +739,7 @@ def ejecutar_batalla_carnicero(screen, player, fondo_img):
                 tiempo_en_hitbox_jefe += dt
 
                 if tiempo_en_hitbox_jefe >= 1.0 and not getattr(jefe, 'has_hit', False):
-                    player.take_damage(20)
+                    player.take_damage(20, attacker=espada_hitbox)
                     setattr(jefe, 'has_hit', True)
             else:
                 tiempo_en_hitbox_jefe = 0.0
@@ -1057,8 +1057,11 @@ def ejecutar_batalla_werewolf(screen, player, fondo_img):
                     bola["radio"] * 2,
                 )
                 if bola_rect.colliderect(player.hurtbox):
-                    player.take_damage(12)
-                    bolas_fuego.remove(bola)
+                    if player.rodando:
+                        bola["esquivada"] = True
+                    elif not bola.get("esquivada", False):
+                        player.take_damage(12, attacker=bola_rect)
+                        bolas_fuego.remove(bola)
                 elif bola["y"] >= POSICION_SUELO:
                     bolas_fuego.remove(bola)
 
@@ -1084,7 +1087,7 @@ def ejecutar_batalla_werewolf(screen, player, fondo_img):
                     proyectil["y"] += proyectil["vy"] * dt
                     proyectil["rect"].center = (int(proyectil["x"]), int(proyectil["y"]))
                     if proyectil["rect"].colliderect(player.hurtbox):
-                        player.take_damage(10)
+                        player.take_damage(10, attacker=proyectil["rect"])
                         proyectiles_demonio.remove(proyectil)
                     elif not screen.get_rect().inflate(100, 100).collidepoint(
                         proyectil["rect"].center
@@ -1248,7 +1251,7 @@ DISTANCIA_ENTRE_GRUPOS = 850
 PRIMER_GRUPO_X = 800
 ULTIMO_GRUPO_X = HUECO_INICIO - 1100
 PUNTOS_GRUPO = list(range(PRIMER_GRUPO_X, ULTIMO_GRUPO_X + 1, DISTANCIA_ENTRE_GRUPOS))
-BUS_ESCENARIO_TRAMO = ANCHO_MUNDO // ANCHO - 2
+BUS_ESCENARIO_TRAMO = ANCHO_MUNDO // ANCHO - 3
 BUS_SCROLL_X = BUS_ESCENARIO_TRAMO * ANCHO
 BUS_EVENTO_X = BUS_SCROLL_X + int(ANCHO * 0.4)
 BUS_PUERTA_RECT = pygame.Rect(
@@ -1781,7 +1784,10 @@ while ejecutando:
             hb = getattr(enemigo, 'hitbox', None)
             if hb is not None and hb.width > 0 and not getattr(enemigo, 'has_hit', False):
                 if hb.colliderect(vista_heroe.hurtbox):
-                    heroe.take_damage(getattr(enemigo, 'dano_ataque', 10))
+                    heroe.take_damage(
+                        getattr(enemigo, 'dano_ataque', 10),
+                        attacker=enemigo,
+                    )
                     enemigo.has_hit = True
 
         if (
@@ -1870,10 +1876,10 @@ while ejecutando:
         str_progreso = "CAMINO DESPEJADO: ACÉRCATE AL PORTAL"
         color_progreso = (90, 230, 130)
     elif enemigos_pendientes:
-        str_progreso = f"RUMBO HACIA ABBADON: {progreso}%  |  ENEMIGOS: {len(enemigos_pendientes)}"
+        str_progreso = f"RUMBO AL PORTAL: {progreso}%  |  ENEMIGOS: {len(enemigos_pendientes)}"
         color_progreso = (18, 42, 105)
     else:
-        str_progreso = f"RUMBO HACIA ABBADON: {progreso}%"
+        str_progreso = f"RUMBO AL PORTAL: {progreso}%"
         color_progreso = (18, 42, 105)
 
     txt_progreso_sombra = fuente_progreso.render(str_progreso, True, (0, 0, 0))

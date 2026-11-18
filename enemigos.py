@@ -740,7 +740,7 @@ class OjoVolador(Enemigo):
  
                     if self.rect.colliderect(target_box):
                         if hasattr(player, "take_damage"):
-                            player.take_damage(self.dano)
+                            player.take_damage(self.dano, attacker=self)
                         self.estado = "impacto"
                         self.frame_actual = 0.0
  

@@ -40,7 +40,6 @@ RADIO_INTERACCION_FONDO = 100
 PUERTA_ESCENA_X = ANCHO - 130
 VENTILACION_X = int(ANCHO * 0.48)
 HUECO_FINAL_X = ANCHO - 130
-TAM_HEROE_CONDUCTO = 300
 ESCALA_ORCO_NIVEL = 1.5
 VELOCIDAD_PERSEGUIDOR = 420
 VELOCIDAD_ANIM_MONSTRUO = 8
@@ -61,6 +60,22 @@ FASES_CONDUCTO = (
     FASE_CONDUCTO_2,
     FASE_CONDUCTO_3,
 )
+PLATAFORMAS_ESCENA = {
+    FASE_BIBLIOTECA_7: [
+        pygame.Rect(300, 505, 230, 18),
+        pygame.Rect(760, 455, 230, 18),
+        pygame.Rect(1080, 515, 190, 18),
+    ],
+    FASE_BIBLIOTECA_9: [
+        pygame.Rect(250, 510, 220, 18),
+        pygame.Rect(650, 455, 230, 18),
+        pygame.Rect(1010, 500, 220, 18),
+    ],
+    FASE_PASILLO_HOSPITAL: [
+        pygame.Rect(330, 510, 230, 18),
+        pygame.Rect(800, 465, 230, 18),
+    ],
+}
 
 TRAZADOS_CONDUCTOS = {
     FASE_CONDUCTO_1: (
@@ -301,13 +316,13 @@ def cargar_frames_monstruo_carne(altura, nombres):
     return frames
 
 
-def colocar_jugador_en_escena(jugador, x):
+def colocar_jugador_en_escena(jugador, x, fase):
     jugador.pos_x = float(x)
     jugador.posicion_suelo = POSICION_SUELO
     jugador.velocidad_x = 0
     jugador.velocidad_y = 0
     jugador.scroll_x_actual = 0
-    jugador.plataformas = []
+    jugador.plataformas = PLATAFORMAS_ESCENA.get(fase, [])
     jugador.plataforma_actual = None
     jugador.plataforma_ignorada = None
     jugador.rect.centerx = round(x)
@@ -692,8 +707,8 @@ class VistaJugadorMundo:
         self.hitbox = j.hitbox.move(scroll_x, 0)
         self.pos_x = j.pos_x
 
-    def take_damage(self, damage):
-        self.jugador.take_damage(damage)
+    def take_damage(self, damage, attacker=None):
+        self.jugador.take_damage(damage, attacker=attacker)
 
 
 # 4. UI e Interactivos
@@ -845,10 +860,16 @@ def ejecutar_batalla_carnicero(screen, player, fondo_img):
         target_player_rect = player.hurtbox
 
         for proj in jefe.proyectiles[:]:
-            if proj.rect.colliderect(target_player_rect):
-                player.take_damage(7)
-                if proj in jefe.proyectiles:
-                    jefe.proyectiles.remove(proj)
+            if (
+                proj.rect.colliderect(target_player_rect)
+                and not getattr(proj, "esquivado", False)
+            ):
+                if player.rodando:
+                    proj.esquivado = True
+                else:
+                    player.take_damage(7, attacker=proj)
+                    if proj in jefe.proyectiles:
+                        jefe.proyectiles.remove(proj)
 
         jefe_atacando = (
             getattr(jefe, 'attacking', False) or
@@ -874,7 +895,7 @@ def ejecutar_batalla_carnicero(screen, player, fondo_img):
                 tiempo_en_hitbox_jefe += dt
 
                 if tiempo_en_hitbox_jefe >= 1.0 and not getattr(jefe, 'has_hit', False):
-                    player.take_damage(16)
+                    player.take_damage(16, attacker=espada_hitbox)
                     setattr(jefe, 'has_hit', True)
             else:
                 tiempo_en_hitbox_jefe = 0.0
@@ -1328,6 +1349,10 @@ plataformas_nivel = generar_plataformas_nivel()
 disenos_plataformas = [
     generar_diseno_plataforma() for _ in plataformas_nivel
 ]
+disenos_plataformas_escena = {
+    fase: [generar_diseno_plataforma() for _ in plataformas]
+    for fase, plataformas in PLATAFORMAS_ESCENA.items()
+}
 heroe.plataformas = plataformas_nivel
 
 enemigos_nivel = []
@@ -1396,25 +1421,25 @@ while ejecutando:
                 enemigos_nivel.clear()
                 fase_nivel = FASE_BIBLIOTECA_7
                 enemigos_escena = generar_enemigos_escena(fase_nivel)
-                colocar_jugador_en_escena(heroe, 180)
+                colocar_jugador_en_escena(heroe, 180, fase_nivel)
                 scroll_x = 0
 
             elif fase_nivel == FASE_BIBLIOTECA_9:
                 fase_nivel = FASE_PASILLO_HOSPITAL
                 enemigos_escena = generar_enemigos_escena(fase_nivel)
-                colocar_jugador_en_escena(heroe, 180)
+                colocar_jugador_en_escena(heroe, 180, fase_nivel)
                 scroll_x = 0
 
             elif fase_nivel == FASE_PASILLO_HOSPITAL:
                 fase_nivel = FASE_HOSPITAL_11
                 enemigos_escena = generar_enemigos_escena(fase_nivel)
-                colocar_jugador_en_escena(heroe, 180)
+                colocar_jugador_en_escena(heroe, 180, fase_nivel)
                 scroll_x = 0
 
             elif fase_nivel == FASE_HOSPITAL_11:
                 fase_nivel = FASE_CONDUCTO_1
                 enemigos_escena.clear()
-                colocar_jugador_en_escena(heroe, 110)
+                colocar_jugador_en_escena(heroe, 110, fase_nivel)
                 heroe.rect.bottom = obtener_suelo_conducto(
                     fase_nivel, heroe.pos_x
                 )
@@ -1431,7 +1456,7 @@ while ejecutando:
             elif fase_nivel == FASE_CONDUCTO_3:
                 fase_nivel = FASE_HUECO_FINAL
                 enemigos_escena.clear()
-                colocar_jugador_en_escena(heroe, 180)
+                colocar_jugador_en_escena(heroe, 180, fase_nivel)
                 perseguidor_activo = False
                 scroll_x = 0
 
@@ -1497,7 +1522,7 @@ while ejecutando:
     ):
         fase_nivel = FASE_BIBLIOTECA_9
         enemigos_escena = generar_enemigos_escena(fase_nivel)
-        colocar_jugador_en_escena(heroe, 100)
+        colocar_jugador_en_escena(heroe, 100, fase_nivel)
         scroll_x = 0
         vista_heroe.sync(scroll_x)
     elif (
@@ -1506,7 +1531,7 @@ while ejecutando:
     ):
         indice_conducto = FASES_CONDUCTO.index(fase_nivel) + 1
         fase_nivel = FASES_CONDUCTO[indice_conducto]
-        colocar_jugador_en_escena(heroe, 100)
+        colocar_jugador_en_escena(heroe, 100, fase_nivel)
         heroe.rect.bottom = obtener_suelo_conducto(
             fase_nivel, heroe.pos_x
         )
@@ -1552,7 +1577,10 @@ while ejecutando:
             hb = getattr(enemigo, 'hitbox', None)
             if hb is not None and hb.width > 0 and not getattr(enemigo, 'has_hit', False):
                 if hb.colliderect(vista_heroe.hurtbox):
-                    heroe.take_damage(getattr(enemigo, 'dano_ataque', 8))
+                    heroe.take_damage(
+                        getattr(enemigo, 'dano_ataque', 8),
+                        attacker=enemigo,
+                    )
                     enemigo.has_hit = True
 
         heroe.comprobar_golpes_proyectiles(enemigos_nivel)
@@ -1617,7 +1645,10 @@ while ejecutando:
                 and not getattr(enemigo, "has_hit", False)
                 and hb.colliderect(vista_heroe.hurtbox)
             ):
-                heroe.take_damage(getattr(enemigo, "dano_ataque", 8))
+                heroe.take_damage(
+                    getattr(enemigo, "dano_ataque", 8),
+                    attacker=enemigo,
+                )
                 enemigo.has_hit = True
 
         heroe.comprobar_golpes_proyectiles(enemigos_escena)
@@ -1684,6 +1715,13 @@ while ejecutando:
         )
     else:
         pantalla.blit(fondos_escena[fase_nivel], (0, 0))
+        if fase_nivel in PLATAFORMAS_ESCENA:
+            dibujar_plataformas(
+                pantalla,
+                0,
+                PLATAFORMAS_ESCENA[fase_nivel],
+                disenos_plataformas_escena[fase_nivel],
+            )
 
         if (
             fase_nivel in FASES_CONDUCTO
@@ -1716,9 +1754,7 @@ while ejecutando:
                     enemigo.draw(pantalla)
 
     if fase_nivel in FASES_CONDUCTO:
-        imagen_heroe = pygame.transform.scale(
-            heroe.image, (TAM_HEROE_CONDUCTO, TAM_HEROE_CONDUCTO)
-        )
+        imagen_heroe = heroe.image
         rect_heroe = imagen_heroe.get_rect(
             midbottom=(heroe.rect.centerx, heroe.rect.bottom)
         )
@@ -1749,12 +1785,12 @@ while ejecutando:
         )
         if enemigos_pendientes:
             str_progreso = (
-                f"RUMBO A LA BIBLIOTECA: {progreso}%"
+                f"RUMBO AL PORTAL: {progreso}%"
                 f"  |  ENEMIGOS: {len(enemigos_pendientes)}"
             )
             color_progreso = (255, 190, 90)
         else:
-            str_progreso = f"RUMBO A LA BIBLIOTECA: {progreso}%"
+            str_progreso = f"RUMBO AL PORTAL: {progreso}%"
             color_progreso = (230, 210, 160)
 
         txt_progreso_sombra = fuente_progreso.render(str_progreso, True, (0, 0, 0))

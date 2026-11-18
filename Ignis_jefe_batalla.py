@@ -227,7 +227,7 @@ class ZonaFuego:
 
             # Si el jugador toca el fuego, simplemente recibe daño
             if player.hurtbox.colliderect(self.hitbox):
-                player.take_damage(20 * dt)
+                player.take_damage(20 * dt, attacker=self.hitbox)
 
             # Generar partículas
             if w > 0:
@@ -791,7 +791,7 @@ class BossBattleController:
                 self.horizontal_beam.colliderect(player.hurtbox)
                 and not self.horizontal_beam_hit
             ):
-                player.take_damage(45)
+                player.take_damage(45, attacker=boss)
                 self.horizontal_beam_hit = True
             self.phase3_timer -= dt
             if self.phase3_timer <= 0:
@@ -830,7 +830,7 @@ class BossBattleController:
                 self.horizontal_beam.colliderect(player.hurtbox)
                 and not self.horizontal_beam_hit
             ):
-                player.take_damage(45)
+                player.take_damage(45, attacker=boss)
                 self.horizontal_beam_hit = True
             self.phase3_timer -= dt
             if self.phase3_timer <= 0:
@@ -921,7 +921,7 @@ class BossBattleController:
         elif self.vertical_state == "activo":
             laser = pygame.Rect(WIDTH // 2 - 24, 0, 48, HEIGHT)
             if laser.colliderect(player.hurtbox) and not self.vertical_beam_hit:
-                player.take_damage(45)
+                player.take_damage(45, attacker=boss)
                 self.vertical_beam_hit = True
             self.vertical_timer -= dt
             if self.vertical_timer <= 0:
@@ -954,7 +954,7 @@ class BossBattleController:
         for projectile in self.projectiles[:]:
             projectile.update(dt)
             if projectile.rect.colliderect(player.hurtbox):
-                player.take_damage(projectile.damage)
+                player.take_damage(projectile.damage, attacker=projectile)
                 self.projectiles.remove(projectile)
             elif projectile.rect.top > HEIGHT:
                 self.projectiles.remove(projectile)
@@ -1153,7 +1153,7 @@ while running:
         and not getattr(enemy, "has_hit", False)
     ):
         if hasattr(enemy, "hitbox") and enemy.hitbox.colliderect(player.hurtbox):
-            player.take_damage(20)
+            player.take_damage(20, attacker=enemy)
             enemy.has_hit = True
 
     fondo_actual = (

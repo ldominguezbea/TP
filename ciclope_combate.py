@@ -346,7 +346,7 @@ class CiclopeCombatController:
             self._animar_jefe("attack1", dt, 10)
             self.jefe.hitbox = hitbox
             if not self.jefe.has_hit and hitbox.colliderect(player.hurtbox):
-                player.take_damage(18)
+                player.take_damage(18, attacker=hitbox)
                 self.jefe.has_hit = True
             if self.temporizador <= 0:
                 self.jefe.hitbox = pygame.Rect(0, 0, 0, 0)
@@ -430,7 +430,7 @@ class CiclopeCombatController:
                 and not self.corte_x.hit
                 and self.corte_x.alcanza(player.hurtbox)
             ):
-                player.take_damage(16)
+                player.take_damage(16, attacker=self.corte_x)
                 self.corte_x.hit = True
             if self.corte_x.terminado:
                 self.cortes_restantes -= 1
@@ -553,7 +553,7 @@ class CiclopeCombatController:
                 if player.rodando:
                     proyectil.esquivado = True
                 else:
-                    player.take_damage(proyectil.dano)
+                    player.take_damage(proyectil.dano, attacker=proyectil)
                     self.proyectiles.remove(proyectil)
             if (
                 proyectil in self.proyectiles

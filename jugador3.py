@@ -126,6 +126,7 @@ class p_fuego(HabilidadesJugador, pygame.sprite.Sprite):
 
         self.rodando = False
         self.defendiendo = False
+        self.desbloqueando = False
         self.atacando = False
 
         self.combo_siguiente = False
@@ -366,6 +367,10 @@ class p_fuego(HabilidadesJugador, pygame.sprite.Sprite):
 
             self.animaciones["11_death"].append(img)
 
+        self.animaciones["unblock"] = list(
+            reversed(self.animaciones["defend"])
+        )
+
     @staticmethod
     def cargar_animaciones_batalla():
 
@@ -425,14 +430,17 @@ class p_fuego(HabilidadesJugador, pygame.sprite.Sprite):
     # RECIBIR DAÑO
     # ========================================================
 
-    def recibir_dano(self, cantidad):
+    def recibir_dano(self, cantidad, atacante=None):
 
         if self.muerto or self.recibiendo_dano:
             return
 
         if (
             self.rodando
-            or self.defendiendo
+            or (
+                self.defendiendo
+                and self.bloquea_ataque_en_direccion(atacante)
+            )
             or self.inmune_dano
             or (self.estado == "sp_atk" and self.atacando)
         ):
@@ -677,12 +685,33 @@ class p_fuego(HabilidadesJugador, pygame.sprite.Sprite):
 
     def procesar_evento(self, evento):
 
+        if (
+            evento.type == pygame.MOUSEBUTTONUP
+            and evento.button == pygame.BUTTON_RIGHT
+        ):
+            if self.defendiendo:
+                frames_defensa = self.animaciones["defend"]
+                frame_defensa = (
+                    min(max(int(self.frame_index), 0), len(frames_defensa) - 1)
+                    if self.estado == "defend"
+                    else 0
+                )
+                self.frame_index = len(frames_defensa) - 1 - frame_defensa
+                self.defendiendo = False
+                self.desbloqueando = True
+                self.estado = "unblock"
+            return
+
+        if self.desbloqueando:
+            return
+
         if self.muerto or self.recibiendo_dano:
             return
 
         if evento.type not in (
             pygame.KEYDOWN,
-            pygame.MOUSEBUTTONDOWN
+            pygame.MOUSEBUTTONDOWN,
+            pygame.MOUSEBUTTONUP,
         ):
             return
 
@@ -731,14 +760,14 @@ class p_fuego(HabilidadesJugador, pygame.sprite.Sprite):
             evento.type == pygame.MOUSEBUTTONDOWN
             and evento.button == pygame.BUTTON_RIGHT
             and self.en_suelo
-            and not (
-                self.rodando
-                or self.atacando
-                or self.defendiendo
-            )
+            and not self.rodando
         ):
 
+            self.desbloqueando = False
+            self.atacando = False
+            self.combo_siguiente = False
             self.defendiendo = True
+            self.estado = "defend"
             self.frame_index = 0
 
         # ====================================================
@@ -822,6 +851,7 @@ class p_fuego(HabilidadesJugador, pygame.sprite.Sprite):
             or self.recibiendo_dano
             or self.rodando
             or self.defendiendo
+            or self.desbloqueando
             or (
                 self.atacando
                 and self.en_suelo
@@ -868,6 +898,10 @@ class p_fuego(HabilidadesJugador, pygame.sprite.Sprite):
         elif self.defendiendo:
 
             self.estado = "defend"
+
+        elif self.desbloqueando:
+
+            self.estado = "unblock"
 
         elif self.atacando:
 
@@ -929,11 +963,12 @@ class p_fuego(HabilidadesJugador, pygame.sprite.Sprite):
 
                 self.rodando = False
 
+            elif self.desbloqueando:
+
+                self.desbloqueando = False
+                self.estado = "idle"
+
             # DEFENSA
-
-            elif self.defendiendo:
-
-                self.defendiendo = False
 
             # ATAQUES QUE TERMINAN
 

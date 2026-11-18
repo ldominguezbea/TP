@@ -36,6 +36,39 @@ def _obtener_fuente_energia():
 
 
 class HabilidadesJugador:
+    def bloquea_ataque_en_direccion(self, atacante):
+        if atacante is None:
+            return False
+
+        rect_atacante = (
+            atacante
+            if isinstance(atacante, pygame.Rect)
+            else getattr(atacante, "rect", None)
+        )
+        if rect_atacante is None:
+            rect_atacante = getattr(atacante, "hitbox", None)
+
+        if isinstance(rect_atacante, pygame.Rect):
+            atacante_x = rect_atacante.centerx
+        else:
+            atacante_x = getattr(atacante, "pos_x", None)
+            if atacante_x is None:
+                return False
+
+        jugador_x = getattr(self, "pos_x", None)
+        if jugador_x is None:
+            rect_jugador = getattr(
+                self, "hurtbox", getattr(self, "rect", None)
+            )
+            if rect_jugador is None:
+                return False
+            jugador_x = rect_jugador.centerx
+
+        if atacante_x == jugador_x:
+            return False
+
+        return (atacante_x > jugador_x) == self.mirando_derecha
+
     def inicializar_habilidades(self, color_energia):
         self.saltos_restantes = SALTOS_MAXIMOS
         self.color_energia = color_energia

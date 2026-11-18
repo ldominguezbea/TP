@@ -46,8 +46,8 @@ class _AdaptadorJugadorNivel:
     def has_hit(self, value):
         self._has_hit = value
 
-    def take_damage(self, damage):
-        self.recibir_dano(damage)
+    def take_damage(self, damage, attacker=None):
+        self.recibir_dano(damage, attacker)
 
     def set_position(self, x, suelo_y):
         self.posicion_suelo = suelo_y

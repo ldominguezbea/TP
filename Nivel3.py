@@ -526,8 +526,8 @@ class VistaJugadorMundo:
         self.hitbox = j.hitbox.move(scroll_x, 0)
         self.pos_x = j.pos_x
 
-    def take_damage(self, damage):
-        self.jugador.take_damage(damage)
+    def take_damage(self, damage, attacker=None):
+        self.jugador.take_damage(damage, attacker=attacker)
 
 
 # 4. UI e Interactivos
@@ -669,7 +669,7 @@ def ejecutar_batalla_carnicero(screen, player, fondo_img):
 
         for proj in jefe.proyectiles[:]:
             if proj.rect.colliderect(target_player_rect):
-                player.take_damage(8)
+                player.take_damage(8, attacker=proj)
                 if proj in jefe.proyectiles:
                     jefe.proyectiles.remove(proj)
 
@@ -697,7 +697,7 @@ def ejecutar_batalla_carnicero(screen, player, fondo_img):
                 tiempo_en_hitbox_jefe += dt
 
                 if tiempo_en_hitbox_jefe >= 1.0 and not getattr(jefe, 'has_hit', False):
-                    player.take_damage(20)
+                    player.take_damage(20, attacker=espada_hitbox)
                     setattr(jefe, 'has_hit', True)
             else:
                 tiempo_en_hitbox_jefe = 0.0
@@ -1741,7 +1741,8 @@ def ejecutar_prueba_tuneles(screen, player):
                         and hitbox_enemigo.colliderect(vista_jugador.hurtbox)
                     ):
                         player.take_damage(
-                            getattr(enemigo, "dano_ataque", 10)
+                            getattr(enemigo, "dano_ataque", 10),
+                            attacker=enemigo,
                         )
                         enemigo.has_hit = True
 
@@ -2026,7 +2027,10 @@ if __name__ in ("__main__", "_nivel3_integrado"):
                     heroe.comprobar_golpe(enemigo)
                 hb = getattr(enemigo,"hitbox",None)
                 if hb is not None and hb.width > 0 and not getattr(enemigo,"has_hit",False) and hb.colliderect(vista_heroe.hurtbox):
-                    heroe.take_damage(getattr(enemigo,"dano_ataque",10))
+                    heroe.take_damage(
+                        getattr(enemigo,"dano_ataque",10),
+                        attacker=enemigo,
+                    )
                     enemigo.has_hit = True
 
         heroe.comprobar_golpes_proyectiles(enemigos_nivel)
@@ -2091,9 +2095,9 @@ if __name__ in ("__main__", "_nivel3_integrado"):
         if portal_liberado:
             mensaje, color = "CAMINO DESPEJADO: ACERCATE A LA ENTRADA", (160,205,220)
         elif enemigos_pendientes:
-            mensaje, color = f"RUMBO A ABBADON: {progreso}%  |  ENEMIGOS: {len(enemigos_pendientes)}", (215,205,190)
+            mensaje, color = f"RUMBO AL PORTAL: {progreso}%  |  ENEMIGOS: {len(enemigos_pendientes)}", (215,205,190)
         else:
-            mensaje, color = f"RUMBO A ABBADON: {progreso}%", (215,205,190)
+            mensaje, color = f"RUMBO AL PORTAL: {progreso}%", (215,205,190)
         sombra = fuente_progreso.render(mensaje,True,(0,0,0))
         texto = fuente_progreso.render(mensaje,True,color)
         rect = texto.get_rect(topright=(ANCHO-30,20))

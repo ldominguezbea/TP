@@ -24,6 +24,14 @@ except ImportError:
 WIDTH = 1350
 SUELO_Y = 638
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+FACTOR_DANO_RECIBIDO_JEFE = 0.4
+
+
+def reducir_dano_de_jefe(damage):
+    if damage <= 0:
+        return 0
+    return max(1, round(damage * FACTOR_DANO_RECIBIDO_JEFE))
+
 
 def extraer_numero(nombre_archivo):
     numeros = re.findall(r'\d+', nombre_archivo)
@@ -251,6 +259,9 @@ class ImpalerBoss(Enemigo):
     def take_damage(self, damage):
         if self.health <= 0:
             return
+        damage = reducir_dano_de_jefe(damage)
+        if damage <= 0:
+            return
         self.health = max(0, self.health - damage)
         self.esta_rojo = True
         self.hit_timer = 0.15
@@ -357,6 +368,13 @@ class WerewolfBoss(Enemigo):
                 self.rect.right, self.rect.y, ancho_hitbox, alto_hitbox,
             )
 
+    def take_damage(self, damage):
+        if self.health <= 0:
+            return
+        damage = reducir_dano_de_jefe(damage)
+        if damage > 0:
+            super().take_damage(damage)
+
     def actualizar_animacion(self):
         frames = self.animaciones.get(self.estado_actual, [])
         if not frames:
@@ -446,7 +464,7 @@ class WerewolfBoss(Enemigo):
             cuerpo_jugador = getattr(player, 'hurtbox', player.rect)
             if self.hitbox.colliderect(cuerpo_jugador):
                 if hasattr(player, 'take_damage'):
-                    player.take_damage(self.dano_ataque)
+                    player.take_damage(self.dano_ataque, attacker=self)
                 elif hasattr(player, 'recibir_danio'):
                     player.recibir_danio(self.dano_ataque)
                 elif hasattr(player, 'health'):
@@ -520,7 +538,7 @@ class CiclopeBoss(WerewolfBoss):
         if self.health <= 0 or self.transicionando:
             return
 
-        damage_permitido = max(0, damage)
+        damage_permitido = reducir_dano_de_jefe(damage)
         if self.fase_actual == 3:
             if not self.vulnerable:
                 return
@@ -538,7 +556,7 @@ class CiclopeBoss(WerewolfBoss):
             return
 
         vida_anterior = self.health
-        super().take_damage(damage_permitido)
+        Enemigo.take_damage(self, damage_permitido)
         if self.fase_actual == 3 and self.vulnerable:
             self.dano_en_vulnerabilidad += vida_anterior - self.health
 
@@ -861,6 +879,9 @@ class CarniceroBoss(Enemigo):
 
     def take_damage(self, damage):
         if self.health <= 0:
+            return
+        damage = reducir_dano_de_jefe(damage)
+        if damage <= 0:
             return
         self.health = max(0, self.health - damage)
         self.esta_rojo = True
