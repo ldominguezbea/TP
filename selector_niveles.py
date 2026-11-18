@@ -1076,8 +1076,7 @@ def set_hand(flag):
         except Exception:
             pass
         _hand = flag
- 
- 
+
 def set_index(i):
     """Cambia el nivel seleccionado (con sonido) si realmente cambia."""
     global current_index
@@ -1085,8 +1084,7 @@ def set_index(i):
     if i != current_index:
         current_index = i
         audio.travel()
- 
- 
+
 # ----------------------------------------------------------------------------
 # Integracion con el menu principal
 # ----------------------------------------------------------------------------
