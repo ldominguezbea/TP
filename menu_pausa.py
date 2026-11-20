@@ -16,8 +16,8 @@ API pública (sin cambios respecto a la versión anterior):
 
 Recursos opcionales (se buscan por nombre dentro de la carpeta del proyecto,
 hasta 5 niveles de profundidad):
-    runeintroexit.gif, runeidle.gif   -> animación de la runa (requiere Pillow)
-    Bell1.mp3 (apertura), Bell2.mp3 (cierre)
+    runaintro.gif, runaidle.gif       -> animación de la runa (requiere Pillow)
+    Bell2.mp3 (bucle de pausa), Bell1.mp3 (apertura/selección/salida)
 
 Si falta algún recurso (o Pillow), el menú sigue funcionando con una runa
 procedural y sin esos sonidos: nunca debe romper el juego.
@@ -44,12 +44,10 @@ _ACENTOS = ((232, 184, 96), (222, 140, 78), (232, 70, 56))
 # ----------------------------------------------------------------------------
 # Ajustes rápidos
 # ----------------------------------------------------------------------------
-ARCHIVO_RUNA_ENTRADA = "runeintroexit.gif"   # 80 frames: nace ... brilla ... se disuelve
-ARCHIVO_RUNA_IDLE = "runeidle.gif"           # 16 frames en bucle
-ARCHIVO_CAMPANA_ABRIR = "Bell1.mp3"
-ARCHIVO_CAMPANA_CERRAR = "Bell2.mp3"
-FRAMES_ENTRADA = 12          # primeros N frames del gif de entrada (la runa se forma)
-FRAMES_SALIDA = 10           # últimos N frames del gif de entrada (la runa se disuelve)
+ARCHIVO_RUNA_ENTRADA = "runaintro.gif"
+ARCHIVO_RUNA_IDLE = "runaidle.gif"
+ARCHIVO_SONIDO_SELECCION = "Bell1.mp3"
+ARCHIVO_SONIDO_PAUSA = "Bell2.mp3"
 VOLUMEN_CAMPANAS = 0.85
 VOLUMEN_SFX = 0.45
 VOLUMEN_MUSICA_EN_PAUSA = 0.28   # la música baja a este % mientras dura la pausa
@@ -275,25 +273,21 @@ class _Recursos:
         entrada, dur_entrada = _cargar_gif(ARCHIVO_RUNA_ENTRADA)
         idle, dur_idle = _cargar_gif(ARCHIVO_RUNA_IDLE)
 
-        if len(entrada) >= FRAMES_ENTRADA + FRAMES_SALIDA:
-            self.runa_entrada = entrada[:FRAMES_ENTRADA]
-            self.runa_salida = entrada[-FRAMES_SALIDA:]
-        else:
-            self.runa_entrada, self.runa_salida = [], []
+        self.runa_entrada = entrada
+        self.runa_salida = list(reversed(entrada))
 
         if idle:
             self.runa_idle = idle
         elif entrada:
-            self.runa_idle = entrada[FRAMES_ENTRADA:FRAMES_ENTRADA + 16] or entrada
+            self.runa_idle = [entrada[-1]]
         else:
             self.runa_idle = _runa_procedural()
         referencia = dur_idle or dur_entrada
         self.frame_ms = max(30, int(referencia[0])) if referencia else 80
 
-        self.campana_abrir = _cargar_sonido(ARCHIVO_CAMPANA_ABRIR, VOLUMEN_CAMPANAS)
-        self.campana_cerrar = _cargar_sonido(ARCHIVO_CAMPANA_CERRAR, VOLUMEN_CAMPANAS)
+        self.sonido_seleccion = _cargar_sonido(ARCHIVO_SONIDO_SELECCION, VOLUMEN_CAMPANAS)
+        self.sonido_pausa = _cargar_sonido(ARCHIVO_SONIDO_PAUSA, VOLUMEN_CAMPANAS)
         self.tick = _sintetizar_tono(1180, 55, VOLUMEN_SFX * 0.55, caida=2.2)
-        self.confirmar = _sintetizar_tono(210, 260, VOLUMEN_SFX, caida=2.6, bajada=0.55)
         self.glifos = _crear_glifos(random.Random(1604))
 
 
@@ -307,16 +301,18 @@ def _obtener_recursos():
     return _RECURSOS
 
 
-def _tocar(sonido):
+def _tocar(sonido, loops=0):
     if sonido is None or pygame.mixer.get_init() is None:
-        return
+        return None
     try:
-        if sonido.play() is None:
+        canal = sonido.play(loops=loops)
+        if canal is None:
             canal = pygame.mixer.find_channel(True)
             if canal is not None:
-                canal.play(sonido)
+                canal.play(sonido, loops=loops)
+        return canal
     except pygame.error:
-        pass
+        return None
 
 
 # ----------------------------------------------------------------------------
@@ -548,6 +544,7 @@ class _MenuPausa:
         self.audio = pygame.mixer.get_init() is not None
         self.musica = False
         self.vol_musica = 1.0
+        self.canal_sonido_pausa = None
         self.teclas_previas = self._teclas_presionadas()
 
         # Fondo
@@ -673,7 +670,8 @@ class _MenuPausa:
         except pygame.error:
             self.audio = False
             return
-        _tocar(self.rec.campana_abrir)
+        _tocar(self.rec.sonido_seleccion)
+        self.canal_sonido_pausa = _tocar(self.rec.sonido_pausa, loops=-1)
 
     def _aplicar_volumen_musica(self):
         if not (self.audio and self.musica):
@@ -747,21 +745,13 @@ class _MenuPausa:
         self.sacudida = 4.0
         self.ondas.append({"t": 0.0})
         if self.audio:
-            try:
-                if self.rec.campana_abrir:
-                    self.rec.campana_abrir.fadeout(250)
-            except pygame.error:
-                pass
-            _tocar(self.rec.campana_cerrar)
-            _tocar(self.rec.confirmar)
-            try:
-                if self.rec.campana_cerrar:
-                    # La campana de cierre se apaga con la animación (algo más larga al reanudar).
-                    self.rec.campana_cerrar.fadeout(
-                        self.salida_ms if self.definitiva else int(self.salida_ms * 1.6)
-                    )
-            except pygame.error:
-                pass
+            if self.canal_sonido_pausa is not None:
+                try:
+                    self.canal_sonido_pausa.stop()
+                except pygame.error:
+                    pass
+                self.canal_sonido_pausa = None
+            _tocar(self.rec.sonido_seleccion)
         self._rafaga(36, self.runa_centro, 90, 380)
 
     def _procesar_eventos(self):
@@ -866,7 +856,8 @@ class _MenuPausa:
         if self.fase == "entrada":
             t = self.t_fase
             if self.runa_entrada:
-                par = self.runa_entrada[min(len(self.runa_entrada) - 1, int(t / ms))]
+                indice = int(_clamp(t / DURACION_ENTRADA_MS) * len(self.runa_entrada))
+                par = self.runa_entrada[min(len(self.runa_entrada) - 1, indice)]
             else:
                 par = self.runa_idle[0]
             escala = _lerp(0.62, 1.0, _ease_out_back(t / DURACION_ENTRADA_MS))
@@ -874,7 +865,8 @@ class _MenuPausa:
         if self.fase == "salida":
             p = _clamp(self.t_fase / self.salida_ms)
             if self.runa_salida:
-                par = self.runa_salida[min(len(self.runa_salida) - 1, int(p * len(self.runa_salida)))]
+                indice = int(p * len(self.runa_salida))
+                par = self.runa_salida[min(len(self.runa_salida) - 1, indice)]
             else:
                 par = self.runa_idle[int(self.t_total / ms) % len(self.runa_idle)]
             if self.definitiva:
