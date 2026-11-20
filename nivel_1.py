@@ -1414,7 +1414,7 @@ def crear_enemigo(clase, x):
         enemigo = OrcoRojo(
             x=x, y=POSICION_SUELO, escala=ESCALA_ORCO_NIVEL
         )
-        enemigo.dano_ataque = 8
+        enemigo.dano_ataque = 5
     elif clase is Karasu_tengu:
         enemigo = Karasu_tengu(x=x, y=POSICION_SUELO)
         enemigo.dano_ataque = 5
