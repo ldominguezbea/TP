@@ -3,6 +3,7 @@ import sys
 import random
 import math
 import pygame
+from asset_utils import load_image_or_placeholder
 from personajes import crear_jugador
 from menu_pausa import NivelIntegradoFinalizado, pausar_juego
 
@@ -93,10 +94,16 @@ def cargar_imagen_comic_nivel3(nombre_archivo):
     )
     for ruta in rutas:
         if os.path.isfile(ruta):
-            imagen = pygame.image.load(ruta).convert()
+            imagen = load_image_or_placeholder(
+                ruta,
+                (ANCHO, ALTO),
+                label=nombre_archivo,
+            )
             return pygame.transform.scale(imagen, (ANCHO, ALTO))
-    raise FileNotFoundError(
-        f"No se encontro el comic {nombre_archivo}: {rutas}"
+    return load_image_or_placeholder(
+        rutas[0],
+        (ANCHO, ALTO),
+        label=nombre_archivo,
     )
 
 
@@ -159,9 +166,17 @@ def cargar_fondo_nivel3(nombre_archivo):
     )
     for ruta in rutas:
         if os.path.isfile(ruta):
-            imagen = pygame.image.load(ruta).convert()
+            imagen = load_image_or_placeholder(
+                ruta,
+                (ANCHO, ALTO),
+                label=nombre_archivo,
+            )
             return pygame.transform.scale(imagen, (ANCHO, ALTO))
-    raise FileNotFoundError(f"No se encontro el fondo {nombre_archivo}: {rutas}")
+    return load_image_or_placeholder(
+        rutas[0],
+        (ANCHO, ALTO),
+        label=nombre_archivo,
+    )
 
 
 fondos = [
@@ -247,10 +262,12 @@ def mostrar_primer_final(screen):
         "Nivel3",
         "Planeta ígneo sobre la ciudad en ruinas.png",
     )
-    if not os.path.isfile(ruta_imagen):
-        raise FileNotFoundError(f"No se encontró la imagen del primer final: {ruta_imagen}")
-
-    imagen = pygame.image.load(ruta_imagen).convert_alpha()
+    imagen = load_image_or_placeholder(
+        ruta_imagen,
+        (ANCHO, ALTO),
+        alpha=True,
+        label=os.path.basename(ruta_imagen),
+    )
     escala = min(ANCHO / imagen.get_width(), ALTO / imagen.get_height())
     tamano = (
         round(imagen.get_width() * escala),
@@ -345,7 +362,7 @@ class Jugador(pygame.sprite.Sprite):
 
     def cargar_animaciones(self):
         ESCALA = (ANCHO_HEROE, ALTO_HEROE)
-        base_path = os.path.join("assets", "Heroes", "P_viento")
+        base_path = os.path.join(BASE_DIR, "assets", "Heroes", "P_viento")
 
         def cargar_secuencia(carpeta, total, omitir=None):
             if omitir is None:
@@ -356,7 +373,12 @@ class Jugador(pygame.sprite.Sprite):
                     continue
                 ruta = os.path.join(base_path, carpeta, f"{carpeta}_{i}.png")
                 if os.path.exists(ruta):
-                    img = pygame.image.load(ruta).convert_alpha()
+                    img = load_image_or_placeholder(
+                        ruta,
+                        ESCALA,
+                        alpha=True,
+                        label=f"{carpeta}_{i}.png",
+                    )
                     imgs.append(pygame.transform.scale(img, ESCALA))
             if not imgs:
                 s = pygame.Surface(ESCALA, pygame.SRCALPHA)
@@ -1164,9 +1186,12 @@ class EsqueletoCueva(Enemigo):
 
     def __init__(self, x=550, y=500):
         super().__init__("Esqueleto de la cueva", 2, x, y)
-        hoja = pygame.image.load(
-            os.path.join(BASE_DIR, "assets", "enemigos", "Skeleton enemy.png")
-        ).convert_alpha()
+        hoja = load_image_or_placeholder(
+            os.path.join(BASE_DIR, "assets", "enemigos", "Skeleton enemy.png"),
+            (self.COLUMNAS_HOJA * self.TAMANO_CUADRO, 4 * self.TAMANO_CUADRO),
+            alpha=True,
+            label="Skeleton enemy",
+        )
         self.animaciones = {
             "correr": self._cargar_fila(hoja, 2, 12),
             "idle": self._cargar_fila(hoja, 3, 4),
@@ -1273,9 +1298,18 @@ class MimicoCueva(Enemigo):
             "hurt": self._cargar_fila("hurt.png", 3),
             "death": self._cargar_fila("death.png", 6),
         }
-        imagen_cofre = pygame.image.load(
-            os.path.join(BASE_DIR, "assets", "enemigos", "Mimic", "Idle_closed.png")
-        ).convert_alpha()
+        imagen_cofre = load_image_or_placeholder(
+            os.path.join(
+                BASE_DIR,
+                "assets",
+                "enemigos",
+                "Mimic",
+                "Idle_closed.png",
+            ),
+            (self.TAMANO_FRAME, self.TAMANO_FRAME),
+            alpha=True,
+            label="Idle_closed.png",
+        )
         self.animaciones["closed"] = [
             pygame.transform.flip(
                 pygame.transform.scale(

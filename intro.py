@@ -3,6 +3,7 @@ import random
 
 import pygame
 
+from asset_utils import load_image_or_placeholder
 from config import BASE_DIR, SCREEN_HEIGHT, SCREEN_WIDTH
 
 
@@ -45,7 +46,11 @@ class Intro:
     def __init__(self, screen, audio_enabled=True):
         self.screen = screen
         screen_width, screen_height = screen.get_size()
-        title_image = pygame.image.load(str(self.TITLE_IMAGE)).convert()
+        title_image = load_image_or_placeholder(
+            self.TITLE_IMAGE,
+            (screen_width, screen_height),
+            label="REQUIEM",
+        )
         scale = min(
             screen_width / title_image.get_width(),
             screen_height / title_image.get_height(),
@@ -58,7 +63,12 @@ class Intro:
         self.title_rect = self.title_image.get_rect(
             center=(screen_width // 2, screen_height // 2)
         )
-        logo = pygame.image.load(str(self.LOGO_IMAGE)).convert_alpha()
+        logo = load_image_or_placeholder(
+            self.LOGO_IMAGE,
+            (210, 226),
+            alpha=True,
+            label="REQUIEM",
+        )
         self.studio_logo = pygame.transform.scale(logo, (210, 226))
         self.particle_layer = pygame.Surface(
             (screen_width, screen_height), pygame.SRCALPHA

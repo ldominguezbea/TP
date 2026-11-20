@@ -1,4 +1,28 @@
+"""Menú de pausa cinemático de REQUIEM (compatible con pygame-ce).
+
+API pública (sin cambios respecto a la versión anterior):
+
+    pausar_juego(screen, devolver_accion=False)
+        - devolver_accion=True  -> devuelve "resume" | "menu" | "exit"
+        - devolver_accion=False -> "resume" devuelve None; "menu" y "exit"
+                                   lanzan SystemExit con los códigos de abajo.
+
+    RETURN_TO_MENU_EXIT_CODE, EXIT_GAME_EXIT_CODE, NivelIntegradoFinalizado
+
+Recursos opcionales (se buscan por nombre dentro de la carpeta del proyecto,
+hasta 5 niveles de profundidad):
+    runeintroexit.gif, runeidle.gif   -> animación de la runa (requiere Pillow)
+    Bell1.mp3 (apertura), Bell2.mp3 (cierre)
+
+Si falta algún recurso (o Pillow), el menú sigue funcionando con una runa
+procedural y sin esos sonidos: nunca debe romper el juego.
+"""
+
+import array
 import math
+import os
+import random
+from pathlib import Path
 
 import pygame
 
@@ -7,6 +31,25 @@ RETURN_TO_MENU_EXIT_CODE = 10
 EXIT_GAME_EXIT_CODE = 11
 
 _OPTIONS = ("Resume", "Return to menu", "Exit game")
+_ACCIONES = ("resume", "menu", "exit")
+# Color de acento por opción: dorado (reanudar), ámbar (menú), rojo (salir).
+_ACENTOS = ((232, 184, 96), (222, 140, 78), (232, 70, 56))
+
+# ----------------------------------------------------------------------------
+# Ajustes rápidos
+# ----------------------------------------------------------------------------
+ARCHIVO_RUNA_ENTRADA = "runeintroexit.gif"   # 80 frames: nace ... brilla ... se disuelve
+ARCHIVO_RUNA_IDLE = "runeidle.gif"           # 16 frames en bucle
+ARCHIVO_CAMPANA_ABRIR = "Bell1.mp3"
+ARCHIVO_CAMPANA_CERRAR = "Bell2.mp3"
+FRAMES_ENTRADA = 12          # primeros N frames del gif de entrada (la runa se forma)
+FRAMES_SALIDA = 10           # últimos N frames del gif de entrada (la runa se disuelve)
+VOLUMEN_CAMPANAS = 0.85
+VOLUMEN_SFX = 0.45
+VOLUMEN_MUSICA_EN_PAUSA = 0.28   # la música baja a este % mientras dura la pausa
+DURACION_ENTRADA_MS = 1150
+DURACION_SALIDA_REANUDAR_MS = 700
+DURACION_SALIDA_DEFINITIVA_MS = 1100
 
 
 class NivelIntegradoFinalizado(Exception):
@@ -15,196 +58,998 @@ class NivelIntegradoFinalizado(Exception):
         self.action = action
 
 
-def pausar_juego(screen, devolver_accion=False):
-    """Muestra el menú de pausa; las salidas se comunican al lanzador del juego."""
-    snapshot = screen.copy()
-    width, height = screen.get_size()
-    clock = pygame.time.Clock()
-    selected = 0
-    started_at = pygame.time.get_ticks()
-    action = None
-    music_was_playing = False
+# ----------------------------------------------------------------------------
+# Utilidades matemáticas
+# ----------------------------------------------------------------------------
+def _clamp(x, a=0.0, b=1.0):
+    return max(a, min(b, x))
 
-    if pygame.mixer.get_init():
-        music_was_playing = pygame.mixer.music.get_busy()
-        if music_was_playing:
-            pygame.mixer.music.pause()
 
-    veil = pygame.Surface((width, height), pygame.SRCALPHA)
-    veil.fill((8, 3, 10, 218))
-    atmosphere = pygame.Surface((width, height), pygame.SRCALPHA)
-    for index in range(7):
-        radius = int(min(width, height) * (0.18 + index * 0.055))
-        color = (90, 15 + index * 2, 22, max(8, 28 - index * 2))
-        pygame.draw.circle(
-            atmosphere,
-            color,
-            (width // 2, height // 2),
-            radius,
-            max(1, height // 360),
-        )
+def _lerp(a, b, t):
+    return a + (b - a) * t
 
-    panel_width = min(660, int(width * 0.84))
-    panel_height = min(540, int(height * 0.86))
-    panel = pygame.Rect(
-        (width - panel_width) // 2,
-        (height - panel_height) // 2,
-        panel_width,
-        panel_height,
-    )
-    button_width = min(440, panel_width - 72)
-    button_height = 62
-    button_gap = 14
-    buttons_top = panel.centery - 38
-    button_rects = [
-        pygame.Rect(
-            panel.centerx - button_width // 2,
-            buttons_top + index * (button_height + button_gap),
-            button_width,
-            button_height,
-        )
-        for index in range(len(_OPTIONS))
-    ]
 
-    title_font = pygame.font.SysFont("Georgia", max(36, min(52, height // 13)), bold=True)
-    subtitle_font = pygame.font.SysFont("Arial", max(15, height // 39), bold=True)
-    option_font = pygame.font.SysFont("Georgia", max(22, height // 28), bold=True)
-    footer_font = pygame.font.SysFont("Arial", max(12, height // 54), bold=True)
+def _suave(t):
+    t = _clamp(t)
+    return t * t * (3.0 - 2.0 * t)
 
-    def center_text(text, font, color, y):
-        rendered = font.render(text, True, color)
-        screen.blit(rendered, rendered.get_rect(center=(panel.centerx, y)))
 
+def _ease_out(t):
+    t = _clamp(t)
+    return 1.0 - (1.0 - t) ** 3
+
+
+def _ease_in(t):
+    t = _clamp(t)
+    return t ** 3
+
+
+def _ease_out_back(t, s=1.70158):
+    t = _clamp(t) - 1.0
+    return t * t * ((s + 1.0) * t + s) + 1.0
+
+
+def _mezcla(c1, c2, t):
+    return tuple(int(_lerp(a, b, t)) for a, b in zip(c1, c2))
+
+
+def _escalar_color(color, f):
+    f = _clamp(f)
+    return tuple(int(c * f) for c in color)
+
+
+# ----------------------------------------------------------------------------
+# Búsqueda y carga de recursos
+# ----------------------------------------------------------------------------
+_RUTAS_CACHE = {}
+_FUENTES = {}
+
+
+def _carpetas_base():
+    bases = [Path(__file__).resolve().parent, Path.cwd()]
     try:
-        while action is None:
-            clock.tick(60)
-            elapsed = (pygame.time.get_ticks() - started_at) / 1000.0
-            pulse = 0.5 + 0.5 * math.sin(elapsed * 2.4)
+        from config import BASE_DIR  # type: ignore
 
-            screen.blit(snapshot, (0, 0))
-            screen.blit(veil, (0, 0))
-            screen.blit(atmosphere, (0, 0))
+        bases.insert(0, Path(BASE_DIR))
+    except Exception:
+        pass
+    vistos = []
+    for base in bases:
+        if base not in vistos and base.is_dir():
+            vistos.append(base)
+    return vistos
 
-            ember_color = (190, 31, 24)
-            for index in range(28):
-                x = (index * 173 + int(elapsed * (18 + index % 4) * 9)) % width
-                y = (index * 97 + int(elapsed * (13 + index % 3) * 6)) % height
-                radius = 1 + index % 3
-                pygame.draw.circle(screen, ember_color, (x, y), radius)
 
-            shadow = panel.move(0, 12)
-            pygame.draw.rect(screen, (0, 0, 0), shadow, border_radius=8)
-            pygame.draw.rect(screen, (15, 9, 15), panel, border_radius=8)
-            pygame.draw.rect(screen, (114, 28, 26), panel, 2, border_radius=8)
-            pygame.draw.rect(screen, (197, 142, 73), panel.inflate(-12, -12), 1, border_radius=6)
+def _buscar_recurso(nombre):
+    clave = nombre.lower()
+    if clave in _RUTAS_CACHE:
+        return _RUTAS_CACHE[clave]
 
-            spike = max(18, min(28, width // 48))
-            for side in (-1, 1):
-                x = panel.centerx + side * (panel_width // 2 - 22)
-                pygame.draw.polygon(
-                    screen,
-                    (120, 27, 24),
-                    ((x, panel.top + 44), (x + side * spike, panel.top + 74), (x, panel.top + 104)),
-                )
-                pygame.draw.polygon(
-                    screen,
-                    (120, 27, 24),
-                    ((x, panel.bottom - 104), (x + side * spike, panel.bottom - 74), (x, panel.bottom - 44)),
-                )
+    encontrado = None
+    ignorar = {"__pycache__", "venv", ".venv", "node_modules", ".git"}
+    for base in _carpetas_base():
+        for raiz, carpetas, archivos in os.walk(base):
+            profundidad = len(Path(raiz).relative_to(base).parts)
+            carpetas[:] = [
+                c for c in carpetas if c not in ignorar and not c.startswith(".")
+            ] if profundidad < 5 else []
+            for archivo in archivos:
+                if archivo.lower() == clave:
+                    encontrado = Path(raiz) / archivo
+                    break
+            if encontrado:
+                break
+        if encontrado:
+            break
 
-            crest_y = panel.top + 52
-            crest_radius = max(15, min(22, height // 32))
-            pygame.draw.circle(screen, (91, 13, 19), (panel.centerx, crest_y), crest_radius + 5)
-            pygame.draw.circle(screen, (190, 51, 35), (panel.centerx, crest_y), crest_radius, 2)
-            pygame.draw.polygon(
-                screen,
-                (203, 157, 83),
+    _RUTAS_CACHE[clave] = encontrado
+    return encontrado
+
+
+def _fuente(nombre, tam, negrita=True):
+    clave = (nombre, tam, negrita)
+    if clave not in _FUENTES:
+        _FUENTES[clave] = pygame.font.SysFont(nombre, tam, bold=negrita)
+    return _FUENTES[clave]
+
+
+def _cargar_gif(nombre):
+    """Devuelve (frames, duraciones_ms). Usa Pillow; si falla, listas vacías."""
+    ruta = _buscar_recurso(nombre)
+    if ruta is None:
+        print(f"[PAUSA] No se encontró {nombre}; se usa una runa procedural.")
+        return [], []
+    try:
+        from PIL import Image, ImageSequence
+    except ImportError:
+        print("[PAUSA] Falta Pillow (pip install pillow); se usa una runa procedural.")
+        return [], []
+
+    frames, duraciones = [], []
+    try:
+        with Image.open(ruta) as gif:
+            predeterminada = int(gif.info.get("duration", 80) or 80)
+            for cuadro in ImageSequence.Iterator(gif):
+                rgba = cuadro.convert("RGBA")
+                datos = rgba.tobytes()
+                superficie = pygame.image.frombuffer(datos, rgba.size, "RGBA")
+                frames.append(superficie.convert_alpha())
+                duraciones.append(int(cuadro.info.get("duration", predeterminada) or predeterminada))
+    except Exception as error:  # noqa: BLE001 - el menú nunca debe romper el juego
+        print(f"[PAUSA] No se pudo leer {nombre}: {error}")
+        return [], []
+    return frames, duraciones
+
+
+def _runa_procedural(cantidad=16, tam=128):
+    frames = []
+    c = tam // 2
+    for f in range(cantidad):
+        s = pygame.Surface((tam, tam), pygame.SRCALPHA)
+        giro = f / cantidad * math.tau / 9
+        for radio, color in ((c - 2, (205, 80, 34)), (c - 11, (160, 46, 30)), (c - 24, (225, 130, 56))):
+            pygame.draw.circle(s, color, (c, c), radio, 1)
+        for paso, color in ((4, (232, 112, 40)), (2, (200, 70, 30))):
+            puntos = [
+                (c + math.cos(giro + i * math.tau * paso / 9) * (c - 13),
+                 c + math.sin(giro + i * math.tau * paso / 9) * (c - 13))
+                for i in range(9)
+            ]
+            pygame.draw.polygon(s, color, puntos, 1)
+        pygame.draw.circle(s, (255, 214, 150), (c, c), 3)
+        frames.append(s)
+    return frames
+
+
+def _sintetizar_tono(frecuencia, duracion_ms, volumen, caida=3.0, bajada=0.0):
+    ajustes = pygame.mixer.get_init()
+    if ajustes is None:
+        return None
+    tasa, formato, canales = ajustes
+    if formato != -16:
+        return None
+    muestras = array.array("h")
+    total = max(1, int(tasa * duracion_ms / 1000))
+    fase = 0.0
+    for i in range(total):
+        p = i / total
+        fase += math.tau * frecuencia * (1.0 - bajada * p) / tasa
+        envolvente = min(1.0, i / (tasa * 0.003)) * (1.0 - p) ** caida
+        valor = int(32767 * volumen * envolvente * math.sin(fase))
+        muestras.extend([valor] * canales)
+    try:
+        return pygame.mixer.Sound(buffer=muestras.tobytes())
+    except pygame.error:
+        return None
+
+
+def _cargar_sonido(nombre, volumen):
+    if pygame.mixer.get_init() is None:
+        return None
+    ruta = _buscar_recurso(nombre)
+    if ruta is None:
+        print(f"[PAUSA] No se encontró {nombre}.")
+        return None
+    try:
+        sonido = pygame.mixer.Sound(str(ruta))
+        sonido.set_volume(volumen)
+        return sonido
+    except pygame.error as error:
+        print(f"[PAUSA] No se pudo cargar {nombre}: {error}")
+        return None
+
+
+def _crear_glifos(rng, cantidad=10, ancho=26, alto=44, color=(176, 54, 40)):
+    """Pseudo-runas (astas con ramas) para las columnas decorativas."""
+    glifos = []
+    for _ in range(cantidad):
+        s = pygame.Surface((ancho, alto), pygame.SRCALPHA)
+        x = ancho // 2
+        pygame.draw.line(s, color, (x, 3), (x, alto - 3), 2)
+        for _ in range(rng.randint(1, 3)):
+            y = rng.randint(6, alto - 20)
+            lado = rng.choice((-1, 1))
+            largo = rng.randint(7, 11)
+            tipo = rng.choice((0, 1, 2))
+            if tipo == 0:
+                pygame.draw.line(s, color, (x, y), (x + lado * largo, y + largo), 2)
+            elif tipo == 1:
+                pygame.draw.line(s, color, (x, y + largo), (x + lado * largo, y), 2)
+            else:
+                pygame.draw.line(s, color, (x, y), (x + lado * largo, y + largo // 2), 2)
+                pygame.draw.line(s, color, (x + lado * largo, y + largo // 2), (x, y + largo), 2)
+        glifos.append(s)
+    return glifos
+
+
+class _Recursos:
+    """Se carga una sola vez por proceso y se reutiliza en cada pausa."""
+
+    def __init__(self):
+        entrada, dur_entrada = _cargar_gif(ARCHIVO_RUNA_ENTRADA)
+        idle, dur_idle = _cargar_gif(ARCHIVO_RUNA_IDLE)
+
+        if len(entrada) >= FRAMES_ENTRADA + FRAMES_SALIDA:
+            self.runa_entrada = entrada[:FRAMES_ENTRADA]
+            self.runa_salida = entrada[-FRAMES_SALIDA:]
+        else:
+            self.runa_entrada, self.runa_salida = [], []
+
+        if idle:
+            self.runa_idle = idle
+        elif entrada:
+            self.runa_idle = entrada[FRAMES_ENTRADA:FRAMES_ENTRADA + 16] or entrada
+        else:
+            self.runa_idle = _runa_procedural()
+        referencia = dur_idle or dur_entrada
+        self.frame_ms = max(30, int(referencia[0])) if referencia else 80
+
+        self.campana_abrir = _cargar_sonido(ARCHIVO_CAMPANA_ABRIR, VOLUMEN_CAMPANAS)
+        self.campana_cerrar = _cargar_sonido(ARCHIVO_CAMPANA_CERRAR, VOLUMEN_CAMPANAS)
+        self.tick = _sintetizar_tono(1180, 55, VOLUMEN_SFX * 0.55, caida=2.2)
+        self.confirmar = _sintetizar_tono(210, 260, VOLUMEN_SFX, caida=2.6, bajada=0.55)
+        self.glifos = _crear_glifos(random.Random(1604))
+
+
+_RECURSOS = None
+
+
+def _obtener_recursos():
+    global _RECURSOS
+    if _RECURSOS is None:
+        _RECURSOS = _Recursos()
+    return _RECURSOS
+
+
+def _tocar(sonido):
+    if sonido is None or pygame.mixer.get_init() is None:
+        return
+    try:
+        if sonido.play() is None:
+            canal = pygame.mixer.find_channel(True)
+            if canal is not None:
+                canal.play(sonido)
+    except pygame.error:
+        pass
+
+
+# ----------------------------------------------------------------------------
+# Superficies auxiliares (gradientes, viñeta, desenfoque, runa escalada)
+# ----------------------------------------------------------------------------
+def _desenfocar(superficie):
+    w, h = superficie.get_size()
+    pequena = pygame.transform.smoothscale(superficie, (max(1, w // 16), max(1, h // 16)))
+    return pygame.transform.smoothscale(pequena, (w, h))
+
+
+def _gradiente_radial_alfa(tam, color, alfa_max, potencia):
+    base = 32
+    s = pygame.Surface((base, base), pygame.SRCALPHA)
+    c = (base - 1) / 2
+    for y in range(base):
+        for x in range(base):
+            d = math.hypot(x - c, y - c) / c
+            f = max(0.0, 1.0 - d) ** potencia
+            s.set_at((x, y), (*color, int(alfa_max * f)))
+    return pygame.transform.smoothscale(s, (tam, tam))
+
+
+def _vineta(ancho, alto):
+    pw, ph = 48, 27
+    s = pygame.Surface((pw, ph), pygame.SRCALPHA)
+    for y in range(ph):
+        for x in range(pw):
+            dx = (x / (pw - 1) - 0.5) * 2.0
+            dy = (y / (ph - 1) - 0.5) * 2.0
+            d = math.hypot(dx, dy) / 1.414
+            a = _clamp((d - 0.38) / 0.62) ** 1.7
+            s.set_at((x, y), (5, 0, 7, int(235 * a)))
+    return pygame.transform.smoothscale(s, (ancho, alto))
+
+
+def _escalar_frame(frame, tam):
+    k = max(1, math.ceil(tam / frame.get_width()))
+    grande = pygame.transform.scale(frame, (frame.get_width() * k, frame.get_height() * k))
+    if grande.get_width() == tam:
+        return grande
+    return pygame.transform.smoothscale(grande, (tam, tam))
+
+
+def _brillo_de_frame(frame, tam):
+    """Versión borrosa y muy luminosa del frame para el resplandor aditivo."""
+    base = pygame.Surface(frame.get_size())
+    base.fill((0, 0, 0))
+    base.blit(frame, (0, 0))
+    pequena = pygame.transform.smoothscale(base, (max(4, tam // 12), max(4, tam // 12)))
+    for _ in range(3):
+        copia = pequena.copy()
+        pequena.blit(copia, (0, 0), special_flags=pygame.BLEND_RGB_ADD)
+    lado = int(tam * 1.55)
+    return pygame.transform.smoothscale(pequena, (lado, lado))
+
+
+# ----------------------------------------------------------------------------
+# Menú de pausa
+# ----------------------------------------------------------------------------
+class _MenuPausa:
+    def __init__(self, screen):
+        self.screen = screen
+        self.W, self.H = screen.get_size()
+        self.rec = _obtener_recursos()
+        self.rng = random.Random()
+
+        # Estado
+        self.fase = "entrada"        # entrada -> reposo -> salida -> fin
+        self.t_fase = 0.0
+        self.t_total = 0.0
+        self.k = 0.0                 # visibilidad del fondo (veladura, blur, viñeta)
+        self.k_out = 1.0             # visibilidad de la interfaz al salir
+        self.k0 = 1.0
+        self.seleccion = 0
+        self.hover = [1.0, 0.0, 0.0]
+        self.accion = None
+        self.definitiva = False
+        self.salida_ms = DURACION_SALIDA_REANUDAR_MS
+        self.flash = 0.0
+        self.sacudida = 7.0
+        self.brasas = []
+        self.ondas = [{"t": 0.0}, {"t": -430.0}]
+        self.glitch_hasta = 0.0
+        self.proximo_glitch = 3200.0
+
+        # Audio / teclado
+        self.audio = pygame.mixer.get_init() is not None
+        self.musica = False
+        self.vol_musica = 1.0
+        self.teclas_previas = self._teclas_presionadas()
+
+        # Fondo
+        self.snapshot = screen.copy()
+        self.fondo_borroso = _desenfocar(self.snapshot)
+        self.velo = pygame.Surface((self.W, self.H))
+        self.velo.fill((8, 3, 10))
+        self.negro = pygame.Surface((self.W, self.H))
+        self.negro.fill((0, 0, 0))
+        self.destello = pygame.Surface((self.W, self.H))
+        self.destello.fill((255, 226, 190))
+        self.vineta = _vineta(self.W, self.H)
+        self.capa_aditiva = pygame.Surface((self.W, self.H))
+
+        self._calcular_layout()
+        self._preparar_runa()
+        self._preparar_textos()
+
+    # ------------------------------------------------------------------ layout
+    def _calcular_layout(self):
+        W, H = self.W, self.H
+        self.cx = W // 2
+        self.btn_h = int(_clamp(H * 0.07, 40, 60))
+        self.btn_gap = 10 if H < 600 else 12
+        self.btn_w = int(_clamp(W * 0.34, 300, 470))
+        total = 3 * self.btn_h + 2 * self.btn_gap
+        pie = 40
+        self.btn_top = H - pie - total
+        self.rects = [
+            pygame.Rect(
+                self.cx - self.btn_w // 2,
+                self.btn_top + i * (self.btn_h + self.btn_gap),
+                self.btn_w,
+                self.btn_h,
+            )
+            for i in range(3)
+        ]
+        self.titulo_y = int(H * 0.085)
+        self.subtitulo_y = int(H * 0.14)
+        runa_top = int(H * 0.185)
+        self.runa_tam = max(120, int(min(H * 0.46, W * 0.5, self.btn_top - 12 - runa_top)))
+        self.runa_centro = (self.cx, runa_top + self.runa_tam // 2)
+
+    def _preparar_runa(self):
+        tam = self.runa_tam
+
+        def escalar(frames):
+            pares = []
+            for original in frames:
+                frame = _escalar_frame(original, tam)
+                pares.append((frame, _brillo_de_frame(frame, tam)))
+            return pares
+
+        self.runa_idle = escalar(self.rec.runa_idle)
+        self.runa_entrada = escalar(self.rec.runa_entrada)
+        self.runa_salida = escalar(self.rec.runa_salida)
+        lado = int(tam * 2.7)
+        self.resplandor_fondo = _gradiente_radial_alfa(lado, (170, 30, 20), 150, 1.7)
+
+    def _preparar_textos(self):
+        fuente_titulo = _fuente("Georgia", max(36, min(54, self.H // 13)))
+        self.letras = []
+        texto = "PAUSED"
+        sep = max(6, fuente_titulo.size("A")[0] // 5)
+        anchos = [fuente_titulo.size(c)[0] for c in texto]
+        total = sum(anchos) + sep * (len(texto) - 1)
+        x = self.cx - total // 2
+        for letra, ancho in zip(texto, anchos):
+            self.letras.append(
                 (
-                    (panel.centerx, crest_y - crest_radius + 5),
-                    (panel.centerx + crest_radius - 5, crest_y),
-                    (panel.centerx, crest_y + crest_radius - 5),
-                    (panel.centerx - crest_radius + 5, crest_y),
-                ),
-                2,
+                    fuente_titulo.render(letra, True, (240, 218, 186)),
+                    fuente_titulo.render(letra, True, (128, 26, 22)),
+                    x,
+                )
             )
-            center_text("PAUSED", title_font, (238, 215, 184), panel.top + 112)
-            center_text(
-                "THE INVASION WAITS FOR NO ONE",
-                subtitle_font,
-                (179, 84, 68),
-                panel.top + 157,
+            x += ancho + sep
+        fuente_sub = _fuente("Arial", max(14, self.H // 42))
+        self.subtitulo = fuente_sub.render("THE INVASION WAITS FOR NO ONE", True, (184, 88, 70))
+        self.fuente_opcion = _fuente("Georgia", max(21, self.H // 29))
+        fuente_pie = _fuente("Arial", max(12, self.H // 56))
+        self.pie = fuente_pie.render(
+            "SELECT   \u2191  /  \u2193        CONFIRM   ENTER        RESUME   ESC",
+            True,
+            (150, 120, 104),
+        )
+
+    # ------------------------------------------------------------------- audio
+    @staticmethod
+    def _teclas_presionadas():
+        presionadas = []
+        try:
+            estado = pygame.key.get_pressed()
+            for nombre, valor in vars(pygame).items():
+                if nombre.startswith("K_") and isinstance(valor, int):
+                    try:
+                        if estado[valor]:
+                            presionadas.append(valor)
+                    except (IndexError, KeyError, TypeError, pygame.error):
+                        continue
+        except pygame.error:
+            pass
+        return presionadas
+
+    def _iniciar_audio(self):
+        if not self.audio:
+            return
+        try:
+            self.musica = pygame.mixer.music.get_busy()
+            self.vol_musica = pygame.mixer.music.get_volume()
+            pygame.mixer.pause()          # congela los sfx del nivel
+        except pygame.error:
+            self.audio = False
+            return
+        _tocar(self.rec.campana_abrir)
+
+    def _aplicar_volumen_musica(self):
+        if not (self.audio and self.musica):
+            return
+        try:
+            if self.fase == "salida" and self.definitiva:
+                p = _clamp(self.t_fase / self.salida_ms)
+                factor = VOLUMEN_MUSICA_EN_PAUSA * (1.0 - _suave(p))
+            else:
+                factor = 1.0 - (1.0 - VOLUMEN_MUSICA_EN_PAUSA) * self.k
+            pygame.mixer.music.set_volume(_clamp(self.vol_musica * factor))
+        except pygame.error:
+            pass
+
+    def liberar(self):
+        """Deja audio y eventos limpios, tanto al reanudar como al salir."""
+        saliendo = self.accion in ("menu", "exit")
+        if self.audio:
+            try:
+                if saliendo:
+                    pygame.mixer.stop()
+                    if self.musica:
+                        pygame.mixer.music.stop()
+                else:
+                    pygame.mixer.unpause()
+                if self.musica:
+                    pygame.mixer.music.set_volume(self.vol_musica)
+            except pygame.error:
+                pass
+        if not saliendo:
+            self._reponer_teclas()
+
+    def _reponer_teclas(self):
+        """Los KEYUP ocurridos durante la pausa se pierden: los reponemos."""
+        try:
+            ahora = pygame.key.get_pressed()
+            for tecla in self.teclas_previas:
+                if not ahora[tecla]:
+                    pygame.event.post(
+                        pygame.event.Event(pygame.KEYUP, key=tecla, mod=0, unicode="", scancode=0)
+                    )
+        except (IndexError, KeyError, TypeError, pygame.error):
+            pass
+
+    # ----------------------------------------------------------------- entrada
+    def _seleccionar(self, indice):
+        if indice != self.seleccion:
+            self.seleccion = indice
+            _tocar(self.rec.tick)
+
+    def _pedir(self, accion, indice=None):
+        if self.fase == "salida":
+            if accion == "exit" and not self.definitiva:
+                self.accion = "exit"
+                self.definitiva = True
+                self.salida_ms = DURACION_SALIDA_DEFINITIVA_MS
+            return
+        if indice is not None:
+            self.seleccion = indice
+        self.accion = accion
+        self.definitiva = accion in ("menu", "exit")
+        self.salida_ms = (
+            DURACION_SALIDA_DEFINITIVA_MS if self.definitiva else DURACION_SALIDA_REANUDAR_MS
+        )
+        self.k0 = self.k
+        self.fase = "salida"
+        self.t_fase = 0.0
+        self.flash = 1.0
+        self.sacudida = 4.0
+        self.ondas.append({"t": 0.0})
+        if self.audio:
+            try:
+                if self.rec.campana_abrir:
+                    self.rec.campana_abrir.fadeout(250)
+            except pygame.error:
+                pass
+            _tocar(self.rec.campana_cerrar)
+            _tocar(self.rec.confirmar)
+            try:
+                if self.rec.campana_cerrar:
+                    # La campana de cierre se apaga con la animación (algo más larga al reanudar).
+                    self.rec.campana_cerrar.fadeout(
+                        self.salida_ms if self.definitiva else int(self.salida_ms * 1.6)
+                    )
+            except pygame.error:
+                pass
+        self._rafaga(36, self.runa_centro, 90, 380)
+
+    def _procesar_eventos(self):
+        for ev in pygame.event.get():
+            if ev.type == pygame.QUIT:
+                self._pedir("exit")
+                continue
+            if self.fase == "salida":
+                continue
+            if ev.type == pygame.KEYDOWN:
+                if ev.key == pygame.K_ESCAPE:
+                    self._pedir("resume", 0)
+                elif ev.key in (pygame.K_UP, pygame.K_w):
+                    self._seleccionar((self.seleccion - 1) % 3)
+                elif ev.key in (pygame.K_DOWN, pygame.K_s):
+                    self._seleccionar((self.seleccion + 1) % 3)
+                elif ev.key in (pygame.K_RETURN, pygame.K_KP_ENTER, pygame.K_SPACE):
+                    self._pedir(_ACCIONES[self.seleccion], self.seleccion)
+            elif ev.type == pygame.MOUSEMOTION:
+                for i, rect in enumerate(self.rects):
+                    if rect.collidepoint(ev.pos):
+                        self._seleccionar(i)
+            elif ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1:
+                for i, rect in enumerate(self.rects):
+                    if rect.collidepoint(ev.pos):
+                        self._pedir(_ACCIONES[i], i)
+                        break
+
+    # -------------------------------------------------------------- simulación
+    def _rafaga(self, cantidad, centro, vmin, vmax):
+        for _ in range(cantidad):
+            ang = self.rng.random() * math.tau
+            vel = self.rng.uniform(vmin, vmax)
+            vida = self.rng.uniform(0.6, 1.5)
+            self.brasas.append(
+                [centro[0], centro[1], math.cos(ang) * vel, math.sin(ang) * vel,
+                 self.rng.choice((1, 2, 2, 3)), vida, vida, self.rng.random() * math.tau, True]
             )
-            pygame.draw.line(
-                screen,
-                (103, 44, 37),
-                (panel.left + 72, panel.top + 183),
-                (panel.right - 72, panel.top + 183),
+
+    def _actualizar_brasas(self, dt):
+        s = dt / 1000.0
+        if len(self.brasas) < 80 and self.rng.random() < 0.7 * max(self.k, 0.2):
+            vida = self.rng.uniform(4.0, 9.0)
+            self.brasas.append(
+                [self.rng.uniform(0, self.W), self.H + 4, self.rng.uniform(-8, 8),
+                 -self.rng.uniform(22, 70), self.rng.choice((1, 1, 2, 3)), vida, vida,
+                 self.rng.random() * math.tau, False]
+            )
+        vivas = []
+        for p in self.brasas:
+            if p[8]:  # chispas de ráfaga: frenan
+                p[2] *= 1.0 - min(1.0, 2.2 * s)
+                p[3] *= 1.0 - min(1.0, 2.2 * s)
+            else:
+                p[2] += math.sin(self.t_total / 700.0 + p[7]) * 6 * s
+            p[0] += p[2] * s
+            p[1] += p[3] * s
+            p[5] -= s
+            if p[5] > 0 and -12 < p[1] < self.H + 12:
+                vivas.append(p)
+        self.brasas = vivas
+
+    def _actualizar(self, dt):
+        self.t_total += dt
+        self.t_fase += dt
+        self.sacudida = max(0.0, self.sacudida - dt * 0.03)
+        self.flash = max(0.0, self.flash - dt / 380.0)
+        objetivo = lambda i: 1.0 if i == self.seleccion else 0.0  # noqa: E731
+        for i in range(3):
+            self.hover[i] += (objetivo(i) - self.hover[i]) * min(1.0, dt / 85.0)
+
+        if self.fase == "entrada":
+            self.k = _ease_out(self.t_fase / DURACION_ENTRADA_MS)
+            self.k_out = 1.0
+            if self.t_fase >= DURACION_ENTRADA_MS:
+                self.fase, self.t_fase, self.k = "reposo", 0.0, 1.0
+        elif self.fase == "reposo":
+            self.k = self.k_out = 1.0
+            if self.t_total >= self.proximo_glitch:
+                self.glitch_hasta = self.t_total + 110
+                self.proximo_glitch = self.t_total + self.rng.uniform(2800, 5200)
+        elif self.fase == "salida":
+            p = _clamp(self.t_fase / self.salida_ms)
+            self.k = self.k0 if self.definitiva else self.k0 * (1.0 - _suave(p))
+            self.k_out = 1.0 - _suave(_clamp(p * 1.25))
+            if p >= 1.0:
+                self.fase = "fin"
+
+        for onda in self.ondas:
+            onda["t"] += dt
+        self.ondas = [o for o in self.ondas if o["t"] < 1500]
+        self._actualizar_brasas(dt)
+        self._aplicar_volumen_musica()
+
+    # ------------------------------------------------------------------ dibujo
+    def _estado_runa(self, ts):
+        """Devuelve (frame, brillo_surf, escala, alfa, intensidad_brillo)."""
+        ms = self.rec.frame_ms
+        if self.fase == "entrada":
+            t = self.t_fase
+            if self.runa_entrada:
+                par = self.runa_entrada[min(len(self.runa_entrada) - 1, int(t / ms))]
+            else:
+                par = self.runa_idle[0]
+            escala = _lerp(0.62, 1.0, _ease_out_back(t / DURACION_ENTRADA_MS))
+            return par, escala, int(255 * _clamp(t / 260.0)), 0.55 + 0.45 * self.k
+        if self.fase == "salida":
+            p = _clamp(self.t_fase / self.salida_ms)
+            if self.runa_salida:
+                par = self.runa_salida[min(len(self.runa_salida) - 1, int(p * len(self.runa_salida)))]
+            else:
+                par = self.runa_idle[int(self.t_total / ms) % len(self.runa_idle)]
+            if self.definitiva:
+                escala = 1.0 - 0.22 * _ease_in(p)
+            else:
+                escala = 1.0 + 0.14 * _ease_out(p)
+            return par, escala, int(255 * (1.0 - _suave(p))), 1.0 + self.flash * 0.8
+        par = self.runa_idle[int(self.t_fase / ms) % len(self.runa_idle)]
+        escala = 1.0 + 0.012 * math.sin(ts * 1.9)
+        return par, escala, 255, 0.72 + 0.28 * math.sin(ts * 2.2) + self.flash * 0.8
+
+    def _dibujar_fondo(self):
+        s = self.screen
+        ox = oy = 0
+        if self.sacudida > 0.5:
+            a = int(self.sacudida)
+            ox, oy = self.rng.randint(-a, a), self.rng.randint(-a, a)
+        s.fill((0, 0, 0))
+        s.blit(self.snapshot, (ox, oy))
+        if self.k > 0.003:
+            self.fondo_borroso.set_alpha(int(255 * _clamp(self.k * 1.5)))
+            s.blit(self.fondo_borroso, (ox, oy))
+            self.velo.set_alpha(int(212 * self.k))
+            s.blit(self.velo, (0, 0))
+            self.vineta.set_alpha(int(255 * self.k))
+            s.blit(self.vineta, (0, 0))
+
+    def _dibujar_columnas(self, ts):
+        if self.W < 900 or self.k <= 0.01:
+            return
+        glifos = self.rec.glifos
+        paso = 58
+        aparece = _suave((self.t_total - 300) / 700.0) * self.k_out
+        for lado, xf, vel in ((0, 0.085, 13.0), (1, 0.915, -13.0), (2, 0.155, -7.0), (3, 0.845, 7.0)):
+            x = int(self.W * xf)
+            desplaz = ts * vel
+            base_j = int(math.floor(desplaz / paso))
+            resto = desplaz - base_j * paso
+            tenue = 0.55 if lado >= 2 else 1.0
+            for j in range(self.H // paso + 3):
+                y = int(j * paso + resto - paso)
+                env = math.sin(math.pi * _clamp(y / self.H)) ** 1.5
+                parpadeo = 0.6 + 0.4 * math.sin(ts * 1.7 + j * 1.3 + lado * 2.1)
+                alfa = int(150 * env * parpadeo * aparece * tenue)
+                if alfa <= 4:
+                    continue
+                glifo = glifos[(j - base_j + lado * 3) % len(glifos)]
+                glifo.set_alpha(alfa)
+                self.screen.blit(glifo, (x - glifo.get_width() // 2, y))
+
+    def _dibujar_brasas(self):
+        for p in self.brasas:
+            f = _clamp(p[5] / p[6])
+            if p[8]:
+                color = (255, int(150 + 100 * f), int(60 + 90 * f))
+            else:
+                color = (int(120 + 70 * f), int(20 + 40 * f), int(14 + 12 * f))
+            color = _escalar_color(color, (0.35 + 0.65 * f) * self.k_out)
+            pygame.draw.circle(self.screen, color, (int(p[0]), int(p[1])), p[4])
+
+    def _dibujar_ondas(self):
+        if not self.ondas:
+            return
+        capa = self.capa_aditiva
+        capa.fill((0, 0, 0))
+        cx, cy = self.runa_centro
+        maximo = max(self.W, self.H) * 0.62
+        dibujada = False
+        for onda in self.ondas:
+            if onda["t"] <= 0:
+                continue
+            p = onda["t"] / 1100.0
+            if p >= 1.0:
+                continue
+            radio = int(_lerp(self.runa_tam * 0.25, maximo, _ease_out(p)))
+            color = _escalar_color((255, 120, 62), (1.0 - p) ** 1.6)
+            pygame.draw.circle(capa, color, (cx, cy), radio, max(1, int(7 * (1.0 - p))))
+            dibujada = True
+        if dibujada:
+            self.screen.blit(capa, (0, 0), special_flags=pygame.BLEND_RGB_ADD)
+
+    def _dibujar_halos(self, ts, vis):
+        cx, cy = self.runa_centro
+        r = self.runa_tam / 2
+        for radio_f, vel, marcas, color in (
+            (1.12, 0.35, 48, (150, 42, 32)),
+            (1.23, -0.22, 72, (112, 34, 30)),
+            (1.35, 0.12, 28, (84, 26, 26)),
+        ):
+            radio = int(r * radio_f * (0.92 + 0.08 * vis))
+            col = _escalar_color(color, vis)
+            pygame.draw.circle(self.screen, col, (cx, cy), radio, 1)
+            base = ts * vel
+            for m in range(marcas):
+                ang = base + m * math.tau / marcas
+                largo = 9 if m % 6 == 0 else 3
+                ca, sa = math.cos(ang), math.sin(ang)
+                pygame.draw.line(
+                    self.screen,
+                    col,
+                    (cx + ca * radio, cy + sa * radio),
+                    (cx + ca * (radio + largo), cy + sa * (radio + largo)),
+                    1,
+                )
+        # arcos brillantes que orbitan
+        pulso = 0.6 + 0.4 * math.sin(ts * 2.6)
+        col_arco = _escalar_color((236, 150, 78), vis * pulso)
+        radio = int(r * 1.12 * (0.92 + 0.08 * vis))
+        caja = pygame.Rect(0, 0, radio * 2, radio * 2)
+        caja.center = (cx, cy)
+        for desfase in (0.0, math.pi):
+            ini = ts * 0.9 + desfase
+            pygame.draw.arc(self.screen, col_arco, caja, ini, ini + 0.7, 2)
+
+    def _dibujar_runa(self, ts):
+        par, escala, alfa, brillo = self._estado_runa(ts)
+        frame, resplandor = par
+        cx, cy = self.runa_centro
+        vis = _clamp(alfa / 255.0)
+        if vis <= 0.01:
+            return
+
+        # resplandor rojizo de fondo
+        self.resplandor_fondo.set_alpha(int(255 * vis * _clamp(0.55 + 0.45 * brillo, 0, 1)))
+        self.screen.blit(self.resplandor_fondo, self.resplandor_fondo.get_rect(center=(cx, cy)))
+
+        self._dibujar_halos(ts, vis)
+
+        # brillo aditivo del propio frame
+        intensidad = _clamp(brillo * 0.55 * vis, 0.0, 1.0)
+        g = resplandor
+        if abs(escala - 1.0) > 0.004:
+            lado = max(8, int(g.get_width() * escala))
+            g = pygame.transform.smoothscale(g, (lado, lado))
+        v = int(255 * intensidad)
+        g = g.copy()
+        g.fill((v, int(v * 0.72), int(v * 0.52)), special_flags=pygame.BLEND_RGB_MULT)
+        self.screen.blit(g, g.get_rect(center=(cx, cy)), special_flags=pygame.BLEND_RGB_ADD)
+
+        # frame de la runa
+        if abs(escala - 1.0) > 0.004:
+            lado = max(8, int(self.runa_tam * escala))
+            frame = pygame.transform.smoothscale(frame, (lado, lado))
+        else:
+            frame = frame.copy()
+        frame.set_alpha(alfa)
+        self.screen.blit(frame, frame.get_rect(center=(cx, cy)))
+
+    def _dibujar_titulo(self, ts):
+        k = self.k_out
+        glitch = self.t_total < self.glitch_hasta
+        for i, (letra, sombra, x) in enumerate(self.letras):
+            p = _ease_out((self.t_total - (350 + i * 75)) / 380.0)
+            if p <= 0.0 or k <= 0.0:
+                continue
+            alfa = int(255 * p * k)
+            y = self.titulo_y - letra.get_height() // 2 + int((1.0 - p) * 18)
+            jx = self.rng.randint(-3, 3) if glitch else 0
+            sombra.set_alpha(int(alfa * 0.85))
+            letra.set_alpha(alfa)
+            if glitch:
+                self.screen.blit(sombra, (x + jx + 3, y))
+            self.screen.blit(sombra, (x + jx, y + 3))
+            self.screen.blit(letra, (x + jx, y))
+
+        p = _ease_out((self.t_total - 800) / 500.0)
+        if p > 0.0 and k > 0.0:
+            self.subtitulo.set_alpha(int(255 * p * k))
+            self.screen.blit(
+                self.subtitulo, self.subtitulo.get_rect(center=(self.cx, self.subtitulo_y))
+            )
+        p = _ease_out((self.t_total - 950) / 600.0)
+        if p > 0.0 and k > 0.0:
+            semiancho = int(min(self.W * 0.26, 300) * p)
+            y = self.subtitulo_y + 22
+            color = _escalar_color((150, 62, 46), k)
+            pygame.draw.line(self.screen, color, (self.cx - semiancho, y), (self.cx - 8, y), 1)
+            pygame.draw.line(self.screen, color, (self.cx + 8, y), (self.cx + semiancho, y), 1)
+            pygame.draw.polygon(
+                self.screen,
+                _escalar_color((214, 164, 88), k),
+                ((self.cx, y - 5), (self.cx + 5, y), (self.cx, y + 5), (self.cx - 5, y)),
                 1,
             )
 
-            for index, (label, rect) in enumerate(zip(_OPTIONS, button_rects)):
-                active = index == selected
-                fill = (71, 20, 23) if active else (27, 18, 22)
-                border = (
-                    (int(205 + pulse * 45), int(135 + pulse * 24), 74)
-                    if active
-                    else (101, 57, 48)
-                )
-                pygame.draw.rect(screen, fill, rect, border_radius=5)
-                pygame.draw.rect(screen, border, rect, 2 if active else 1, border_radius=5)
-                if active:
-                    accent_x = rect.left + 17
-                    pygame.draw.polygon(
-                        screen,
-                        (225, 163, 76),
-                        (
-                            (accent_x, rect.centery),
-                            (accent_x + 11, rect.centery - 8),
-                            (accent_x + 11, rect.centery + 8),
-                        ),
-                    )
-                text_color = (255, 227, 183) if active else (177, 165, 157)
-                label_surface = option_font.render(label, True, text_color)
-                screen.blit(label_surface, label_surface.get_rect(center=rect.center))
+    def _dibujar_boton(self, i, ts):
+        rect = self.rects[i]
+        p_in = _clamp((self.t_total - (380 + i * 120)) / 520.0)
+        if p_in <= 0.0 or self.k_out <= 0.0:
+            return
+        lado = -1 if i % 2 == 0 else 1
+        e = _ease_out_back(p_in)
+        desplaz = int(lado * (1.0 - e) * self.W * 0.22 + lado * (1.0 - self.k_out) * self.W * 0.10)
+        alfa_total = _clamp(p_in * 1.4) * self.k_out
+        hover = self.hover[i]
+        acento = _ACENTOS[i]
 
-            center_text(
-                "SELECT   ↑  /  ↓        CONFIRM   ENTER",
-                footer_font,
-                (145, 117, 101),
-                panel.bottom - 27,
+        pad = 14
+        w, h = rect.w, rect.h
+        surf = pygame.Surface((w + pad * 2, h + pad * 2), pygame.SRCALPHA)
+        r = pygame.Rect(pad, pad, w, h)
+
+        pygame.draw.rect(surf, (0, 0, 0, 120), r.move(0, 5), border_radius=6)
+        base = _mezcla((24, 16, 21), _mezcla((66, 19, 23), (80, 22, 20), 0.5 if i == 2 else 0.0), hover)
+        pygame.draw.rect(surf, (*base, 238), r, border_radius=6)
+
+        if hover > 0.03:
+            franja = pygame.Surface((w, h), pygame.SRCALPHA)
+            x0 = int(((ts * 0.55 + i * 0.3) % 1.0) * (w + h * 2)) - h
+            pygame.draw.polygon(
+                franja,
+                (255, 224, 176, int(44 * hover)),
+                ((x0, 0), (x0 + 26, 0), (x0 + 26 - h // 2, h), (x0 - h // 2, h)),
+            )
+            surf.blit(franja, r.topleft)
+
+        pulso = 0.5 + 0.5 * math.sin(ts * 3.2 + i)
+        borde = _mezcla((104, 58, 50), _mezcla(acento, (255, 236, 200), pulso * 0.45), hover)
+        pygame.draw.rect(surf, (*borde, 255), r, 2 if hover > 0.5 else 1, border_radius=6)
+        if hover > 0.03:
+            pygame.draw.rect(
+                surf, (*_mezcla(base, (197, 142, 73), 0.55 * hover), 238), r.inflate(-9, -9), 1, border_radius=4
+            )
+            # esquinas ornamentales
+            l = int(10 + 4 * pulso)
+            col = (*_mezcla(base, acento, hover), 255)
+            for sx, sy in ((r.left, r.top), (r.right - 1, r.top), (r.left, r.bottom - 1), (r.right - 1, r.bottom - 1)):
+                dx = 1 if sx == r.left else -1
+                dy = 1 if sy == r.top else -1
+                pygame.draw.line(surf, col, (sx, sy), (sx + dx * l, sy), 2)
+                pygame.draw.line(surf, col, (sx, sy), (sx, sy + dy * l), 2)
+
+            # marcadores animados
+            ax = r.left + 20 + int(3 * math.sin(ts * 5.0))
+            tam = 8 * hover
+            pygame.draw.polygon(
+                surf,
+                (*acento, 255),
+                ((ax, r.centery), (ax + tam * 1.4, r.centery - tam), (ax + tam * 1.4, r.centery + tam)),
+            )
+            bx = r.right - 22 - int(3 * math.sin(ts * 5.0))
+            pygame.draw.polygon(
+                surf,
+                (*acento, 255),
+                ((bx - 7 * hover, r.centery), (bx, r.centery - 7 * hover),
+                 (bx + 7 * hover, r.centery), (bx, r.centery + 7 * hover)),
+                1,
             )
 
-            pygame.display.flip()
+        color_texto = _mezcla((176, 164, 156), (255, 228, 186), hover)
+        if i == 2:
+            color_texto = _mezcla((176, 164, 156), (255, 190, 170), hover)
+        etiqueta = self.fuente_opcion.render(_OPTIONS[i], True, color_texto)
+        pos = etiqueta.get_rect(center=(r.centerx + int(6 * hover), r.centery))
+        if hover > 0.05:
+            parpadeo = 0.65 + 0.35 * math.sin(ts * 31.0)
+            brillo = self.fuente_opcion.render(_OPTIONS[i], True, (255, 44, 30))
+            brillo.set_alpha(int(110 * hover * parpadeo))
+            for dx, dy in ((-2, 0), (2, 0), (0, -2), (0, 2)):
+                surf.blit(brillo, pos.move(dx, dy))
+        surf.blit(etiqueta, pos)
 
-            for event in pygame.event.get():
-                if event.type == pygame.QUIT:
-                    action = "exit"
-                    break
-                if event.type == pygame.KEYDOWN:
-                    if event.key == pygame.K_ESCAPE:
-                        action = "resume"
-                    elif event.key in (pygame.K_UP, pygame.K_w):
-                        selected = (selected - 1) % len(_OPTIONS)
-                    elif event.key in (pygame.K_DOWN, pygame.K_s):
-                        selected = (selected + 1) % len(_OPTIONS)
-                    elif event.key in (pygame.K_RETURN, pygame.K_SPACE):
-                        action = ("resume", "menu", "exit")[selected]
-                elif event.type == pygame.MOUSEMOTION:
-                    for index, rect in enumerate(button_rects):
-                        if rect.collidepoint(event.pos):
-                            selected = index
-                elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                    for index, rect in enumerate(button_rects):
-                        if rect.collidepoint(event.pos):
-                            action = ("resume", "menu", "exit")[index]
-                            break
+        if self.flash > 0.0 and i == self.seleccion:
+            velo_flash = pygame.Surface((w, h), pygame.SRCALPHA)
+            pygame.draw.rect(
+                velo_flash, (255, 240, 210, int(210 * self.flash)), velo_flash.get_rect(), border_radius=6
+            )
+            surf.blit(velo_flash, r.topleft)
+            desplaz += int(self.rng.randint(-3, 3) * self.flash)
+
+        surf.set_alpha(int(255 * alfa_total))
+        self.screen.blit(surf, (rect.x - pad + desplaz, rect.y - pad))
+
+    def _dibujar(self):
+        ts = self.t_total / 1000.0
+        self._dibujar_fondo()
+        self._dibujar_columnas(ts)
+        self._dibujar_brasas()
+        self._dibujar_ondas()
+        self._dibujar_runa(ts)
+        self._dibujar_titulo(ts)
+        for i in range(3):
+            self._dibujar_boton(i, ts)
+
+        p = _suave((self.t_total - 1000) / 500.0) * self.k_out
+        if p > 0.01:
+            self.pie.set_alpha(int(255 * p))
+            self.screen.blit(self.pie, self.pie.get_rect(center=(self.cx, self.H - 22)))
+
+        if self.flash > 0.0:
+            self.destello.set_alpha(int(70 * self.flash))
+            self.screen.blit(self.destello, (0, 0))
+        if self.fase == "salida" and self.definitiva:
+            p = _clamp(self.t_fase / self.salida_ms)
+            self.negro.set_alpha(int(255 * _ease_in(p)))
+            self.screen.blit(self.negro, (0, 0))
+
+    # -------------------------------------------------------------------- bucle
+    def ejecutar(self):
+        reloj = pygame.time.Clock()
+        self._iniciar_audio()
+        self._rafaga(26, self.runa_centro, 120, 420)
+        while self.fase != "fin":
+            dt = min(50, reloj.tick(60))
+            self._procesar_eventos()
+            self._actualizar(dt)
+            self._dibujar()
+            pygame.display.flip()
+        return self.accion
+
+
+def precargar_recursos_pausa():
+    """Opcional: carga gifs y campanas al arrancar para que la 1.ª pausa no tenga tirón."""
+    try:
+        _obtener_recursos()
+    except Exception as error:  # noqa: BLE001
+        print(f"[PAUSA] No se pudieron precargar los recursos: {error}")
+
+
+def pausar_juego(screen, devolver_accion=False):
+    """Muestra el menú de pausa; las salidas se comunican al lanzador del juego."""
+    try:
+        menu = _MenuPausa(screen)
+    except Exception as error:  # noqa: BLE001 - un fallo visual no debe tumbar el juego
+        import traceback
+
+        traceback.print_exc()
+        print(f"[PAUSA] No se pudo crear el menú de pausa: {error}")
+        return "resume" if devolver_accion else None
+
+    try:
+        accion = menu.ejecutar()
     finally:
-        if music_was_playing and pygame.mixer.get_init():
-            pygame.mixer.music.unpause()
+        menu.liberar()
 
     if devolver_accion:
-        return action
-    if action == "menu":
+        return accion
+    if accion == "menu":
         raise SystemExit(RETURN_TO_MENU_EXIT_CODE)
-    if action == "exit":
+    if accion == "exit":
         raise SystemExit(EXIT_GAME_EXIT_CODE)
+    return None

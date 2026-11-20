@@ -1,5 +1,13 @@
 {
-  "character": "Korg",
+  "character": "Diana",
   "completed_levels": [],
-  "prologue_seen": true
+  "prologue_seen": true,
+  "story_progress": {
+    "ascanor_decision": null,
+    "gena_unlocked": false,
+    "level4_completed": false,
+    "first_ending": false,
+    "definitive_ending": false,
+    "game_finished": false
+  }
 }

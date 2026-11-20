@@ -1095,8 +1095,54 @@ bubble_acc = 0.0
 par_x = par_y = 0.0
 
 
+# ----------------------------------------------------------------------------
+# Hiperespacio (transición al elegir un nivel)
+# ----------------------------------------------------------------------------
+HS_ESTRELLAS = 340      # estrellas simuladas en el salto
+HS_FUNDIDO_UI = 0.14    # fracción inicial en la que la interfaz se desvanece
+
+
+def _hs_clamp(x, a=0.0, b=1.0):
+    return max(a, min(b, x))
+
+
+def _hs_suave(t):
+    t = _hs_clamp(t)
+    return t * t * (3.0 - 2.0 * t)
+
+
+def _hs_mezcla(c1, c2, t):
+    return tuple(int(a + (b - a) * t) for a, b in zip(c1, c2))
+
+
+def _hs_renacer(estrella, rng, inicial=False):
+    """estrella = [ángulo, profundidad z, distancia lateral, blanco, grosor, velocidad]."""
+    estrella[0] = rng.random() * math.tau
+    estrella[1] = rng.uniform(0.06, 1.0) if inicial else rng.uniform(0.9, 1.0)
+    estrella[2] = rng.uniform(40.0, 420.0)
+    estrella[3] = rng.random()
+    estrella[4] = rng.choice((1, 1, 2, 2, 3))
+    estrella[5] = rng.uniform(0.6, 1.5)
+
+
+def _hs_radio(distancia, z):
+    """Radio en pantalla de una estrella: nace en el centro (z=1) y sale disparada."""
+    return distancia * (1.0 / z - 1.0) * 0.45 + 4.0
+
+
+def _hs_gradiente(lado, color):
+    base = 32
+    s = pygame.Surface((base, base))
+    c = (base - 1) / 2
+    for y in range(base):
+        for x in range(base):
+            f = max(0.0, 1.0 - math.hypot(x - c, y - c) / c) ** 1.6
+            s.set_at((x, y), tuple(int(v * f) for v in color))
+    return pygame.transform.smoothscale(s, (lado, lado))
+
+
 class LevelSelector:
-    def __init__(self, target_surface, audio_manager, completed_levels=()):
+    def __init__(self, target_surface, audio_manager, completed_levels=(), story_progress=None):
         global audio, cursor, snap_cursor, clickable_nodes, hover_anim
         global bubble_acc, par_x, par_y, current_planet, active_levels
         global current_index, planet_rotation, target_rotation, env_t, env_target
@@ -1124,6 +1170,19 @@ class LevelSelector:
         self.transition_duration_ms = 0
         self.transition_center = (CENTER_X, CENTER_Y)
         self.transition_layer = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
+        self._hs_rng = random.Random(0)
+        self._hs_estrellas = []
+        self._hs_tinte = (90, 195, 255)
+        self._hs_negro = None
+        self._hs_blanco = None
+        self._hs_resplandor = None
+        self.story_progress = dict(story_progress) if story_progress else {}
+        self.set_completed_levels(completed_levels)
+
+    def set_progress(self, completed_levels, story_progress=None):
+        """API que usa main.py: actualiza niveles completados y progreso de historia."""
+        if story_progress is not None:
+            self.story_progress = dict(story_progress)
         self.set_completed_levels(completed_levels)
 
     def set_completed_levels(self, completed_levels):
@@ -1159,11 +1218,27 @@ class LevelSelector:
             return level_number
         return None
 
+    def _preparar_hiperespacio(self, level_number):
+        tinte = (90, 195, 255) if self.transition_kind == "earth" else (255, 85, 40)
+        self._hs_tinte = tinte
+        self._hs_rng = random.Random(900 + level_number)
+        self._hs_estrellas = []
+        for _ in range(HS_ESTRELLAS):
+            estrella = [0.0] * 6
+            _hs_renacer(estrella, self._hs_rng, inicial=True)
+            self._hs_estrellas.append(estrella)
+        self._hs_negro = pygame.Surface((WIDTH, HEIGHT))
+        self._hs_negro.fill((0, 0, 0))
+        self._hs_blanco = pygame.Surface((WIDTH, HEIGHT))
+        self._hs_blanco.fill(_hs_mezcla(tinte, (255, 255, 255), 0.72))
+        self._hs_resplandor = _hs_gradiente(760, tinte)
+
     def _run_level_transition(self, lvl, level_number):
         global planet_rotation
 
         self.transition_kind = "gehena" if level_number == 4 else "earth"
         self.transition_elapsed_ms = 0
+        # El audio de la transición no cambia: su duración marca el ritmo del salto.
         self.transition_duration_ms = max(
             1, self.audio.play_level_transition(level_number)
         )
@@ -1174,6 +1249,8 @@ class LevelSelector:
             int(CENTER_X + R * math.cos(latitude) * math.sin(longitude)),
             int(CENTER_Y - R * math.sin(latitude)),
         )
+        self._preparar_hiperespacio(level_number)
+        set_hand(False)
 
         transition_clock = pygame.time.Clock()
         quit_events = []
@@ -1190,51 +1267,124 @@ class LevelSelector:
             pygame.display.flip()
 
         self.transition_kind = None
+        self._hs_estrellas = []
+        self._hs_negro = self._hs_blanco = self._hs_resplandor = None
         for event in quit_events:
             pygame.event.post(event)
 
     def _draw_level_transition(self, ticks):
-        progress = min(
-            1.0, self.transition_elapsed_ms / self.transition_duration_ms
-        )
-        self.transition_layer.fill((0, 0, 0, 0))
-        color = (90, 195, 255) if self.transition_kind == "earth" else (255, 75, 35)
-        center_x, center_y = self.transition_center
-        angle_offset = ticks / 280
-        max_radius = 22 + round(195 * progress)
+        """Viaje al hiperespacio: acercamiento lento al planeta + estelas del salto.
 
-        for ring_index in range(5):
-            radius = max_radius - ring_index * 17
-            if radius > 4:
-                alpha = max(24, round(185 * (1.0 - progress * 0.55)))
-                pygame.draw.circle(
-                    self.transition_layer,
-                    (*color, alpha),
-                    (center_x, center_y),
-                    radius,
-                    max(1, 4 - ring_index // 2),
-                )
+        0.00-0.35  acercamiento lento; las estrellas empiezan a estirarse
+        0.35-0.80  aceleración: estelas largas, túnel de anillos y resplandor
+        0.80-1.00  destello y fundido a negro (corte limpio hacia el nivel)
+        """
+        duracion = max(1, self.transition_duration_ms)
+        p = _hs_clamp(self.transition_elapsed_ms / duracion)
+        dt_s = self._dt / 1000.0
+        tinte = self._hs_tinte
+        nodo_x, nodo_y = self.transition_center
 
-        for arm in range(3):
-            points = []
-            for step in range(36):
-                distance = 10 + max_radius * step / 35
-                angle = angle_offset + arm * math.tau / 3 + step * 0.18
-                points.append(
-                    (
-                        round(center_x + math.cos(angle) * distance),
-                        round(center_y + math.sin(angle) * distance),
-                    )
-                )
-            pygame.draw.lines(
-                self.transition_layer,
-                (*color, 210),
-                False,
-                points,
-                3,
+        # El punto de fuga deriva desde el centro del planeta hasta el nivel elegido.
+        deriva = _hs_suave((p - 0.10) / 0.60) * 0.85
+        vx = lerp(CENTER_X, nodo_x, deriva)
+        vy = lerp(CENTER_Y, nodo_y, deriva)
+
+        # 1) Acercamiento (cámara que se lanza hacia el planeta).
+        zoom = 1.0 + 3.8 * min(1.0, p / 0.9) ** 2.7
+        ox, oy = vx, vy
+        if zoom > 1.004:
+            w = max(2, int(WIDTH / zoom))
+            h = max(2, int(HEIGHT / zoom))
+            temblor = 5.0 * _hs_suave((p - 0.5) / 0.4)
+            tx = self._hs_rng.uniform(-temblor, temblor)
+            ty = self._hs_rng.uniform(-temblor, temblor)
+            x = max(0, min(WIDTH - w, int(vx - w / 2 + tx)))
+            y = max(0, min(HEIGHT - h, int(vy - h / 2 + ty)))
+            recorte = screen.subsurface((x, y, w, h))
+            screen.blit(pygame.transform.smoothscale(recorte, (WIDTH, HEIGHT)), (0, 0))
+            ox = (vx - x) * WIDTH / w
+            oy = (vy - y) * HEIGHT / h
+
+        # 2) El escenario se oscurece para que las estelas dominen.
+        oscuro = 0.82 * _hs_suave((p - 0.42) / 0.40)
+        if oscuro > 0.01:
+            self._hs_negro.set_alpha(int(255 * oscuro))
+            screen.blit(self._hs_negro, (0, 0))
+
+        # 3) Resplandor del punto de fuga.
+        intensidad = _hs_suave((p - 0.35) / 0.45) * (0.60 + 0.25 * math.sin(ticks / 90.0))
+        if intensidad > 0.02:
+            lado = int(380 + 700 * _hs_suave((p - 0.30) / 0.60))
+            brillo = pygame.transform.smoothscale(self._hs_resplandor, (lado, lado))
+            v = int(255 * _hs_clamp(intensidad))
+            brillo.fill((v, v, v), special_flags=pygame.BLEND_RGB_MULT)
+            screen.blit(
+                brillo,
+                brillo.get_rect(center=(int(ox), int(oy))),
+                special_flags=pygame.BLEND_RGB_ADD,
             )
 
-        screen.blit(self.transition_layer, (0, 0))
+        # 4) Anillos de túnel + estelas.
+        capa = self.transition_layer
+        capa.fill((0, 0, 0, 0))
+        rmax = math.hypot(WIDTH, HEIGHT)
+        centro = (int(ox), int(oy))
+
+        anillos = _hs_suave((p - 0.46) / 0.30)
+        if anillos > 0.02:
+            for j in range(6):
+                fase = (p * 2.6 + j / 6.0) % 1.0
+                radio = int(30 + fase ** 2.2 * rmax * 0.7)
+                alfa = int(120 * anillos * (1.0 - fase))
+                if alfa > 2:
+                    pygame.draw.circle(capa, (*tinte, alfa), centro, radio, 2)
+
+        velocidad = 0.05 + 2.9 * _hs_suave((p - 0.12) / 0.62) ** 2
+        cola_base = 0.004 + 0.24 * _hs_suave((p - 0.10) / 0.62) ** 1.4
+        presencia = _hs_suave((p - 0.04) / 0.22)
+        visibles = 14 + int((HS_ESTRELLAS - 14) * _hs_suave(p / 0.5) ** 0.9)
+        # Al principio las estelas solo aparecen alrededor del planeta; luego lo cruzan.
+        r_min = R * zoom * (1.0 - _hs_suave((p - 0.30) / 0.35))
+        grosor_extra = 1 if p > 0.3 else 0
+
+        for indice, e in enumerate(self._hs_estrellas):
+            e[1] -= velocidad * e[5] * dt_s
+            r_cabeza = _hs_radio(e[2], e[1])
+            if e[1] <= 0.02 or r_cabeza > rmax:
+                _hs_renacer(e, self._hs_rng)
+                continue
+            if indice >= visibles or r_cabeza < r_min:
+                continue
+            brillo_e = _hs_clamp(1.25 - e[1]) * presencia
+            if brillo_e < 0.03:
+                continue
+            z_cola = min(1.0, e[1] + cola_base * e[5])
+            r_cola = max(_hs_radio(e[2], z_cola), r_min)
+            ca, sa = math.cos(e[0]), math.sin(e[0])
+            p0 = (ox + ca * r_cola, oy + sa * r_cola)
+            p1 = (ox + ca * r_cabeza, oy + sa * r_cabeza)
+            nucleo = _hs_mezcla(tinte, (255, 255, 255), 0.55 + 0.45 * e[3])
+            pygame.draw.line(capa, (*tinte, int(80 * brillo_e)), p0, p1, e[4] + 3)
+            pygame.draw.line(capa, (*nucleo, int(235 * brillo_e)), p0, p1, e[4] + grosor_extra)
+        screen.blit(capa, (0, 0))
+
+        # 5) Destello del salto y fundido a negro.
+        destello = _hs_suave((p - 0.80) / 0.12)
+        if destello > 0.01:
+            self._hs_blanco.set_alpha(int(255 * destello))
+            screen.blit(self._hs_blanco, (0, 0))
+        fundido = _hs_suave((p - 0.93) / 0.07)
+        if fundido > 0.01:
+            self._hs_negro.set_alpha(int(255 * fundido))
+            screen.blit(self._hs_negro, (0, 0))
+
+    def _present(self):
+        if self.target_surface.get_size() == (WIDTH, HEIGHT):
+            self.target_surface.blit(screen, (0, 0))
+        else:
+            scaled = pygame.transform.smoothscale(screen, self.target_surface.get_size())
+            self.target_surface.blit(scaled, (0, 0))
 
     def update(self, elapsed_ms):
         self._dt = max(1, min(50, elapsed_ms))
@@ -1310,6 +1460,17 @@ class LevelSelector:
         if env_t > 0.001:
             MIST.set_alpha(int(255 * env_t))
             screen.blit(MIST, (0, HEIGHT - 150))
+
+        escena_limpia = None
+        if self.transition_kind is not None:
+            avance = self.transition_elapsed_ms / max(1, self.transition_duration_ms)
+            if avance >= HS_FUNDIDO_UI:
+                # Salto en marcha: solo planeta y espacio, sin nodos ni botones.
+                self._draw_level_transition(ticks)
+                set_hand(False)
+                self._present()
+                return
+            escena_limpia = screen.copy()
 
         selected = active_levels[current_index]
         longitude = math.radians(selected["lon"] + planet_rotation)
@@ -1387,6 +1548,9 @@ class LevelSelector:
         screen.blit(HUD_TEXT, HUD_TEXT.get_rect(center=(WIDTH // 2, HEIGHT - 18)))
         draw_toast(ticks)
         if self.transition_kind is not None:
+            # Primeros instantes del salto: la interfaz se desvanece sobre la escena limpia.
+            escena_limpia.set_alpha(int(255 * _hs_suave(avance / HS_FUNDIDO_UI)))
+            screen.blit(escena_limpia, (0, 0))
             self._draw_level_transition(ticks)
         set_hand(
             hover_idx is not None
@@ -1395,11 +1559,7 @@ class LevelSelector:
             or BTN_RIGHT.collidepoint(mouse_pos)
         )
 
-        if self.target_surface.get_size() == (WIDTH, HEIGHT):
-            self.target_surface.blit(screen, (0, 0))
-        else:
-            scaled = pygame.transform.smoothscale(screen, self.target_surface.get_size())
-            self.target_surface.blit(scaled, (0, 0))
+        self._present()
 
     def handle_event(self, event):
         global env_target

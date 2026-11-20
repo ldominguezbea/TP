@@ -3,6 +3,7 @@ import runpy
 
 import pygame
 
+from asset_utils import load_image_or_placeholder
 from personajes import crear_jugador
 from barra_vida_jugador import dibujar_barra_vida_jugador
 from menu_pausa import NivelIntegradoFinalizado, pausar_juego
@@ -32,9 +33,11 @@ CARPETA_IMAGENES = os.path.join(BASE_DIR, "imagenes", "Nivel4")
 
 def cargar_imagen_nivel4(nombre_archivo):
     ruta = os.path.join(CARPETA_IMAGENES, nombre_archivo)
-    if not os.path.isfile(ruta):
-        raise FileNotFoundError(f"No se encontró la imagen del nivel 4: {ruta}")
-    imagen = pygame.image.load(ruta).convert()
+    imagen = load_image_or_placeholder(
+        ruta,
+        (ANCHO, ALTO),
+        label=nombre_archivo,
+    )
     return pygame.transform.scale(imagen, (ANCHO, ALTO))
 
 

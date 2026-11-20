@@ -172,33 +172,6 @@ def cargar_imagen_comic(nombre_archivo):
     return surf
 
 
-def mostrar_comic_inicio(screen):
-    img_inicio = cargar_imagen_comic("comic_inicio.png")
-    reloj = pygame.time.Clock()
-    esperando = True
-
-    while esperando:
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                cerrar_nivel("exit")
-            if event.type == pygame.KEYDOWN and event.key == pygame.K_RETURN:
-                esperando = False
-
-        screen.blit(img_inicio, (0, 0))
-
-        lbl_enter = fuente_ui.render("PRESIONA ENTER PARA COMENZAR EL NIVEL 1", True, (255, 255, 255))
-        rect_txt = lbl_enter.get_rect(center=(ANCHO // 2, ALTO - 35))
-        sombra_bg = pygame.Surface((rect_txt.width + 20, rect_txt.height + 10))
-        sombra_bg.fill((0, 0, 0))
-        sombra_bg.set_alpha(180)
-
-        screen.blit(sombra_bg, (rect_txt.x - 10, rect_txt.y - 5))
-        screen.blit(lbl_enter, rect_txt)
-
-        pygame.display.flip()
-        reloj.tick(60)
-
-
 def mostrar_comic_final(screen):
     img_final = cargar_imagen_comic("comic_final.png")
     reloj = pygame.time.Clock()
@@ -881,7 +854,7 @@ def ejecutar_batalla_carnicero(screen, player, fondo_img):
 
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
-                cerrar_nivel()
+                cerrar_nivel("exit")
                 en_batalla = False
                 break
             elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
@@ -1383,8 +1356,6 @@ def separar_enemigos(enemigos, ancho_mundo):
 # ==============================================================================
 # INICIALIZACIÓN Y FLUJO PRINCIPAL DEL JUEGO
 # ==============================================================================
-
-mostrar_comic_inicio(pantalla)
 
 heroe = crear_jugador(
     200,

@@ -39,6 +39,12 @@ from selector_niveles import LevelSelector
 from sonidos_selector_niveles import Audio
 from personajes import PERSONAJE_SELECCIONADO_ENV
 from pergamino_controles import ControlsBook
+from menu_pausa import (
+    EXIT_GAME_EXIT_CODE,
+    RETURN_TO_MENU_EXIT_CODE,
+    NivelIntegradoFinalizado,
+    precargar_recursos_pausa,
+)
 
 
 # ============================================================
@@ -422,6 +428,26 @@ def registrar_resultado_historia(
 
 
 # ============================================================
+# CIERRE LIMPIO
+# ============================================================
+
+def cerrar_juego(codigo=0):
+    """Libera audio y pygame y termina el proceso sin lanzar excepciones."""
+    try:
+        if pygame.mixer.get_init():
+            pygame.mixer.stop()
+            pygame.mixer.music.stop()
+            unload = getattr(pygame.mixer.music, "unload", None)
+            if unload is not None:
+                unload()
+            pygame.mixer.quit()
+    except pygame.error as error:
+        print(f"[AUDIO] Error liberando el audio: {error}")
+    pygame.quit()
+    sys.exit(codigo)
+
+
+# ============================================================
 # VARIABLES DEL JUEGO
 # ============================================================
 
@@ -588,65 +614,14 @@ class MenuAtmosphere:
             special_flags=pygame.BLEND_RGBA_ADD,
         )
 
-def create_navigation_sound():
-    mixer_settings = pygame.mixer.get_init()
-    if mixer_settings is None:
-        raise RuntimeError("El mezclador de pygame no está inicializado.")
-    sample_rate, sample_format, channels = mixer_settings
-    if sample_format != -16:
-        raise RuntimeError(
-            "El sonido de navegación requiere audio PCM firmado de 16 bits."
-        )
-
-    samples = array.array("h")
-    noise = random.Random(501)
-    previous_sample = 0.0
-    sample_count = round(sample_rate * 0.18)
-    for index in range(sample_count):
-        progress = index / sample_count
-        cutoff = 7200 - 6100 * progress
-        filter_amount = 1 - math.exp(-math.tau * cutoff / sample_rate)
-        previous_sample += filter_amount * (noise.uniform(-1, 1) - previous_sample)
-        attack = min(1.0, index / (sample_rate * 0.004))
-        envelope = attack * (1 - progress) ** 2.4
-        value = round(15000 * previous_sample * envelope)
-        samples.extend([value] * channels)
-    return pygame.mixer.Sound(buffer=samples.tobytes())
-
-
-navigation_sound = create_navigation_sound()
-navigation_sound.set_volume(MENU_AUDIO_VOLUME)
 menu_atmosphere = MenuAtmosphere((SCREEN_WIDTH, SCREEN_HEIGHT))
-
-
-def make_sound_segment(sound, start_ms, duration_ms):
-    mixer_settings = pygame.mixer.get_init()
-    if mixer_settings is None:
-        raise RuntimeError("El mezclador de pygame no está inicializado.")
-    sample_rate, sample_format, channels = mixer_settings
-    frame_size = (abs(sample_format) // 8) * channels
-    raw = sound.get_raw()
-    start_frame = round(sample_rate * start_ms / 1000)
-    end_frame = round(sample_rate * (start_ms + duration_ms) / 1000)
-    segment = raw[start_frame * frame_size:end_frame * frame_size]
-    if len(segment) != (end_frame - start_frame) * frame_size:
-        raise ValueError("El audio no contiene la duración solicitada.")
-    return pygame.mixer.Sound(buffer=segment)
-
-
-def play_menu_cue(option):
-    filename, offset_ms, duration_ms = MENU_CUE_FILES[option]
-    sound = pygame.mixer.Sound(str(BASE_DIR / "musica" / filename))
-    if offset_ms:
-        sound = make_sound_segment(sound, offset_ms, duration_ms)
-    sound.set_volume(MENU_AUDIO_VOLUME)
-    sound.play(maxtime=duration_ms)
-    return pygame.time.get_ticks() + duration_ms, sound
 
 
 def launch_level(level_number):
 
     global screen, level_selector, game_state, story_progress
+
+    level_completed = False
 
     if level_selector is None:
         level_selector = LevelSelector(
@@ -677,7 +652,6 @@ def launch_level(level_number):
 
     if level_number in integrated_levels:
         run_name = integrated_levels[level_number]
-        level_completed = False
         previous_cwd = os.getcwd()
 
         try:
@@ -1228,6 +1202,8 @@ def main():
     pending_menu_action = None
     game_state = "MENU"
 
+    precargar_recursos_pausa()
+
     running = run_intro(screen, audio_enabled=audio_disponible)
 
     while running:
@@ -1667,8 +1643,7 @@ def main():
     # CIERRE DEL JUEGO
     # ========================================================
 
-    pygame.quit()
-    sys.exit()
+    cerrar_juego()
 
 if __name__ == "__main__":
     main()

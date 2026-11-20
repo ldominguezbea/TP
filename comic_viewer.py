@@ -6,6 +6,8 @@ from pathlib import Path
 
 import pygame
 
+from asset_utils import load_image_or_placeholder
+
 
 _PAGE_FILES = (
     "Pag_1.png",
@@ -48,9 +50,12 @@ class ComicViewer:
         self.pages = []
         for filename in _PAGE_FILES:
             path = assets_dir / filename
-            if not path.is_file():
-                raise FileNotFoundError(f"No se encontró una página del prólogo: {path}")
-            image = pygame.image.load(str(path)).convert_alpha()
+            image = load_image_or_placeholder(
+                path,
+                self.view_rect.size,
+                alpha=True,
+                label=filename,
+            )
             scale = min(1.0, self.view_rect.width / image.get_width())
             scaled_size = (
                 max(1, round(image.get_width() * scale)),

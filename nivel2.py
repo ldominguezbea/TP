@@ -5,6 +5,7 @@ import math
 from array import array
 from types import SimpleNamespace
 import pygame
+from asset_utils import load_image_or_placeholder
 from personajes import crear_jugador
 from menu_pausa import NivelIntegradoFinalizado, pausar_juego
 
@@ -78,11 +79,17 @@ def cargar_imagen_comic(nombre_archivo):
     ]
     for ruta in rutas:
         if os.path.isfile(ruta):
-            img = pygame.image.load(ruta).convert()
+            img = load_image_or_placeholder(
+                ruta,
+                (ANCHO, ALTO),
+                label=nombre_archivo,
+            )
             return pygame.transform.scale(img, (ANCHO, ALTO))
 
-    raise FileNotFoundError(
-        f"No se encontró el cómic {nombre_archivo}. Rutas revisadas: {rutas}"
+    return load_image_or_placeholder(
+        rutas[0],
+        (ANCHO, ALTO),
+        label=nombre_archivo,
     )
 
 
@@ -176,12 +183,18 @@ def cargar_fondo_nivel2(nombre_archivo):
     )
     for ruta_imagen in rutas:
         if os.path.exists(ruta_imagen):
-            img = pygame.image.load(ruta_imagen).convert()
+            img = load_image_or_placeholder(
+                ruta_imagen,
+                (ANCHO, ALTO),
+                label=nombre_archivo,
+            )
             return pygame.transform.scale(img, (ANCHO, ALTO))
 
-    surf = pygame.Surface((ANCHO, ALTO))
-    surf.fill((20, 15, 25))
-    return surf
+    return load_image_or_placeholder(
+        rutas[0],
+        (ANCHO, ALTO),
+        label=nombre_archivo,
+    )
 
 
 fondos = [
@@ -315,7 +328,7 @@ class Jugador(pygame.sprite.Sprite):
 
     def cargar_animaciones(self):
         ESCALA = (ANCHO_HEROE, ALTO_HEROE)
-        base_path = os.path.join("assets", "Heroes", "P_viento")
+        base_path = os.path.join(BASE_DIR, "assets", "Heroes", "P_viento")
 
         def cargar_secuencia(carpeta, total, omitir=None):
             if omitir is None:
@@ -326,7 +339,12 @@ class Jugador(pygame.sprite.Sprite):
                     continue
                 ruta = os.path.join(base_path, carpeta, f"{carpeta}_{i}.png")
                 if os.path.exists(ruta):
-                    img = pygame.image.load(ruta).convert_alpha()
+                    img = load_image_or_placeholder(
+                        ruta,
+                        ESCALA,
+                        alpha=True,
+                        label=f"{carpeta}_{i}.png",
+                    )
                     imgs.append(pygame.transform.scale(img, ESCALA))
             if not imgs:
                 s = pygame.Surface(ESCALA, pygame.SRCALPHA)
