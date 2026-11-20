@@ -25,9 +25,21 @@ except pygame.error as e:
 from config import SCREEN_WIDTH, SCREEN_HEIGHT, GAME_WIDTH, GAME_HEIGHT, BASE_DIR, abrir_archivo
 from intro import run_intro
 
+
+fullscreen_mode = False
+
+
+def set_game_display_mode(fullscreen):
+    flags = pygame.SCALED | pygame.FULLSCREEN if fullscreen else 0
+    return pygame.display.set_mode(
+        (SCREEN_WIDTH, SCREEN_HEIGHT),
+        flags,
+    )
+
+
 # Configuración del motor de video de Pygame
 canvas = pygame.Surface((GAME_WIDTH, GAME_HEIGHT))
-screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+screen = set_game_display_mode(fullscreen_mode)
 pygame.display.set_caption("REQUIEM: El juicio final")
 clock = pygame.time.Clock()
 
@@ -41,6 +53,7 @@ from personajes import PERSONAJE_SELECCIONADO_ENV
 from pergamino_controles import ControlsBook
 from menu_pausa import (
     EXIT_GAME_EXIT_CODE,
+    RETRY_LEVEL_EXIT_CODE,
     RETURN_TO_MENU_EXIT_CODE,
     NivelIntegradoFinalizado,
     precargar_recursos_pausa,
@@ -52,7 +65,7 @@ from menu_pausa import (
 # ============================================================
 
 canvas = pygame.Surface((GAME_WIDTH, GAME_HEIGHT))
-screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+screen = set_game_display_mode(fullscreen_mode)
 pygame.display.set_caption("REQUIEM: El juicio final")
 
 clock = pygame.time.Clock()
@@ -658,39 +671,48 @@ def launch_level(level_number):
 
             os.chdir(BASE_DIR)
 
-            try:
-                resultado_nivel = runpy.run_path(
-                    str(level_path),
-                    run_name=run_name,
-                )
+            while True:
+                try:
+                    resultado_nivel = runpy.run_path(
+                        str(level_path),
+                        run_name=run_name,
+                    )
 
-            except NivelIntegradoFinalizado as error:
-                level_completed = error.completed
-                if error.action == "menu":
-                    game_state = "MENU"
-                elif error.action == "exit":
-                    game_state = "EXIT"
-            except SystemExit as error:
-                if error.code == RETURN_TO_MENU_EXIT_CODE:
-                    game_state = "MENU"
-                elif error.code == EXIT_GAME_EXIT_CODE:
-                    game_state = "EXIT"
+                except NivelIntegradoFinalizado as error:
+                    if error.action == "retry":
+                        continue
+                    level_completed = error.completed
+                    if error.action == "menu":
+                        game_state = "MENU"
+                    elif error.action == "exit":
+                        game_state = "EXIT"
+                except SystemExit as error:
+                    if error.code == RETURN_TO_MENU_EXIT_CODE:
+                        game_state = "MENU"
+                    elif error.code == EXIT_GAME_EXIT_CODE:
+                        game_state = "EXIT"
+                    elif error.code == RETRY_LEVEL_EXIT_CODE:
+                        continue
+                    else:
+                        raise
                 else:
-                    raise
-            else:
-                level_completed = bool(
-                    resultado_nivel.get("nivel_completado", False)
-                )
-                registrar_resultado_historia(
-                    level_number,
-                    resultado_nivel,
-                    completed_levels,
-                    story_progress,
-                )
-                if resultado_nivel.get("accion_cierre_nivel") == "menu":
-                    game_state = "MENU"
-                elif resultado_nivel.get("accion_cierre_nivel") == "exit":
-                    game_state = "EXIT"
+                    accion_cierre = resultado_nivel.get("accion_cierre_nivel")
+                    if accion_cierre == "retry":
+                        continue
+                    level_completed = bool(
+                        resultado_nivel.get("nivel_completado", False)
+                    )
+                    registrar_resultado_historia(
+                        level_number,
+                        resultado_nivel,
+                        completed_levels,
+                        story_progress,
+                    )
+                    if accion_cierre == "menu":
+                        game_state = "MENU"
+                    elif accion_cierre == "exit":
+                        game_state = "EXIT"
+                break
 
         finally:
 
@@ -898,6 +920,17 @@ def draw_character_artwork(surface, name, cx, cy):
     elif name == "Escanor":
         pygame.draw.rect(surface, (165, 25, 25), (cx - 50, cy - 5, 100, 65), border_radius=10)
         pygame.draw.circle(surface, (240, 190, 145), (cx, cy - 28), 26)
+
+
+def toggle_fullscreen():
+    global screen, fullscreen_mode
+
+    fullscreen_mode = not fullscreen_mode
+    screen = set_game_display_mode(fullscreen_mode)
+    pygame.display.set_caption("REQUIEM: El juicio final")
+
+    if level_selector is not None:
+        level_selector.target_surface = screen
 
 
 def render_menu(time_counter):
@@ -1206,6 +1239,53 @@ def main():
 
     running = run_intro(screen, audio_enabled=audio_disponible)
 
+    def procesar_resultado_selector(result):
+        nonlocal running
+        global chosen_level, game_state
+
+        if result == "back":
+            audio.update_ambient(0.0, active=False)
+            game_state = "CHARACTER_SELECT"
+        elif isinstance(result, int):
+            chosen_level = result
+
+            while game_state == "LEVEL_SELECT":
+                level_completed = launch_level(chosen_level)
+
+                if game_state != "LEVEL_SELECT":
+                    break
+
+                if level_completed:
+                    completed_levels.add(chosen_level)
+                    save_game(
+                        chosen_char_name,
+                        completed_levels,
+                        prologue_seen,
+                        story_progress,
+                    )
+                    level_selector.set_progress(
+                        completed_levels,
+                        story_progress,
+                    )
+                    if story_progress["game_finished"]:
+                        break
+
+                result_action = show_level_result(
+                    chosen_level,
+                    level_completed,
+                )
+                if result_action == "retry":
+                    continue
+                if result_action == "menu":
+                    game_state = "MENU"
+                elif result_action == "levels":
+                    game_state = "LEVEL_SELECT"
+                elif result_action == "exit":
+                    running = False
+                break
+
+            chosen_level = None
+
     while running:
 
         elapsed_ms = clock.tick(60)
@@ -1222,6 +1302,14 @@ def main():
 
                 running = False
 
+            elif (
+                event.type == pygame.MOUSEBUTTONDOWN
+                and game_state == "LEVEL_SELECT"
+            ):
+                procesar_resultado_selector(
+                    level_selector.handle_event(event)
+                )
+
             elif event.type == pygame.MOUSEBUTTONDOWN and game_state == "PROLOGUE":
 
                 get_prologue_viewer().handle_click(event.pos)
@@ -1229,6 +1317,10 @@ def main():
             elif event.type == pygame.MOUSEWHEEL and game_state == "PROLOGUE":
 
                 get_prologue_viewer().handle_scroll(event.y)
+
+            elif event.type == pygame.KEYDOWN and event.key == pygame.K_F11:
+
+                toggle_fullscreen()
 
             elif event.type == pygame.KEYUP:
 
@@ -1360,57 +1452,9 @@ def main():
 
                 elif game_state == "LEVEL_SELECT":
 
-                    result = level_selector.handle_event(event)
-
-                    if result == "back":
-
-                        audio.update_ambient(
-                            0.0,
-                            active=False
-                        )
-
-                        game_state = "CHARACTER_SELECT"
-
-                    elif isinstance(result, int):
-
-                        chosen_level = result
-
-                        while game_state == "LEVEL_SELECT":
-                            level_completed = launch_level(chosen_level)
-
-                            if game_state != "LEVEL_SELECT":
-                                break
-
-                            if level_completed:
-                                completed_levels.add(chosen_level)
-                                save_game(
-                                    chosen_char_name,
-                                    completed_levels,
-                                    prologue_seen,
-                                    story_progress,
-                                )
-                                level_selector.set_progress(
-                                    completed_levels,
-                                    story_progress,
-                                )
-                                if story_progress["game_finished"]:
-                                    break
-
-                            result_action = show_level_result(
-                                chosen_level,
-                                level_completed,
-                            )
-                            if result_action == "retry":
-                                continue
-                            if result_action == "menu":
-                                game_state = "MENU"
-                            elif result_action == "levels":
-                                game_state = "LEVEL_SELECT"
-                            elif result_action == "exit":
-                                running = False
-                            break
-
-                        chosen_level = None
+                    procesar_resultado_selector(
+                        level_selector.handle_event(event)
+                    )
 
         # ====================================================
         # EJECUTAR ACCIONES DEL MENÚ

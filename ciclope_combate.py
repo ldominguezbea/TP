@@ -86,7 +86,6 @@ class AtaqueX:
                 )
                 aviso.set_alpha(alpha)
                 screen.blit(aviso, slash_rect)
-            pygame.draw.ellipse(screen, (255, 115, 115), self.rect, 1)
         elif self.active > 0:
             for surface, _, slash_rect in self.cortes:
                 screen.blit(surface, slash_rect)
@@ -107,7 +106,7 @@ class ProyectilX:
             rect = surface.get_rect(center=(round(x), round(y)))
             self.cortes.append((surface, pygame.mask.from_surface(surface), rect))
         self.rect = self.cortes[0][2].union(self.cortes[1][2])
-        self.dano = 10
+        self.dano = 25
         self.esquivado = False
 
     def update(self, dt):
@@ -577,17 +576,7 @@ class CiclopeCombatController:
                 pygame.draw.circle(aura, color, (radio + 2, radio + 2), radio, 4)
                 screen.blit(aura, (round(center.x - radio - 2), round(center.y - radio - 2)))
 
-        if self.estado == "cuerpo_preparacion":
-            ancho = 165
-            if self.jefe.direction == "right":
-                x = self.jefe.rect.right - 12
-            else:
-                x = self.jefe.rect.left - ancho + 12
-            pygame.draw.rect(
-                screen, (255, 75, 55),
-                (x, self.jefe.rect.bottom - 135, ancho, 135), 3,
-            )
-        elif self.estado in ("distancia_preparacion", "fase3_apuntar"):
+        if self.estado in ("distancia_preparacion", "fase3_apuntar"):
             destino = self.objetivo_telegráfico
             if destino is not None:
                 pygame.draw.line(
@@ -609,7 +598,3 @@ class CiclopeCombatController:
                 y = round(head_y + math.sin(angle) * 16)
                 pygame.draw.line(screen, (255, 235, 120), (x, y + 8), (x + 5, y - 5), 3)
                 pygame.draw.line(screen, (255, 235, 120), (x + 5, y - 5), (x + 10, y + 8), 3)
-
-    @property
-    def texto_transicion(self):
-        return "FASE II" if self.fase == 2 else "FASE III"

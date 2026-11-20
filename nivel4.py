@@ -17,6 +17,7 @@ SUELO_PASILLO = 590
 CAMBIO_PUERTA = 135
 nivel_completado = False
 final_definitivo = False
+accion_cierre_nivel = None
 
 pygame.init()
 pantalla = pygame.display.get_surface()
@@ -48,6 +49,11 @@ def cerrar_nivel(action="exit"):
     raise SystemExit
 
 
+def solicitar_cierre_nivel(action):
+    global accion_cierre_nivel
+    accion_cierre_nivel = action
+
+
 def mostrar_comic(nombre_archivo, instruccion="PRESIONA ENTER PARA CONTINUAR"):
     imagen = cargar_imagen_nivel4(nombre_archivo)
     esperando = True
@@ -64,7 +70,8 @@ def mostrar_comic(nombre_archivo, instruccion="PRESIONA ENTER PARA CONTINUAR"):
                         devolver_accion=NIVEL_INTEGRADO,
                     )
                     if NIVEL_INTEGRADO and accion in ("menu", "exit"):
-                        cerrar_nivel(accion)
+                        solicitar_cierre_nivel(accion)
+                        return
 
         pantalla.blit(imagen, (0, 0))
         texto = fuente_ui.render(instruccion, True, (255, 255, 255))
@@ -79,7 +86,7 @@ def mostrar_comic(nombre_archivo, instruccion="PRESIONA ENTER PARA CONTINUAR"):
 
 
 def iniciar_batalla(jugador):
-    global final_definitivo
+    global accion_cierre_nivel, final_definitivo
 
     ruta_batalla = os.path.join(BASE_DIR, "Ignis_jefe_batalla.py")
     resultado = runpy.run_path(
@@ -91,6 +98,9 @@ def iniciar_batalla(jugador):
         ),
         init_globals={"jugador_nivel4": jugador},
     )
+    accion_cierre_nivel = resultado.get("accion_cierre_nivel")
+    if accion_cierre_nivel is not None:
+        return False
     final_definitivo = bool(resultado.get("final_definitivo", False))
     return bool(resultado.get("nivel_completado", False))
 
@@ -117,7 +127,9 @@ def recorrer_escenarios(jugador):
                     devolver_accion=NIVEL_INTEGRADO,
                 )
                 if NIVEL_INTEGRADO and accion in ("menu", "exit"):
-                    cerrar_nivel(accion)
+                    solicitar_cierre_nivel(accion)
+                    ejecutando = False
+                    break
             elif (
                 evento.type == pygame.KEYDOWN
                 and evento.key == pygame.K_c
@@ -137,6 +149,9 @@ def recorrer_escenarios(jugador):
             else:
                 jugador.procesar_evento(evento)
 
+        if not ejecutando:
+            break
+
         jugador.update(0, transicion_realizada=True)
         pantalla.blit(fondos[escenario], (0, 0))
         pantalla.blit(jugador.image, jugador.rect)
@@ -144,8 +159,6 @@ def recorrer_escenarios(jugador):
         jugador.dibujar_barra_energia(pantalla)
         suelo_actual = SUELO if escenario == 0 else SUELO_PASILLO
 
-        ayuda = fuente_ui.render("A / D: MOVERSE   W: SALTAR", True, (255, 245, 220))
-        pantalla.blit(ayuda, (28, 24))
         if cerca_de_puerta:
             aviso = fuente.render("PRESIONA C PARA ENTRAR", True, (255, 225, 160))
             caja = aviso.get_rect(center=(entradas[escenario], suelo_actual - 135))
@@ -160,7 +173,11 @@ def recorrer_escenarios(jugador):
 
 def main():
     mostrar_comic("nivel4_1.png")
+    if accion_cierre_nivel is not None:
+        return False
     mostrar_comic("nivel4_2.png")
+    if accion_cierre_nivel is not None:
+        return False
     jugador = crear_jugador(170, SUELO, SUELO, ANCHO, ANCHO)
     jugador.max_health = 150
     jugador.health = jugador.max_health

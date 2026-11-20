@@ -7,7 +7,12 @@ API pública (sin cambios respecto a la versión anterior):
         - devolver_accion=False -> "resume" devuelve None; "menu" y "exit"
                                    lanzan SystemExit con los códigos de abajo.
 
-    RETURN_TO_MENU_EXIT_CODE, EXIT_GAME_EXIT_CODE, NivelIntegradoFinalizado
+    menu_muerte_juego(screen, devolver_accion=False)
+        - devolver_accion=True  -> devuelve "retry" | "menu" | "exit"
+        - devolver_accion=False -> lanza SystemExit con el código de la acción.
+
+    RETURN_TO_MENU_EXIT_CODE, EXIT_GAME_EXIT_CODE, RETRY_LEVEL_EXIT_CODE,
+    NivelIntegradoFinalizado
 
 Recursos opcionales (se buscan por nombre dentro de la carpeta del proyecto,
 hasta 5 niveles de profundidad):
@@ -29,6 +34,7 @@ import pygame
 
 RETURN_TO_MENU_EXIT_CODE = 10
 EXIT_GAME_EXIT_CODE = 11
+RETRY_LEVEL_EXIT_CODE = 12
 
 _OPTIONS = ("Resume", "Return to menu", "Exit game")
 _ACCIONES = ("resume", "menu", "exit")
@@ -368,15 +374,156 @@ def _brillo_de_frame(frame, tam):
     return pygame.transform.smoothscale(pequena, (lado, lado))
 
 
+def _crear_calavera():
+    tam = 360
+    icono = pygame.Surface((tam, tam), pygame.SRCALPHA)
+    contorno = (39, 25, 26, 255)
+    hueso = (211, 195, 169, 255)
+    sombra_hueso = (153, 125, 102, 255)
+    luz_hueso = (244, 229, 200, 255)
+
+    silueta = (
+        (180, 25), (218, 31), (250, 49), (274, 77), (289, 111),
+        (290, 139), (279, 164), (260, 183), (253, 207), (248, 229),
+        (231, 251), (208, 267), (180, 278), (152, 267), (129, 251),
+        (112, 229), (107, 207), (100, 183), (81, 164), (70, 139),
+        (71, 111), (86, 77), (110, 49), (142, 31),
+    )
+    pygame.draw.polygon(icono, contorno, silueta)
+    pygame.draw.polygon(
+        icono,
+        hueso,
+        (
+            (180, 34), (215, 40), (245, 58), (266, 84), (279, 114),
+            (279, 137), (268, 158), (250, 175), (242, 198), (239, 218),
+            (227, 239), (211, 254), (195, 264), (180, 269), (165, 264),
+            (149, 254), (133, 239), (121, 218), (118, 198), (110, 175),
+            (92, 158), (81, 137), (81, 114), (94, 84), (115, 58),
+            (145, 40),
+        ),
+    )
+
+    pygame.draw.polygon(
+        icono,
+        (164, 136, 110, 255),
+        ((94, 87), (117, 59), (146, 41), (158, 53), (145, 107),
+         (133, 169), (121, 211), (110, 176), (91, 158), (81, 137)),
+    )
+    pygame.draw.ellipse(icono, (230, 215, 187, 255), (137, 48, 90, 34))
+    pygame.draw.line(icono, (249, 235, 211, 185), (143, 58), (169, 48), 4)
+    pygame.draw.line(icono, (135, 105, 83, 150), (219, 61), (247, 91), 3)
+
+    for reflejar in (False, True):
+        espejo = lambda puntos: [
+            (tam - x if reflejar else x, y) for x, y in puntos
+        ]
+        ceja = espejo(
+            ((98, 120), (112, 99), (138, 92), (160, 102), (169, 116),
+             (157, 125), (132, 119), (111, 135))
+        )
+        pygame.draw.polygon(icono, sombra_hueso, ceja)
+        pygame.draw.lines(
+            icono, luz_hueso, False,
+            espejo(((101, 117), (117, 102), (140, 99), (158, 108))),
+            5,
+        )
+        cuenca = espejo(
+            ((105, 125), (119, 111), (141, 108), (158, 118), (162, 137),
+             (151, 154), (131, 160), (113, 151), (102, 138))
+        )
+        pygame.draw.polygon(icono, contorno, cuenca)
+        pygame.draw.ellipse(
+            icono,
+            (20, 12, 16, 255),
+            pygame.Rect(114 if not reflejar else 204, 120, 35, 29),
+        )
+        pómulo = espejo(
+            ((101, 155), (119, 163), (143, 166), (158, 178), (142, 188),
+             (119, 181), (105, 171))
+        )
+        pygame.draw.polygon(icono, sombra_hueso, pómulo)
+        pygame.draw.lines(
+            icono, luz_hueso, False,
+            espejo(((103, 158), (123, 166), (145, 169))), 4,
+        )
+
+    pygame.draw.polygon(
+        icono,
+        (34, 20, 22, 255),
+        ((180, 154), (163, 187), (169, 201), (191, 201), (197, 187)),
+    )
+    pygame.draw.line(icono, (119, 88, 70, 255), (178, 160), (171, 188), 3)
+    pygame.draw.line(icono, (244, 229, 200, 190), (177, 86), (178, 120), 3)
+
+    mandibula = (
+        (113, 180), (247, 180), (247, 209), (237, 236), (219, 254),
+        (199, 266), (180, 272), (161, 266), (141, 254), (123, 236),
+        (113, 209),
+    )
+    pygame.draw.polygon(icono, contorno, mandibula)
+    pygame.draw.polygon(
+        icono,
+        (190, 170, 143, 255),
+        ((120, 187), (240, 187), (239, 209), (230, 233), (214, 249),
+         (197, 260), (180, 265), (163, 260), (146, 249), (130, 233),
+         (121, 209)),
+    )
+    pygame.draw.polygon(
+        icono,
+        (38, 21, 22, 255),
+        ((132, 194), (228, 194), (225, 228), (210, 239), (150, 239),
+         (135, 228)),
+    )
+
+    for indice, x in enumerate(range(139, 218, 13)):
+        altura = 23 if indice in (1, 5) else 27
+        diente = ((x, 197), (x + 10, 197), (x + 9, 197 + altura), (x + 2, 197 + altura))
+        pygame.draw.polygon(icono, (239, 225, 198, 255), diente)
+        pygame.draw.lines(icono, (110, 82, 68, 230), False, diente, 2)
+
+    for indice, x in enumerate(range(146, 210, 16)):
+        altura = 13 if indice in (0, 3) else 16
+        diente = ((x, 238), (x + 11, 238), (x + 10, 238 - altura), (x + 1, 238 - altura))
+        pygame.draw.polygon(icono, (207, 190, 163, 255), diente)
+        pygame.draw.lines(icono, (92, 67, 57, 220), False, diente, 2)
+
+    pygame.draw.line(icono, (92, 66, 57, 255), (126, 226), (145, 244), 3)
+    pygame.draw.line(icono, (92, 66, 57, 255), (234, 226), (215, 244), 3)
+    pygame.draw.lines(
+        icono, (125, 91, 72, 220), False,
+        ((139, 68), (128, 83), (134, 92), (125, 103)), 3,
+    )
+    pygame.draw.lines(
+        icono, (125, 91, 72, 190), False,
+        ((239, 106), (229, 115), (235, 124)), 3,
+    )
+    for x, y, radio in ((116, 188, 3), (126, 194, 2), (237, 188, 3), (228, 194, 2)):
+        pygame.draw.circle(icono, (115, 83, 67, 255), (x, y), radio)
+
+    return icono
+
+
 # ----------------------------------------------------------------------------
 # Menú de pausa
 # ----------------------------------------------------------------------------
 class _MenuPausa:
-    def __init__(self, screen):
+    def __init__(self, screen, menu_muerte=False):
         self.screen = screen
         self.W, self.H = screen.get_size()
         self.rec = _obtener_recursos()
         self.rng = random.Random()
+        self.menu_muerte = menu_muerte
+        self.opciones = (
+            ("Retry", "Return to menu", "Exit game")
+            if menu_muerte
+            else _OPTIONS
+        )
+        self.acciones = ("retry", "menu", "exit") if menu_muerte else _ACCIONES
+        self.acentos = (
+            ((232, 70, 56), (222, 140, 78), (178, 62, 54))
+            if menu_muerte
+            else _ACENTOS
+        )
 
         # Estado
         self.fase = "entrada"        # entrada -> reposo -> salida -> fin
@@ -457,13 +604,14 @@ class _MenuPausa:
         self.runa_idle = escalar(self.rec.runa_idle)
         self.runa_entrada = escalar(self.rec.runa_entrada)
         self.runa_salida = escalar(self.rec.runa_salida)
+        self.calavera = _crear_calavera()
         lado = int(tam * 2.7)
         self.resplandor_fondo = _gradiente_radial_alfa(lado, (170, 30, 20), 150, 1.7)
 
     def _preparar_textos(self):
         fuente_titulo = _fuente("Georgia", max(36, min(54, self.H // 13)))
         self.letras = []
-        texto = "PAUSED"
+        texto = "YOU DIED" if self.menu_muerte else "PAUSED"
         sep = max(6, fuente_titulo.size("A")[0] // 5)
         anchos = [fuente_titulo.size(c)[0] for c in texto]
         total = sum(anchos) + sep * (len(texto) - 1)
@@ -478,11 +626,22 @@ class _MenuPausa:
             )
             x += ancho + sep
         fuente_sub = _fuente("Arial", max(14, self.H // 42))
-        self.subtitulo = fuente_sub.render("THE INVASION WAITS FOR NO ONE", True, (184, 88, 70))
+        texto_subtitulo = (
+            "THE END IS ONLY THE BEGINNING"
+            if self.menu_muerte
+            else "THE INVASION WAITS FOR NO ONE"
+        )
+        self.subtitulo = fuente_sub.render(
+            texto_subtitulo, True, (184, 88, 70)
+        )
         self.fuente_opcion = _fuente("Georgia", max(21, self.H // 29))
         fuente_pie = _fuente("Arial", max(12, self.H // 56))
         self.pie = fuente_pie.render(
-            "SELECT   \u2191  /  \u2193        CONFIRM   ENTER        RESUME   ESC",
+            (
+                "SELECT   \u2191  /  \u2193        CONFIRM   ENTER"
+                if self.menu_muerte
+                else "SELECT   \u2191  /  \u2193        CONFIRM   ENTER        RESUME   ESC"
+            ),
             True,
             (150, 120, 104),
         )
@@ -531,7 +690,7 @@ class _MenuPausa:
 
     def liberar(self):
         """Deja audio y eventos limpios, tanto al reanudar como al salir."""
-        saliendo = self.accion in ("menu", "exit")
+        saliendo = self.accion in ("menu", "exit", "retry")
         if self.audio:
             try:
                 if saliendo:
@@ -575,7 +734,9 @@ class _MenuPausa:
         if indice is not None:
             self.seleccion = indice
         self.accion = accion
-        self.definitiva = accion in ("menu", "exit")
+        self.definitiva = accion in ("menu", "exit") or (
+            self.menu_muerte and accion == "retry"
+        )
         self.salida_ms = (
             DURACION_SALIDA_DEFINITIVA_MS if self.definitiva else DURACION_SALIDA_REANUDAR_MS
         )
@@ -612,13 +773,16 @@ class _MenuPausa:
                 continue
             if ev.type == pygame.KEYDOWN:
                 if ev.key == pygame.K_ESCAPE:
-                    self._pedir("resume", 0)
+                    if self.menu_muerte:
+                        self._pedir("menu", 1)
+                    else:
+                        self._pedir("resume", 0)
                 elif ev.key in (pygame.K_UP, pygame.K_w):
-                    self._seleccionar((self.seleccion - 1) % 3)
+                    self._seleccionar((self.seleccion - 1) % len(self.opciones))
                 elif ev.key in (pygame.K_DOWN, pygame.K_s):
-                    self._seleccionar((self.seleccion + 1) % 3)
+                    self._seleccionar((self.seleccion + 1) % len(self.opciones))
                 elif ev.key in (pygame.K_RETURN, pygame.K_KP_ENTER, pygame.K_SPACE):
-                    self._pedir(_ACCIONES[self.seleccion], self.seleccion)
+                    self._pedir(self.acciones[self.seleccion], self.seleccion)
             elif ev.type == pygame.MOUSEMOTION:
                 for i, rect in enumerate(self.rects):
                     if rect.collidepoint(ev.pos):
@@ -626,7 +790,7 @@ class _MenuPausa:
             elif ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1:
                 for i, rect in enumerate(self.rects):
                     if rect.collidepoint(ev.pos):
-                        self._pedir(_ACCIONES[i], i)
+                        self._pedir(self.acciones[i], i)
                         break
 
     # -------------------------------------------------------------- simulación
@@ -839,6 +1003,30 @@ class _MenuPausa:
 
         self._dibujar_halos(ts, vis)
 
+        if self.menu_muerte:
+            tam = max(72, int(self.runa_tam * escala * 0.72))
+            pulso = 0.5 + 0.5 * math.sin(ts * 3.4)
+            icono = self.calavera.copy()
+            brillo_ojos = pygame.Surface(icono.get_size(), pygame.SRCALPHA)
+            alpha_ojos = int(35 + 55 * pulso)
+            pygame.draw.ellipse(
+                brillo_ojos, (255, 73, 39, alpha_ojos), (126, 132, 20, 12)
+            )
+            pygame.draw.ellipse(
+                brillo_ojos, (255, 73, 39, alpha_ojos), (214, 132, 20, 12)
+            )
+            pygame.draw.circle(
+                brillo_ojos, (255, 174, 105, min(190, alpha_ojos + 75)), (136, 138), 3
+            )
+            pygame.draw.circle(
+                brillo_ojos, (255, 174, 105, min(190, alpha_ojos + 75)), (224, 138), 3
+            )
+            icono.blit(brillo_ojos, (0, 0))
+            icono = pygame.transform.smoothscale(icono, (tam, tam))
+            icono.set_alpha(alfa)
+            self.screen.blit(icono, icono.get_rect(center=(cx, cy)))
+            return
+
         # brillo aditivo del propio frame
         intensidad = _clamp(brillo * 0.55 * vis, 0.0, 1.0)
         g = resplandor
@@ -906,7 +1094,7 @@ class _MenuPausa:
         desplaz = int(lado * (1.0 - e) * self.W * 0.22 + lado * (1.0 - self.k_out) * self.W * 0.10)
         alfa_total = _clamp(p_in * 1.4) * self.k_out
         hover = self.hover[i]
-        acento = _ACENTOS[i]
+        acento = self.acentos[i]
 
         pad = 14
         w, h = rect.w, rect.h
@@ -963,11 +1151,13 @@ class _MenuPausa:
         color_texto = _mezcla((176, 164, 156), (255, 228, 186), hover)
         if i == 2:
             color_texto = _mezcla((176, 164, 156), (255, 190, 170), hover)
-        etiqueta = self.fuente_opcion.render(_OPTIONS[i], True, color_texto)
+        etiqueta = self.fuente_opcion.render(self.opciones[i], True, color_texto)
         pos = etiqueta.get_rect(center=(r.centerx + int(6 * hover), r.centery))
         if hover > 0.05:
             parpadeo = 0.65 + 0.35 * math.sin(ts * 31.0)
-            brillo = self.fuente_opcion.render(_OPTIONS[i], True, (255, 44, 30))
+            brillo = self.fuente_opcion.render(
+                self.opciones[i], True, (255, 44, 30)
+            )
             brillo.set_alpha(int(110 * hover * parpadeo))
             for dx, dy in ((-2, 0), (2, 0), (0, -2), (0, 2)):
                 surf.blit(brillo, pos.move(dx, dy))
@@ -1048,6 +1238,25 @@ def pausar_juego(screen, devolver_accion=False):
 
     if devolver_accion:
         return accion
+    if accion == "menu":
+        raise SystemExit(RETURN_TO_MENU_EXIT_CODE)
+    if accion == "exit":
+        raise SystemExit(EXIT_GAME_EXIT_CODE)
+    return None
+
+
+def menu_muerte_juego(screen, devolver_accion=False):
+    """Muestra el menú de derrota con la misma presentación que el de pausa."""
+    menu = _MenuPausa(screen, menu_muerte=True)
+    try:
+        accion = menu.ejecutar()
+    finally:
+        menu.liberar()
+
+    if devolver_accion:
+        return accion
+    if accion == "retry":
+        raise SystemExit(RETRY_LEVEL_EXIT_CODE)
     if accion == "menu":
         raise SystemExit(RETURN_TO_MENU_EXIT_CODE)
     if accion == "exit":

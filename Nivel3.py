@@ -2,10 +2,17 @@ import os
 import sys
 import random
 import math
+from array import array
 import pygame
 from asset_utils import load_image_or_placeholder
 from personajes import crear_jugador
-from menu_pausa import NivelIntegradoFinalizado, pausar_juego
+from menu_pausa import NivelIntegradoFinalizado, menu_muerte_juego, pausar_juego
+from cinematica_final import (
+    DURACION_MINIMA_FIN_MS,
+    PantallaFinalEpica,
+    detener_musica_epica,
+    iniciar_musica_epica,
+)
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -18,6 +25,7 @@ pygame.init()
 pygame.font.init()
 NIVEL_INTEGRADO = __name__ == "_nivel3_integrado"
 nivel_completado = False
+accion_cierre_nivel = None
 decision_ascanor = None
 gena_desbloqueado = False
 primer_final_alcanzado = False
@@ -32,10 +40,11 @@ ANCHO_MUNDO = ANCHO * 7
 PORTAL_X = ANCHO_MUNDO - 500
 HUECO_INICIO = PORTAL_X - 150
 HUECO_FIN = PORTAL_X + 150
-TRAMO_FONDO_TUNELES = int(PORTAL_X * 0.7) // ANCHO + 1
-PUERTA_TUNELES_X = TRAMO_FONDO_TUNELES * ANCHO
-FIN_TRAMO_FONDO_TUNELES = PUERTA_TUNELES_X + ANCHO
+TRAMO_FONDO_TUNELES = int(PORTAL_X * 0.7) // ANCHO
+PUERTA_TUNELES_X = TRAMO_FONDO_TUNELES * ANCHO - 50
+FIN_TRAMO_FONDO_TUNELES = (TRAMO_FONDO_TUNELES + 2) * ANCHO
 LIMITE_POST_TUNELES_X = FIN_TRAMO_FONDO_TUNELES + 80
+LIMITE_ENEMIGOS_PRE_TUNELES_X = TRAMO_FONDO_TUNELES * ANCHO
 
 pantalla = pygame.display.get_surface()
 if pantalla is None:
@@ -49,13 +58,34 @@ def cerrar_nivel(action="exit"):
     pygame.quit()
     sys.exit()
 
+
+def solicitar_cierre_nivel(action):
+    if NIVEL_INTEGRADO:
+        global accion_cierre_nivel
+        accion_cierre_nivel = action
+        return
+    cerrar_nivel(action)
+
+
+def muerte_terminada(jugador):
+    return getattr(jugador, "muerto", False) and (
+        getattr(jugador, "muerte_terminada", False)
+        or not jugador.alive()
+    )
+
+
+def mostrar_menu_muerte(screen):
+    if NIVEL_INTEGRADO:
+        solicitar_cierre_nivel(menu_muerte_juego(screen, devolver_accion=True))
+        return
+    menu_muerte_juego(screen)
+
+
 # Tamaño del sprite ajustado a escala humana
 ANCHO_HEROE, ALTO_HEROE = 300, 300
 
 # Fuentes
 fuente_lava_pixel = pygame.font.SysFont("Courier", 9, bold=True)
-fuente_boss_title = pygame.font.SysFont("Georgia", 76, bold=True)
-fuente_boss_subtitle = pygame.font.SysFont("Georgia", 32, italic=True)
 fuente_jefe = pygame.font.SysFont("Georgia", 26, bold=True, italic=True)
 fuente_ui = pygame.font.SysFont("Arial", 16, bold=True)
 fuente_progreso = pygame.font.SysFont("Impact", 22)
@@ -87,6 +117,163 @@ def dibujar_luna_roja_batalla(screen, tiempo):
 # ==============================================================================
 # CARGA DE IMÁGENES
 # ==============================================================================
+def mostrar_intro_zareth(screen, fondo):
+    ancho, alto = screen.get_size()
+    reloj = pygame.time.Clock()
+    inicio = pygame.time.get_ticks()
+    duracion_ms = 3000
+    fuente_etiqueta = pygame.font.SysFont("Arial", 18, bold=True)
+    fuente_titulo = pygame.font.SysFont("Georgia", 92, bold=True)
+    fuente_epiteto = pygame.font.SysFont("Georgia", 32, bold=True, italic=True)
+    fuente_cierre = pygame.font.SysFont("Arial", 18, bold=True)
+
+    panel_rect = pygame.Rect(0, 0, int(ancho * 0.76), int(alto * 0.56))
+    panel_rect.center = (ancho // 2, alto // 2)
+    panel = pygame.Surface(panel_rect.size, pygame.SRCALPHA)
+    oscurecer = pygame.Surface((ancho, alto), pygame.SRCALPHA)
+    oscurecer.fill((5, 2, 18, 185))
+    particulas = [
+        [
+            random.uniform(0, ancho),
+            random.uniform(0, alto),
+            random.uniform(18, 68),
+            random.randint(1, 3),
+            random.uniform(0, math.tau),
+        ]
+        for _ in range(34)
+    ]
+
+    while True:
+        dt = reloj.tick(60) / 1000.0
+        transcurrido = pygame.time.get_ticks() - inicio
+        if transcurrido >= duracion_ms:
+            return
+
+        for evento in pygame.event.get():
+            if evento.type == pygame.QUIT:
+                cerrar_nivel("exit")
+            elif evento.type == pygame.KEYDOWN:
+                if evento.key in (pygame.K_RETURN, pygame.K_SPACE):
+                    return
+                if evento.key == pygame.K_ESCAPE:
+                    action = pausar_juego(
+                        screen,
+                        devolver_accion=NIVEL_INTEGRADO,
+                    )
+                    if action in ("menu", "exit"):
+                        solicitar_cierre_nivel(action)
+                        return
+
+        entrada = min(1.0, transcurrido / 550.0)
+        screen.blit(fondo, (0, 0))
+        screen.blit(oscurecer, (0, 0))
+
+        for particula in particulas:
+            particula[1] -= particula[2] * dt
+            if particula[1] < 0:
+                particula[0] = random.uniform(0, ancho)
+                particula[1] = alto
+            brillo = round(
+                12
+                + 12
+                * (0.5 + 0.5 * math.sin(transcurrido / 180 + particula[4]))
+            )
+            pygame.draw.circle(
+                screen,
+                (112 + brillo, 72 + brillo, 190 + brillo),
+                (round(particula[0]), round(particula[1])),
+                particula[3],
+            )
+
+        panel.fill((8, 4, 22, int(226 * entrada)))
+        screen.blit(panel, panel_rect)
+        pulso = 0.5 + 0.5 * math.sin(transcurrido / 260.0)
+        color_marco = (int(90 + 75 * pulso), 65, 205)
+        pygame.draw.rect(
+            screen,
+            (int(70 * entrada), 36, int(155 * entrada)),
+            panel_rect,
+            2,
+            border_radius=8,
+        )
+
+        margen = 34
+        largo_esquina = 58
+        esquinas = (
+            ((panel_rect.left + margen, panel_rect.top + margen),
+             (panel_rect.left + margen + largo_esquina, panel_rect.top + margen)),
+            ((panel_rect.right - margen, panel_rect.top + margen),
+             (panel_rect.right - margen - largo_esquina, panel_rect.top + margen)),
+            ((panel_rect.left + margen, panel_rect.bottom - margen),
+             (panel_rect.left + margen + largo_esquina, panel_rect.bottom - margen)),
+            ((panel_rect.right - margen, panel_rect.bottom - margen),
+             (panel_rect.right - margen - largo_esquina, panel_rect.bottom - margen)),
+        )
+        for inicio_linea, fin_linea in esquinas:
+            pygame.draw.line(screen, color_marco, inicio_linea, fin_linea, 2)
+
+        centro = (ancho // 2, panel_rect.top + 175)
+        radio = 76 + round(5 * pulso)
+        pygame.draw.circle(screen, (77, 36, 132), centro, radio + 18, 1)
+        pygame.draw.circle(screen, color_marco, centro, radio, 2)
+        pygame.draw.circle(screen, (175, 125, 245), centro, 5 + round(2 * pulso))
+
+        etiqueta = fuente_etiqueta.render(
+            "JEFE FINAL  |  NIVEL 3", True, (185, 164, 225)
+        )
+        etiqueta.set_alpha(int(255 * entrada))
+        screen.blit(
+            etiqueta,
+            etiqueta.get_rect(center=(ancho // 2, panel_rect.top + 70)),
+        )
+
+        titulo_sombra = fuente_titulo.render("ZARETH", True, (20, 7, 42))
+        titulo = fuente_titulo.render("ZARETH", True, (235, 222, 255))
+        epiteto = fuente_epiteto.render(
+            "EL AMO DE LAS SOMBRAS", True, (177, 130, 238)
+        )
+        for superficie in (titulo_sombra, titulo, epiteto):
+            superficie.set_alpha(int(255 * entrada))
+
+        rect_titulo = titulo.get_rect(
+            center=(ancho // 2, panel_rect.top + 175 + int((1 - entrada) * 18))
+        )
+        screen.blit(titulo_sombra, rect_titulo.move(3, 5))
+        screen.blit(titulo, rect_titulo)
+        screen.blit(
+            epiteto,
+            epiteto.get_rect(center=(ancho // 2, panel_rect.top + 250)),
+        )
+
+        separador_y = panel_rect.top + 294
+        pygame.draw.line(
+            screen,
+            (91, 62, 150),
+            (panel_rect.left + 130, separador_y),
+            (panel_rect.right - 130, separador_y),
+            1,
+        )
+        cierre = fuente_cierre.render(
+            "LA OSCURIDAD DESPIERTA", True, (205, 190, 235)
+        )
+        cierre.set_alpha(int(255 * entrada))
+        screen.blit(
+            cierre,
+            cierre.get_rect(center=(ancho // 2, panel_rect.top + 337)),
+        )
+        continuar = fuente_etiqueta.render(
+            "ENTER / ESPACIO  |  SALTAR INTRO",
+            True,
+            (165, 145, 205),
+        )
+        continuar.set_alpha(int(220 * entrada))
+        screen.blit(
+            continuar,
+            continuar.get_rect(center=(ancho // 2, panel_rect.bottom + 32)),
+        )
+        pygame.display.flip()
+
+
 def cargar_imagen_comic_nivel3(nombre_archivo):
     rutas = (
         os.path.join(BASE_DIR, "imagenes", "Nivel3", nombre_archivo),
@@ -235,8 +422,15 @@ def mostrar_comic_final(screen):
     return opcion
 
 
-def esperar_enter_nuevo(screen, reloj, enter_liberado=True):
+def esperar_enter_nuevo(
+    screen,
+    reloj,
+    enter_liberado=True,
+    dibujar=None,
+    duracion_minima_ms=0,
+):
     teclas_enter = (pygame.K_RETURN, pygame.K_KP_ENTER)
+    inicio_ms = pygame.time.get_ticks()
     while True:
         enter_aceptado = False
         for evento in pygame.event.get():
@@ -245,12 +439,19 @@ def esperar_enter_nuevo(screen, reloj, enter_liberado=True):
             if evento.type == pygame.KEYUP and evento.key in teclas_enter:
                 enter_liberado = True
             elif evento.type == pygame.KEYDOWN and evento.key in teclas_enter:
-                if enter_liberado and not enter_aceptado:
+                if (
+                    enter_liberado
+                    and not enter_aceptado
+                    and pygame.time.get_ticks() - inicio_ms >= duracion_minima_ms
+                ):
                     enter_aceptado = True
                 enter_liberado = False
         if enter_aceptado:
             return enter_liberado
-        screen.fill((0, 0, 0))
+        if dibujar is None:
+            screen.fill((0, 0, 0))
+        else:
+            dibujar()
         pygame.display.flip()
         reloj.tick(60)
 
@@ -285,15 +486,21 @@ def mostrar_primer_final(screen):
         pygame.display.flip()
         reloj.tick(60)
 
-    screen.fill((0, 0, 0))
-    texto_fin = pygame.font.SysFont("Arial", 56, bold=True).render(
-        "FIN",
-        True,
-        (255, 255, 255),
+    pantalla_fin = PantallaFinalEpica(
+        screen,
+        imagen,
+        "Escanor eligio no cruzar el portal. El destino del mundo cambio.",
     )
-    screen.blit(texto_fin, texto_fin.get_rect(center=(ANCHO // 2, ALTO // 2)))
-    pygame.display.flip()
-    esperar_enter_nuevo(screen, reloj)
+    iniciar_musica_epica()
+    try:
+        esperar_enter_nuevo(
+            screen,
+            reloj,
+            dibujar=pantalla_fin.draw,
+            duracion_minima_ms=DURACION_MINIMA_FIN_MS,
+        )
+    finally:
+        detener_musica_epica()
 
 
 def resolver_final_nivel3(screen):
@@ -760,12 +967,21 @@ def ejecutar_batalla_carnicero(screen, player, fondo_img):
                     devolver_accion=NIVEL_INTEGRADO,
                 )
                 if NIVEL_INTEGRADO and action in ("menu", "exit"):
-                    cerrar_nivel(action)
+                    solicitar_cierre_nivel(action)
+                    en_batalla = False
+                    break
                 continue
 
             player.procesar_evento(event)
 
+        if not en_batalla:
+            break
+
         player.update(0, transicion_realizada=True)
+        if muerte_terminada(player):
+            mostrar_menu_muerte(screen)
+            en_batalla = False
+            break
         jefe.update(player, dt, width=ANCHO, suelo_y=POSICION_SUELO)
 
         target_player_rect = player.hurtbox
@@ -966,7 +1182,9 @@ def ejecutar_batalla_ciclope(screen, player, fondo_img):
                     devolver_accion=NIVEL_INTEGRADO,
                 )
                 if NIVEL_INTEGRADO and action in ("menu", "exit"):
-                    cerrar_nivel(action)
+                    solicitar_cierre_nivel(action)
+                    en_batalla = False
+                    break
                 continue
 
             if (
@@ -975,7 +1193,13 @@ def ejecutar_batalla_ciclope(screen, player, fondo_img):
             ):
                 player.procesar_evento(event)
 
-        if not jefe.transicionando and combate.estado != "derrota":
+        if not en_batalla:
+            break
+
+        if (
+            not jefe.transicionando
+            and combate.estado != "derrota"
+        ) or getattr(player, "muerto", False):
             player.update(0, transicion_realizada=True, limite_max_x=ANCHO - 80)
 
         combate.update(dt, player, screen)
@@ -983,6 +1207,11 @@ def ejecutar_batalla_ciclope(screen, player, fondo_img):
         if not jefe.muerto_definitivo and combate.estado != "derrota":
             player.comprobar_golpe(jefe)
             player.comprobar_golpes_proyectiles((jefe,))
+
+        if muerte_terminada(player):
+            mostrar_menu_muerte(screen)
+            en_batalla = False
+            break
 
         screen.blit(fondo_img, (0, 0))
         jefe.draw(screen)
@@ -1037,12 +1266,12 @@ def ejecutar_batalla_ciclope(screen, player, fondo_img):
                     )
                 screen.blit(barra, (x_barra, y_barra))
                 nombre_jefe = fuente_nombre_jefe.render(
-                    "Ciclope: El Portador de la Muerte",
+                    "Zareth: El Amo de las Sombras",
                     True,
                     (190, 100, 255),
                 )
                 nombre_sombra = fuente_nombre_jefe.render(
-                    "Ciclope: El Portador de la Muerte",
+                    "Zareth: El Amo de las Sombras",
                     True,
                     (35, 10, 55),
                 )
@@ -1068,7 +1297,7 @@ def ejecutar_batalla_ciclope(screen, player, fondo_img):
                     (ANCHO // 2 - 250, 45, 500, 20), 2,
                 )
                 nombre_jefe = fuente_nombre_jefe.render(
-                    "Ciclope: El Portador de la Muerte",
+                    "Zareth: El Amo de las Sombras",
                     True,
                     (190, 100, 255),
                 )
@@ -1078,11 +1307,6 @@ def ejecutar_batalla_ciclope(screen, player, fondo_img):
                 )
 
         dibujar_barra_jugador(screen, player)
-        if combate.estado == "transicion":
-            texto = fuente_boss_title.render(
-                combate.texto_transicion, True, (255, 50, 60)
-            )
-            screen.blit(texto, texto.get_rect(center=(ANCHO // 2, ALTO // 2)))
 
         if jefe.muerto_definitivo:
             timer_muerte_jefe += dt
@@ -1092,10 +1316,10 @@ def ejecutar_batalla_ciclope(screen, player, fondo_img):
             banda.fill((0, 0, 0, int(progreso * 135)))
             screen.blit(banda, (0, ALTO // 2 - 60))
             texto = fuente_legend.render(
-                "CICLOPE DERROTADO", True, (235, 195, 75)
+                "LEGEND FALLEN", True, (235, 195, 75)
             )
             sombra = fuente_legend.render(
-                "CICLOPE DERROTADO", True, (25, 10, 5)
+                "LEGEND FALLEN", True, (25, 10, 5)
             )
             texto.set_alpha(alpha_val)
             sombra.set_alpha(alpha_val)
@@ -1285,6 +1509,9 @@ class EsqueletoCueva(Enemigo):
 
 class MimicoCueva(Enemigo):
     TAMANO_FRAME = 438
+    sonido_apertura = None
+    sonido_transformacion = None
+    sonido_transformacion_cargado = False
 
     def __init__(self, x=550, y=500, transformado=False):
         super().__init__("Mimic", 2, x, y)
@@ -1355,11 +1582,80 @@ class MimicoCueva(Enemigo):
             for frame in frames
         ]
 
+    @classmethod
+    def _obtener_sonido_transformacion(cls):
+        if cls.sonido_transformacion_cargado:
+            return cls.sonido_transformacion
+        if not pygame.mixer.get_init():
+            try:
+                pygame.mixer.init()
+            except pygame.error as error:
+                print(f"No se pudo iniciar el audio de transformación del cofre: {error}")
+                return None
+
+        ruta_sonido = os.path.join(BASE_DIR, "musica", "demonio.mp3")
+        try:
+            cls.sonido_transformacion = pygame.mixer.Sound(ruta_sonido)
+        except (pygame.error, OSError) as error:
+            cls.sonido_transformacion_cargado = True
+            print(f"No se pudo cargar el grito del cofre trampa: {error}")
+            return None
+
+        cls.sonido_transformacion.set_volume(0.85)
+        cls.sonido_transformacion_cargado = True
+        return cls.sonido_transformacion
+
     def abrir_cofre(self):
         if self.es_cofre_cerrado:
             self.es_cofre_cerrado = False
             self.estado_animacion = "opening"
             self.frame_animacion = 0.0
+            sonido = self._obtener_sonido_apertura()
+            if sonido is not None:
+                sonido.play()
+
+    @classmethod
+    def _obtener_sonido_apertura(cls):
+        if cls.sonido_apertura is not None:
+            return cls.sonido_apertura
+        if not pygame.mixer.get_init():
+            try:
+                pygame.mixer.init()
+            except pygame.error as error:
+                print(f"No se pudo iniciar el audio del cofre trampa: {error}")
+                return None
+
+        frecuencia_mixer, formato, canales = pygame.mixer.get_init()
+        if formato != -16:
+            print(
+                "No se pudo generar el sonido del cofre trampa: "
+                f"el mixer usa formato {formato}, se necesita -16."
+            )
+            return None
+
+        duracion = 0.48
+        cantidad_muestras = int(frecuencia_mixer * duracion)
+        muestras = array("h")
+        ruido = random.Random("Mimic-opening")
+        for indice in range(cantidad_muestras):
+            progreso = indice / cantidad_muestras
+            tiempo = indice / frecuencia_mixer
+            frecuencia_grave = 150 - 75 * progreso
+            frecuencia_crujido = 560 - 390 * progreso
+            grave = math.sin(2 * math.pi * frecuencia_grave * tiempo)
+            crujido = math.sin(2 * math.pi * frecuencia_crujido * tiempo)
+            aire = ruido.uniform(-1.0, 1.0)
+            envolvente = min(1.0, progreso * 18) * (1.0 - progreso) ** 1.4
+            muestra = int(
+                6500 * envolvente * (0.62 * grave + 0.27 * crujido + 0.11 * aire)
+            )
+            for _ in range(canales):
+                muestras.append(muestra)
+        if sys.byteorder != "little":
+            muestras.byteswap()
+        cls.sonido_apertura = pygame.mixer.Sound(buffer=muestras.tobytes())
+        cls.sonido_apertura.set_volume(0.55)
+        return cls.sonido_apertura
 
     def attack(self):
         estaba_atacando = self.attacking
@@ -1387,6 +1683,9 @@ class MimicoCueva(Enemigo):
             if estado == "opening":
                 self.estado_animacion = "transform"
                 self.frame_animacion = 0.0
+                sonido = self._obtener_sonido_transformacion()
+                if sonido is not None:
+                    sonido.play()
                 return
             if estado == "transform":
                 self.transformado = True
@@ -1436,22 +1735,29 @@ class MimicoCueva(Enemigo):
     def draw(self, screen):
         if self.muerto_definitivo:
             return
+        image = self.image
+        if self.transformado and self.dano_timer > 0:
+            image = image.copy()
+            image.fill((255, 45, 45), special_flags=pygame.BLEND_RGB_MULT)
         screen.blit(
-            self.image,
+            image,
             (
-                self.rect.centerx - self.image.get_width() // 2,
-                self.rect.bottom - self.image.get_bounding_rect().bottom,
+                self.rect.centerx - image.get_width() // 2,
+                self.rect.bottom - image.get_bounding_rect().bottom,
             ),
         )
 
 
 TIPOS_ENEMIGO = (Murcielago, EsqueletoCueva)
 DISTANCIA_ENTRE_GRUPOS = 850
+TANDAS_MENOS_ANTES_TUNELES = 2
 PRIMER_GRUPO_X = 800
 ULTIMO_GRUPO_X = HUECO_INICIO - 1100
 PUNTOS_GRUPO = list(range(PRIMER_GRUPO_X, ULTIMO_GRUPO_X + 1, DISTANCIA_ENTRE_GRUPOS))
-GRUPOS_PREVIOS_TUNELES = sum(
-    posicion <= PUERTA_TUNELES_X for posicion in PUNTOS_GRUPO
+GRUPOS_PREVIOS_TUNELES = max(
+    0,
+    sum(posicion < LIMITE_ENEMIGOS_PRE_TUNELES_X for posicion in PUNTOS_GRUPO)
+    - TANDAS_MENOS_ANTES_TUNELES,
 )
 DISTANCIA_VISION_ENEMIGO = 270
 ANTICIPACION_APARICION_ENEMIGOS = 600
@@ -1521,7 +1827,7 @@ def dibujar_plataformas(screen, scroll_x, plataformas, disenos):
 def crear_enemigo(clase, x):
     enemigo = clase(x=x, y=POSICION_SUELO)
     enemigo.health = enemigo.max_health = 40
-    enemigo.dano_ataque = 7
+    enemigo.dano_ataque = 5
     enemigo.suelo_y = POSICION_SUELO
     enemigo.rect.bottom = POSICION_SUELO
     enemigo.velocity_y = 0
@@ -1532,6 +1838,14 @@ def crear_enemigo(clase, x):
         enemigo.rect.bottom -= 115
         enemigo.hurtbox.topleft = enemigo.rect.topleft
     return enemigo
+
+
+def limitar_enemigo_antes_de_tuneles(enemigo):
+    if enemigo.rect.right > LIMITE_ENEMIGOS_PRE_TUNELES_X:
+        desplazamiento = LIMITE_ENEMIGOS_PRE_TUNELES_X - enemigo.rect.right
+        enemigo.rect.x += desplazamiento
+        enemigo.hitbox.x += desplazamiento
+        enemigo.hurtbox.x += desplazamiento
 
 
 def obtener_animacion_idle(enemigo):
@@ -1746,6 +2060,15 @@ def ejecutar_prueba_tuneles(screen, player):
                     if NIVEL_INTEGRADO:
                         cerrar_nivel()
                     return False
+                if evento.type == pygame.KEYDOWN and evento.key == pygame.K_ESCAPE:
+                    action = pausar_juego(
+                        screen,
+                        devolver_accion=NIVEL_INTEGRADO,
+                    )
+                    if NIVEL_INTEGRADO and action in ("menu", "exit"):
+                        solicitar_cierre_nivel(action)
+                        return False
+                    continue
                 if evento.type == pygame.KEYDOWN and evento.key == pygame.K_c:
                     if pista_abierta:
                         pista_abierta = False
@@ -1861,6 +2184,9 @@ def ejecutar_prueba_tuneles(screen, player):
                         enemigo.has_hit = True
 
             player.comprobar_golpes_proyectiles(enemigos_sala)
+            if muerte_terminada(player):
+                mostrar_menu_muerte(screen)
+                return False
 
             fondo = fondo_tuneles if escena == "pasillo" else fondos[0]
             screen.blit(fondo, (0, 0))
@@ -1967,6 +2293,9 @@ if __name__ in ("__main__", "_nivel3_integrado"):
     )
     todos_los_sprites = pygame.sprite.Group(heroe)
     vista_heroe = VistaJugadorMundo(heroe)
+    heroe.actualizar_hitboxes()
+    alcance_frontal_heroe = heroe.hurtbox.right - heroe.rect.centerx
+    limite_jugador_puerta_x = PUERTA_TUNELES_X - alcance_frontal_heroe
     plataformas_nivel = generar_plataformas_nivel()
     plataformas_nivel = [
         plataforma
@@ -1990,12 +2319,12 @@ if __name__ in ("__main__", "_nivel3_integrado"):
         dt = reloj.tick(60) / 1000.0
 
         while (
-            proximo_grupo < len(PUNTOS_GRUPO)
+            proximo_grupo < GRUPOS_PREVIOS_TUNELES
             and heroe.pos_x
             >= PUNTOS_GRUPO[proximo_grupo] - ANTICIPACION_APARICION_ENEMIGOS
             and (
                 puzzle_completado
-                or PUNTOS_GRUPO[proximo_grupo] <= PUERTA_TUNELES_X
+                or PUNTOS_GRUPO[proximo_grupo] < LIMITE_ENEMIGOS_PRE_TUNELES_X
             )
         ):
             nuevo_grupo = generar_grupo_enemigos(
@@ -2011,9 +2340,10 @@ if __name__ in ("__main__", "_nivel3_integrado"):
         )
         portal_liberado = todos_los_grupos_generados and not enemigos_pendientes
         limite_max_x = HUECO_FIN if portal_liberado else HUECO_INICIO-40
+        frente_heroe_x = heroe.pos_x + alcance_frontal_heroe
         en_puerta_tuneles = (
             not puzzle_completado
-            and abs(heroe.pos_x - PUERTA_TUNELES_X) <= 115
+            and 0 <= PUERTA_TUNELES_X - frente_heroe_x <= 115
         )
         mimico_cercano = next(
             (
@@ -2026,7 +2356,7 @@ if __name__ in ("__main__", "_nivel3_integrado"):
             None,
         )
         if not puzzle_completado:
-            limite_max_x = min(limite_max_x, PUERTA_TUNELES_X)
+            limite_max_x = min(limite_max_x, limite_jugador_puerta_x)
         en_zona_hueco = portal_liberado and HUECO_INICIO <= heroe.pos_x <= HUECO_FIN and not transicion_realizada
 
         for evento in pygame.event.get():
@@ -2040,7 +2370,9 @@ if __name__ in ("__main__", "_nivel3_integrado"):
                     devolver_accion=NIVEL_INTEGRADO,
                 )
                 if NIVEL_INTEGRADO and action in ("menu", "exit"):
-                    cerrar_nivel(action)
+                    solicitar_cierre_nivel(action)
+                    ejecutando = False
+                    break
                 continue
             elif (
                 evento.type == pygame.KEYDOWN
@@ -2091,14 +2423,11 @@ if __name__ in ("__main__", "_nivel3_integrado"):
                     cofre.abrir_cofre()
             elif evento.type == pygame.KEYDOWN and evento.key == pygame.K_c and en_zona_hueco:
                 heroe.health = heroe.max_health
-                pantalla.blit(fondo_entrada_jefe, (0,0))
-                titulo = fuente_boss_title.render("Cíclope", True, (230,225,220))
-                subtitulo = fuente_boss_subtitle.render("El Portador de la Muerte", True, (205,190,175))
-                pantalla.blit(titulo, titulo.get_rect(center=(ANCHO//2,ALTO//2-25)))
-                pantalla.blit(subtitulo, subtitulo.get_rect(center=(ANCHO//2,ALTO//2+45)))
-                pygame.display.flip()
-                pygame.time.wait(2000)
                 transicion_realizada = True
+                mostrar_intro_zareth(pantalla, fondo_entrada_jefe)
+                if accion_cierre_nivel is not None:
+                    ejecutando = False
+                    break
                 ejecutar_batalla_ciclope(pantalla, heroe, fondo_batalla)
                 ejecutando = False
                 break
@@ -2121,6 +2450,9 @@ if __name__ in ("__main__", "_nivel3_integrado"):
         for enemigo in enemigos_nivel:
             if enemigo.health <= 0 and not getattr(enemigo,"muerto_definitivo",False):
                 enemigo.update(vista_heroe,dt,width=ANCHO_MUNDO)
+        if not puzzle_completado:
+            for enemigo in enemigos_nivel:
+                limitar_enemigo_antes_de_tuneles(enemigo)
         for enemigo in enemigos_nivel:
             if enemigo_derrotado(enemigo):
                 continue
@@ -2136,6 +2468,8 @@ if __name__ in ("__main__", "_nivel3_integrado"):
             enemigo.suelo_y = POSICION_SUELO
             enemigo.plataformas = plataformas_nivel
             enemigo.update(vista_heroe,dt,width=ANCHO_MUNDO)
+            if not puzzle_completado:
+                limitar_enemigo_antes_de_tuneles(enemigo)
             if enemigo.health > 0:
                 if not getattr(enemigo, "es_cofre_cerrado", False):
                     heroe.comprobar_golpe(enemigo)
@@ -2148,6 +2482,9 @@ if __name__ in ("__main__", "_nivel3_integrado"):
                     enemigo.has_hit = True
 
         heroe.comprobar_golpes_proyectiles(enemigos_nivel)
+        if muerte_terminada(heroe):
+            mostrar_menu_muerte(pantalla)
+            break
 
         if (
             puzzle_completado
@@ -2156,7 +2493,7 @@ if __name__ in ("__main__", "_nivel3_integrado"):
             and not enemigos_post_cofre_generados
         ):
             enemigos_post_cofre = generar_grupo_enemigos(
-                mimicos_cofres[0].rect.centerx + 450
+                mimicos_cofres[0].rect.centerx - 650
             )
             enemigos_nivel.extend(enemigos_post_cofre)
             enemigos_post_cofre_generados = True
@@ -2176,11 +2513,7 @@ if __name__ in ("__main__", "_nivel3_integrado"):
         separar_enemigos(enemigos_nivel,ANCHO_MUNDO)
         if not puzzle_completado:
             for enemigo in enemigos_nivel:
-                if enemigo.rect.right > PUERTA_TUNELES_X:
-                    desplazamiento = PUERTA_TUNELES_X - enemigo.rect.right
-                    enemigo.rect.x += desplazamiento
-                    enemigo.hitbox.x += desplazamiento
-                    enemigo.hurtbox.x += desplazamiento
+                limitar_enemigo_antes_de_tuneles(enemigo)
 
         for tramo in range(ANCHO_MUNDO//ANCHO):
             x = tramo*ANCHO-scroll_x
@@ -2228,7 +2561,20 @@ if __name__ in ("__main__", "_nivel3_integrado"):
                 (255, 235, 190),
             )
             rect_puerta = texto_puerta.get_rect(
-                center=(ANCHO // 2, ALTO - 45)
+                midbottom=(heroe.hurtbox.centerx, heroe.hurtbox.top - 10)
+            )
+            panel_puerta = rect_puerta.inflate(20, 12)
+            panel_puerta.clamp_ip(pantalla.get_rect().inflate(-16, -16))
+            rect_puerta.center = panel_puerta.center
+            fondo_puerta = pygame.Surface(panel_puerta.size, pygame.SRCALPHA)
+            fondo_puerta.fill((10, 14, 22, 220))
+            pantalla.blit(fondo_puerta, panel_puerta)
+            pygame.draw.rect(
+                pantalla,
+                (205, 178, 126),
+                panel_puerta,
+                1,
+                border_radius=6,
             )
             pantalla.blit(texto_puerta, rect_puerta)
         if mimico_cercano is not None:

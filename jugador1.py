@@ -93,7 +93,7 @@ class p_viento(HabilidadesJugador, pygame.sprite.Sprite):
         self.dano_ataque_aereo = 15
         self.golpe_aereo_aplicado = False
 
-        self.dano_ataque_especial = 12
+        self.dano_ataque_especial = 55
         self.frames_golpe_especial = {11, 17, 19}
         self.frames_especial_que_danaron = {}
         self.origen_especial_x = self.pos_x
@@ -787,7 +787,10 @@ class p_viento(HabilidadesJugador, pygame.sprite.Sprite):
             if frame_actual in self.frames_especial_que_danaron.get(id_enemigo, set()):
                 return
 
-            dano = self.dano_ataque_especial
+            cantidad_golpes = len(self.frames_golpe_especial)
+            dano = self.dano_ataque_especial // cantidad_golpes
+            if frame_actual == max(self.frames_golpe_especial):
+                dano += self.dano_ataque_especial % cantidad_golpes
 
             self.frames_especial_que_danaron.setdefault(id_enemigo, set()).add(
                 frame_actual

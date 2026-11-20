@@ -1148,6 +1148,7 @@ class LevelSelector:
         global current_index, planet_rotation, target_rotation, env_t, env_target
 
         self.target_surface = target_surface
+        self.fullscreen_mode = False
         self.audio = audio_manager
         audio = audio_manager
         current_planet = "TIERRA"
@@ -1195,6 +1196,13 @@ class LevelSelector:
                 and unlocked
                 and lvl["number"] not in self.completed_levels
             )
+
+    def _can_visit_gehena(self):
+        return (
+            3 in self.completed_levels
+            and self.story_progress.get("ascanor_decision") == "let_go"
+            and self.story_progress.get("gena_unlocked") is True
+        )
 
     def _progress_message(self, lvl):
         number = lvl["number"]
@@ -1512,36 +1520,51 @@ class LevelSelector:
             clickable_nodes.append((rect, idx))
 
         draw_title(current_planet, ticks)
-        hover_planet = BTN_PLANET.collidepoint(mouse_pos) and not transitioning
-        accent = GOLD if hover_planet else ACCENT["GEHENA" if current_planet == "TIERRA" else "TIERRA"]
-        pygame.draw.rect(screen, (22, 24, 38), BTN_PLANET, border_radius=10)
-        pygame.draw.rect(screen, accent, BTN_PLANET, 2, border_radius=10)
-        button_text = BTN_TEXT[current_planet]
-        screen.blit(
-            button_text,
-            button_text.get_rect(
-                center=(BTN_PLANET.centerx + (-8 if current_planet == "TIERRA" else 8),
-                        BTN_PLANET.centery)
-            ),
+        puede_ir_a_gehena = self._can_visit_gehena()
+        hover_planet = (
+            puede_ir_a_gehena
+            and BTN_PLANET.collidepoint(mouse_pos)
+            and not transitioning
         )
-        if current_planet == "TIERRA":
-            arrow_x = BTN_PLANET.right - 18
-            pygame.draw.polygon(
-                screen,
-                accent,
-                [(arrow_x + 6, BTN_PLANET.centery),
-                 (arrow_x - 5, BTN_PLANET.centery - 8),
-                 (arrow_x - 5, BTN_PLANET.centery + 8)],
+        if puede_ir_a_gehena:
+            accent = GOLD if hover_planet else ACCENT[
+                "GEHENA" if current_planet == "TIERRA" else "TIERRA"
+            ]
+            pygame.draw.rect(screen, (22, 24, 38), BTN_PLANET, border_radius=10)
+            pygame.draw.rect(screen, accent, BTN_PLANET, 2, border_radius=10)
+            button_text = BTN_TEXT[current_planet]
+            screen.blit(
+                button_text,
+                button_text.get_rect(
+                    center=(
+                        BTN_PLANET.centerx
+                        + (-8 if current_planet == "TIERRA" else 8),
+                        BTN_PLANET.centery,
+                    )
+                ),
             )
-        else:
-            arrow_x = BTN_PLANET.left + 18
-            pygame.draw.polygon(
-                screen,
-                accent,
-                [(arrow_x - 6, BTN_PLANET.centery),
-                 (arrow_x + 5, BTN_PLANET.centery - 8),
-                 (arrow_x + 5, BTN_PLANET.centery + 8)],
-            )
+            if current_planet == "TIERRA":
+                arrow_x = BTN_PLANET.right - 18
+                pygame.draw.polygon(
+                    screen,
+                    accent,
+                    [
+                        (arrow_x + 6, BTN_PLANET.centery),
+                        (arrow_x - 5, BTN_PLANET.centery - 8),
+                        (arrow_x - 5, BTN_PLANET.centery + 8),
+                    ],
+                )
+            else:
+                arrow_x = BTN_PLANET.left + 18
+                pygame.draw.polygon(
+                    screen,
+                    accent,
+                    [
+                        (arrow_x - 6, BTN_PLANET.centery),
+                        (arrow_x + 5, BTN_PLANET.centery - 8),
+                        (arrow_x + 5, BTN_PLANET.centery + 8),
+                    ],
+                )
 
         draw_arrow_button(BTN_LEFT, -1, BTN_LEFT.collidepoint(mouse_pos))
         draw_arrow_button(BTN_RIGHT, 1, BTN_RIGHT.collidepoint(mouse_pos))
@@ -1574,10 +1597,16 @@ class LevelSelector:
             elif event.key in (pygame.K_RETURN, pygame.K_SPACE):
                 return self._launch_selected(active_levels[current_index])
             elif event.key == pygame.K_F11:
-                try:
-                    pygame.display.toggle_fullscreen()
-                except Exception:
-                    pass
+                self.fullscreen_mode = not self.fullscreen_mode
+                flags = pygame.SCALED
+                if self.fullscreen_mode:
+                    flags |= pygame.FULLSCREEN
+                else:
+                    flags |= pygame.RESIZABLE
+                self.target_surface = pygame.display.set_mode(
+                    (WIDTH, HEIGHT),
+                    flags,
+                )
             elif event.key == pygame.K_m:
                 muted = audio.toggle_mute()
                 mostrar_toast("Sonido desactivado" if muted else "Sonido activado", 1400)
@@ -1587,7 +1616,7 @@ class LevelSelector:
                 set_index(current_index - 1)
             elif BTN_RIGHT.collidepoint(position):
                 set_index(current_index + 1)
-            elif BTN_PLANET.collidepoint(position):
+            elif self._can_visit_gehena() and BTN_PLANET.collidepoint(position):
                 if abs(env_t - env_target) <= 0.001:
                     env_target = 1.0 if current_planet == "TIERRA" else 0.0
                     audio.planet_switch()

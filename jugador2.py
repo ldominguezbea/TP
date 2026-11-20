@@ -4,6 +4,18 @@ import os
 
 from habilidades_jugador import HabilidadesJugador
 
+
+def _alinear_imagen_al_suelo(imagen):
+    limites_visibles = imagen.get_bounding_rect()
+    desplazamiento_y = imagen.get_height() - limites_visibles.bottom
+    if limites_visibles.height == 0 or desplazamiento_y <= 0:
+        return imagen
+
+    imagen_alineada = pygame.Surface(imagen.get_size(), pygame.SRCALPHA)
+    imagen_alineada.blit(imagen, (0, desplazamiento_y))
+    return imagen_alineada
+
+
 # ============================================================
 # PERSONAJE P_TIERRA
 # ============================================================
@@ -364,6 +376,12 @@ class p_tierra(HabilidadesJugador, pygame.sprite.Sprite):
 
             img = pygame.transform.scale(img, escala)
             self.animaciones["death"].append(img)
+
+        for estado in ("idle", "run"):
+            self.animaciones[estado] = [
+                _alinear_imagen_al_suelo(frame)
+                for frame in self.animaciones[estado]
+            ]
 
         self.animaciones["unblock"] = list(
             reversed(self.animaciones["defend"])

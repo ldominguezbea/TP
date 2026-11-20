@@ -5,7 +5,17 @@ import pygame
 from Jefes_enemigos import ImpalerBoss
 from personajes import crear_jugador
 from barra_vida_jugador import dibujar_barra_vida_jugador
-from menu_pausa import NivelIntegradoFinalizado, pausar_juego
+from cinematica_final import (
+    DURACION_MINIMA_FIN_MS,
+    PantallaFinalEpica,
+    detener_musica_epica,
+    iniciar_musica_epica,
+)
+from menu_pausa import (
+    NivelIntegradoFinalizado,
+    menu_muerte_juego,
+    pausar_juego,
+)
 
 
 pygame.init()
@@ -15,6 +25,7 @@ NIVEL_INTEGRADO = __name__ in (
 )
 nivel_completado = False
 final_definitivo = False
+accion_cierre_nivel = None
 
 WIDTH = 1350
 HEIGHT = 700
@@ -25,10 +36,43 @@ FACTOR_DANO_JEFE = 0.7
 def ajustar_dano_jefe(dano):
     return round(dano * FACTOR_DANO_JEFE)
 
+
+def matar_jugador(jugador):
+    if jugador.muerto:
+        return
+
+    jugador.inmune_dano = False
+    jugador.recibiendo_dano = False
+    jugador.rodando = False
+    jugador.defendiendo = False
+    jugador.atacando = False
+    jugador.take_damage(jugador.health)
+
+
+def muerte_terminada(jugador):
+    return getattr(jugador, "muerto", False) and (
+        getattr(jugador, "muerte_terminada", False)
+        or not jugador.alive()
+    )
+
+
+def solicitar_cierre_nivel(action):
+    global accion_cierre_nivel
+    accion_cierre_nivel = action
+
+
+def mostrar_menu_muerte():
+    if NIVEL_INTEGRADO:
+        action = menu_muerte_juego(screen, devolver_accion=True)
+        solicitar_cierre_nivel(action)
+        return
+    menu_muerte_juego(screen)
+
+
 screen = pygame.display.get_surface()
 if screen is None:
     screen = pygame.display.set_mode((WIDTH, HEIGHT))
-pygame.display.set_caption("Batalla contra ignis")
+pygame.display.set_caption("Demon King: The Impaler")
 
 clock = pygame.time.Clock()
 fuente_aviso = pygame.font.SysFont("Arial", 24, bold=True)
@@ -37,6 +81,19 @@ fuente_cuenta_regresiva = pygame.font.SysFont("Arial", 54, bold=True)
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 CARPETA_FONDOS_BATALLA = os.path.join(BASE_DIR, "imagenes", "Nivel4")
+BARRA_IGNIS_ORIGINAL = pygame.image.load(
+    os.path.join(BASE_DIR, "assets", "barras de vida", "ignis.png")
+).convert_alpha()
+ANCHO_BARRA_JEFE = 300
+ALTO_BARRA_JEFE = round(
+    BARRA_IGNIS_ORIGINAL.get_height()
+    * ANCHO_BARRA_JEFE
+    / BARRA_IGNIS_ORIGINAL.get_width()
+)
+BARRA_IGNIS = pygame.transform.smoothscale(
+    BARRA_IGNIS_ORIGINAL,
+    (ANCHO_BARRA_JEFE, ALTO_BARRA_JEFE),
+)
 fondo_primera_barra = pygame.transform.scale(
     pygame.image.load(
         os.path.join(
@@ -83,7 +140,8 @@ def mostrar_comic_segunda_barra():
                         devolver_accion=NIVEL_INTEGRADO,
                     )
                     if NIVEL_INTEGRADO and action in ("menu", "exit"):
-                        raise NivelIntegradoFinalizado(nivel_completado, action)
+                        solicitar_cierre_nivel(action)
+                        return
 
         screen.blit(imagen, (0, 0))
         texto = fuente_aviso.render(
@@ -101,8 +159,13 @@ def mostrar_comic_segunda_barra():
         clock.tick(60)
 
 
-def esperar_enter_cinematica(dibujar, enter_liberado=True):
+def esperar_enter_cinematica(
+    dibujar,
+    enter_liberado=True,
+    duracion_minima_ms=0,
+):
     teclas_enter = (pygame.K_RETURN, pygame.K_KP_ENTER)
+    inicio_ms = pygame.time.get_ticks()
     while True:
         enter_aceptado = False
         for event in pygame.event.get():
@@ -113,7 +176,11 @@ def esperar_enter_cinematica(dibujar, enter_liberado=True):
             if event.type == pygame.KEYUP and event.key in teclas_enter:
                 enter_liberado = True
             elif event.type == pygame.KEYDOWN and event.key in teclas_enter:
-                if enter_liberado and not enter_aceptado:
+                if (
+                    enter_liberado
+                    and not enter_aceptado
+                    and pygame.time.get_ticks() - inicio_ms >= duracion_minima_ms
+                ):
                     enter_aceptado = True
                 enter_liberado = False
             elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
@@ -123,7 +190,8 @@ def esperar_enter_cinematica(dibujar, enter_liberado=True):
                 )
                 if action in ("menu", "exit"):
                     if NIVEL_INTEGRADO:
-                        raise NivelIntegradoFinalizado(nivel_completado, action)
+                        solicitar_cierre_nivel(action)
+                        return enter_liberado
                     raise SystemExit
         if enter_aceptado:
             return enter_liberado
@@ -132,29 +200,232 @@ def esperar_enter_cinematica(dibujar, enter_liberado=True):
         clock.tick(60)
 
 
-def mostrar_cinematica_final_definitiva():
-    ruta_imagen = os.path.join(
-        CARPETA_FONDOS_BATALLA,
-        "Héroes ante la ciudad en ruinas.png",
-    )
-    if not os.path.isfile(ruta_imagen):
-        raise FileNotFoundError(f"No se encontró la imagen del final: {ruta_imagen}")
+def mostrar_intro_impaler():
+    ancho, alto = screen.get_size()
+    reloj_intro = pygame.time.Clock()
+    inicio = pygame.time.get_ticks()
+    duracion_ms = 3000
+    fuente_etiqueta = pygame.font.SysFont("Arial", 18, bold=True)
+    fuente_titulo = pygame.font.SysFont("Georgia", 88, bold=True)
+    fuente_epiteto = pygame.font.SysFont("Georgia", 34, bold=True, italic=True)
+    fuente_cierre = pygame.font.SysFont("Arial", 18, bold=True)
 
-    imagen = pygame.image.load(ruta_imagen).convert_alpha()
-    escala = min(WIDTH / imagen.get_width(), HEIGHT / imagen.get_height())
-    imagen = pygame.transform.smoothscale(
-        imagen,
-        (
-            round(imagen.get_width() * escala),
-            round(imagen.get_height() * escala),
-        ),
+    panel_rect = pygame.Rect(0, 0, int(ancho * 0.76), int(alto * 0.56))
+    panel_rect.center = (ancho // 2, alto // 2)
+    panel = pygame.Surface(panel_rect.size, pygame.SRCALPHA)
+    oscurecer = pygame.Surface((ancho, alto), pygame.SRCALPHA)
+    oscurecer.fill((15, 2, 2, 190))
+    particulas = [
+        [
+            random.uniform(0, ancho),
+            random.uniform(0, alto),
+            random.uniform(22, 82),
+            random.randint(1, 3),
+            random.uniform(0, math.tau),
+        ]
+        for _ in range(34)
+    ]
+
+    while True:
+        dt = reloj_intro.tick(60) / 1000.0
+        transcurrido = pygame.time.get_ticks() - inicio
+        if transcurrido >= duracion_ms:
+            return
+
+        for evento in pygame.event.get():
+            if evento.type == pygame.QUIT:
+                if NIVEL_INTEGRADO:
+                    raise NivelIntegradoFinalizado(nivel_completado, "exit")
+                raise SystemExit
+            if evento.type == pygame.KEYDOWN:
+                if evento.key in (pygame.K_RETURN, pygame.K_SPACE):
+                    return
+                if evento.key == pygame.K_ESCAPE:
+                    action = pausar_juego(
+                        screen,
+                        devolver_accion=NIVEL_INTEGRADO,
+                    )
+                    if action in ("menu", "exit"):
+                        if NIVEL_INTEGRADO:
+                            solicitar_cierre_nivel(action)
+                            return
+                        raise SystemExit
+
+        entrada = min(1.0, transcurrido / 550.0)
+        screen.blit(fondo_primera_barra, (0, 0))
+        screen.blit(oscurecer, (0, 0))
+
+        for particula in particulas:
+            particula[1] -= particula[2] * dt
+            particula[0] += math.sin(
+                transcurrido / 260.0 + particula[4]
+            ) * 12 * dt
+            if particula[1] < 0:
+                particula[0] = random.uniform(0, ancho)
+                particula[1] = alto
+            brillo = 0.5 + 0.5 * math.sin(
+                transcurrido / 120.0 + particula[4]
+            )
+            pygame.draw.circle(
+                screen,
+                (255, int(75 + 115 * brillo), 28),
+                (round(particula[0]), round(particula[1])),
+                particula[3],
+            )
+
+        panel.fill((12, 3, 5, int(226 * entrada)))
+        screen.blit(panel, panel_rect)
+        pulso = 0.5 + 0.5 * math.sin(transcurrido / 230.0)
+        color_marco = (int(145 + 90 * pulso), 43, 20)
+        pygame.draw.rect(
+            screen,
+            (int(90 * entrada), 22, 12),
+            panel_rect,
+            2,
+            border_radius=8,
+        )
+
+        margen = 34
+        largo_esquina = 58
+        esquinas = (
+            ((panel_rect.left + margen, panel_rect.top + margen),
+             (panel_rect.left + margen + largo_esquina, panel_rect.top + margen)),
+            ((panel_rect.right - margen, panel_rect.top + margen),
+             (panel_rect.right - margen - largo_esquina, panel_rect.top + margen)),
+            ((panel_rect.left + margen, panel_rect.bottom - margen),
+             (panel_rect.left + margen + largo_esquina, panel_rect.bottom - margen)),
+            ((panel_rect.right - margen, panel_rect.bottom - margen),
+             (panel_rect.right - margen - largo_esquina, panel_rect.bottom - margen)),
+        )
+        for inicio_linea, fin_linea in esquinas:
+            pygame.draw.line(screen, color_marco, inicio_linea, fin_linea, 2)
+
+        etiqueta = fuente_etiqueta.render(
+            "JEFE FINAL  |  NIVEL 4", True, (245, 163, 105)
+        )
+        etiqueta.set_alpha(int(255 * entrada))
+        screen.blit(
+            etiqueta,
+            etiqueta.get_rect(center=(ancho // 2, panel_rect.top + 70)),
+        )
+
+        titulo_sombra = fuente_titulo.render("DEMON KING", True, (75, 4, 8))
+        titulo = fuente_titulo.render("DEMON KING", True, (255, 226, 190))
+        epiteto = fuente_epiteto.render(
+            "THE IMPALER", True, (255, 91, 48)
+        )
+        for superficie in (titulo_sombra, titulo, epiteto):
+            superficie.set_alpha(int(255 * entrada))
+
+        centro_titulo = (
+            ancho // 2,
+            panel_rect.top + 166 + int((1 - entrada) * 18),
+        )
+        rect_titulo = titulo.get_rect(center=centro_titulo)
+        screen.blit(titulo_sombra, rect_titulo.move(3, 5))
+        screen.blit(titulo, rect_titulo)
+        screen.blit(
+            epiteto,
+            epiteto.get_rect(center=(ancho // 2, panel_rect.top + 245)),
+        )
+
+        separador_y = panel_rect.top + 294
+        pygame.draw.line(
+            screen,
+            (145, 44, 24),
+            (panel_rect.left + 130, separador_y),
+            (panel_rect.right - 130, separador_y),
+            1,
+        )
+        pygame.draw.polygon(
+            screen,
+            (255, 166, 93),
+            [
+                (ancho // 2, separador_y - 6),
+                (ancho // 2 + 6, separador_y),
+                (ancho // 2, separador_y + 6),
+                (ancho // 2 - 6, separador_y),
+            ],
+        )
+
+        cierre = fuente_cierre.render(
+            "EL REY DEMONIO HA DESPERTADO", True, (238, 207, 165)
+        )
+        cierre.set_alpha(int(255 * entrada))
+        screen.blit(
+            cierre,
+            cierre.get_rect(center=(ancho // 2, panel_rect.top + 337)),
+        )
+        continuar = fuente_etiqueta.render(
+            "ENTER / ESPACIO  |  SALTAR INTRO",
+            True,
+            (230, 160, 115),
+        )
+        continuar.set_alpha(int(220 * entrada))
+        screen.blit(
+            continuar,
+            continuar.get_rect(center=(ancho // 2, panel_rect.bottom + 32)),
+        )
+        pygame.display.flip()
+
+
+def mostrar_cinematica_final_definitiva():
+    def cargar_imagen_final(nombre):
+        ruta = os.path.join(CARPETA_FONDOS_BATALLA, nombre)
+        if not os.path.isfile(ruta):
+            raise FileNotFoundError(f"No se encontró la imagen del final: {ruta}")
+        imagen = pygame.image.load(ruta).convert_alpha()
+        escala = min(WIDTH / imagen.get_width(), HEIGHT / imagen.get_height())
+        return pygame.transform.smoothscale(
+            imagen,
+            (
+                round(imagen.get_width() * escala),
+                round(imagen.get_height() * escala),
+            ),
+        )
+
+    imagen_batalla = cargar_imagen_final(
+        "Captura de pantalla 2026-11-18 111126.png"
     )
+    imagen = cargar_imagen_final("Héroes ante la ciudad en ruinas.png")
 
     fuente_final = pygame.font.SysFont("Georgia", 30, bold=True)
+    fuente_prompt = pygame.font.SysFont("Arial", 18, bold=True)
     lineas_texto = (
         "Los héroes lograron vencer al rey demonio",
         "y volvieron a la ciudad.",
     )
+
+    def dibujar_imagen_batalla():
+        pantalla_imagen = pygame.Rect(0, 0, WIDTH, HEIGHT - 52)
+        escala = min(
+            pantalla_imagen.width / imagen_batalla.get_width(),
+            pantalla_imagen.height / imagen_batalla.get_height(),
+        )
+        tamano = (
+            round(imagen_batalla.get_width() * escala),
+            round(imagen_batalla.get_height() * escala),
+        )
+        screen.fill((0, 0, 0))
+        imagen_ajustada = pygame.transform.smoothscale(imagen_batalla, tamano)
+        screen.blit(
+            imagen_ajustada,
+            imagen_ajustada.get_rect(center=pantalla_imagen.center),
+        )
+
+        texto = fuente_prompt.render(
+            "PRESIONA ENTER PARA CONTINUAR",
+            True,
+            (255, 238, 205),
+        )
+        caja_texto = texto.get_rect(center=(WIDTH // 2, HEIGHT - 24))
+        fondo_texto = pygame.Surface(
+            (caja_texto.width + 24, caja_texto.height + 12),
+            pygame.SRCALPHA,
+        )
+        fondo_texto.fill((8, 5, 8, 205))
+        screen.blit(fondo_texto, fondo_texto.get_rect(center=caja_texto.center))
+        screen.blit(texto, caja_texto)
 
     def dibujar_texto():
         screen.fill((0, 0, 0))
@@ -165,7 +436,16 @@ def mostrar_cinematica_final_definitiva():
             screen.blit(texto, texto.get_rect(center=(WIDTH // 2, y)))
             y += alto_linea
 
-    enter_liberado = esperar_enter_cinematica(dibujar_texto)
+    enter_liberado = esperar_enter_cinematica(dibujar_imagen_batalla)
+    if accion_cierre_nivel is not None:
+        return
+
+    enter_liberado = esperar_enter_cinematica(
+        dibujar_texto,
+        enter_liberado,
+    )
+    if accion_cierre_nivel is not None:
+        return
 
     def dibujar_imagen():
         screen.fill((0, 0, 0))
@@ -175,17 +455,23 @@ def mostrar_cinematica_final_definitiva():
         dibujar_imagen,
         enter_liberado,
     )
+    if accion_cierre_nivel is not None:
+        return
 
-    def dibujar_fin():
-        screen.fill((0, 0, 0))
-        texto = pygame.font.SysFont("Arial", 56, bold=True).render(
-            "FIN",
-            True,
-            (255, 255, 255),
+    pantalla_fin = PantallaFinalEpica(
+        screen,
+        imagen,
+        "Los heroes vencieron al rey demonio y salvaron la ciudad.",
+    )
+    iniciar_musica_epica()
+    try:
+        esperar_enter_cinematica(
+            pantalla_fin.draw,
+            enter_liberado,
+            DURACION_MINIMA_FIN_MS,
         )
-        screen.blit(texto, texto.get_rect(center=(WIDTH // 2, HEIGHT // 2)))
-
-    esperar_enter_cinematica(dibujar_fin, enter_liberado)
+    finally:
+        detener_musica_epica()
 
 
 class ParticulaFuego:
@@ -320,9 +606,8 @@ class ZonaFuego:
             else:
                 self.hitbox = pygame.Rect(self.ancho_pantalla - w, self.pos_y, w, self.alto_fuego_base)
 
-            # Si el jugador toca el fuego, simplemente recibe daño
             if player.hurtbox.colliderect(self.hitbox):
-                player.take_damage(ajustar_dano_jefe(20) * dt, attacker=self.hitbox)
+                matar_jugador(player)
 
             # Generar partículas
             if w > 0:
@@ -466,7 +751,7 @@ class ProyectilHolograma:
     def __init__(self, x, y):
         self.rect = pygame.Rect(round(x - 32), round(y), 64, 128)
         self.speed = 470
-        self.damage = ajustar_dano_jefe(25)
+        self.damage = ajustar_dano_jefe(45)
 
     def update(self, dt):
         self.rect.y += round(self.speed * dt)
@@ -538,9 +823,10 @@ class LavaAscendente:
 
         if (
             self.estado in ("subiendo", "activa", "bajando")
-            and player.hurtbox.bottom > self.y
+            and player.plataforma_actual is None
+            and player.hurtbox.bottom >= self.y
         ):
-            player.take_damage(ajustar_dano_jefe(45) * dt)
+            matar_jugador(player)
 
     def draw(self, screen):
         if self.estado == "inactivo":
@@ -691,12 +977,13 @@ class HologramVolley:
 
 
 class BossBattleController:
-    MAX_HEALTH = 300
+    FIRST_BAR_HEALTH = 500
+    SECOND_BAR_HEALTH = FIRST_BAR_HEALTH * 2
 
     def __init__(self, boss):
         self.phase = 1
-        boss.max_health = self.MAX_HEALTH
-        boss.health = self.MAX_HEALTH
+        boss.max_health = self.FIRST_BAR_HEALTH
+        boss.health = self.FIRST_BAR_HEALTH
         self.platform = pygame.Rect(60, 360, WIDTH - 120, 22)
         self.lava = LavaAscendente(self.platform.top)
         self.projectiles = []
@@ -742,13 +1029,15 @@ class BossBattleController:
 
     def _iniciar_fase3(self, boss, zona_fuego):
         mostrar_comic_segunda_barra()
+        if accion_cierre_nivel is not None:
+            return
         self.phase = 3
         self.phase_banner_timer = 1.5
         self._detener_fuego(zona_fuego)
         self.lava.disable()
         self._limpiar_hologramas()
-        boss.max_health = self.MAX_HEALTH
-        boss.health = self.MAX_HEALTH
+        boss.max_health = self.SECOND_BAR_HEALTH
+        boss.health = self.SECOND_BAR_HEALTH
         self.phase3_state = "cargando_derecha"
         self.phase3_timer = 5.0
         self.hologram_timer = 1.0
@@ -806,7 +1095,13 @@ class BossBattleController:
 
         player.set_position(min(player.pos_x, WIDTH // 3), SUELO_Y)
 
-        clone_image = crear_imagen_holograma(self._frame_muerte4(boss), alpha=210)
+        clone_image = pygame.mask.from_surface(
+            self._frame_muerte4(boss),
+            threshold=1,
+        ).to_surface(
+            setcolor=(255, 255, 255, 255),
+            unsetcolor=(0, 0, 0, 0),
+        )
         start_x = player.hurtbox.centerx
         end_x = boss.rect.centerx
         self.execution_clones = []
@@ -815,7 +1110,12 @@ class BossBattleController:
             surface = pygame.transform.scale(clone_image, (78, 105))
             rect = surface.get_rect(midbottom=(x, SUELO_Y))
             self.execution_clones.append(
-                {"surface": surface, "rect": rect, "alive": True, "fade": 1.0}
+                {
+                    "surface": surface,
+                    "rect": rect,
+                    "alive": True,
+                    "fade": 1.0,
+                }
             )
 
     def registrar_golpe(self, player, boss, zona_fuego):
@@ -826,7 +1126,7 @@ class BossBattleController:
             if player.hitbox.colliderect(boss.hurtbox):
                 boss.take_damage(25)
                 player.has_hit = True
-                if self.phase == 1 and boss.health <= self.MAX_HEALTH * 0.5:
+                if self.phase == 1 and boss.health <= self.FIRST_BAR_HEALTH * 0.5:
                     self._iniciar_fase2(zona_fuego)
                 elif self.phase == 2 and boss.health <= 0:
                     self._iniciar_fase3(boss, zona_fuego)
@@ -890,7 +1190,7 @@ class BossBattleController:
                 self.horizontal_beam.colliderect(player.hurtbox)
                 and not self.horizontal_beam_hit
             ):
-                player.take_damage(ajustar_dano_jefe(45), attacker=boss)
+                matar_jugador(player)
                 self.horizontal_beam_hit = True
             self.phase3_timer -= dt
             if self.phase3_timer <= 0:
@@ -929,7 +1229,7 @@ class BossBattleController:
                 self.horizontal_beam.colliderect(player.hurtbox)
                 and not self.horizontal_beam_hit
             ):
-                player.take_damage(ajustar_dano_jefe(45), attacker=boss)
+                matar_jugador(player)
                 self.horizontal_beam_hit = True
             self.phase3_timer -= dt
             if self.phase3_timer <= 0:
@@ -1020,7 +1320,7 @@ class BossBattleController:
         elif self.vertical_state == "activo":
             laser = pygame.Rect(WIDTH // 2 - 24, 0, 48, HEIGHT)
             if laser.colliderect(player.hurtbox) and not self.vertical_beam_hit:
-                player.take_damage(ajustar_dano_jefe(45), attacker=boss)
+                matar_jugador(player)
                 self.vertical_beam_hit = True
             self.vertical_timer -= dt
             if self.vertical_timer <= 0:
@@ -1048,6 +1348,22 @@ class BossBattleController:
             for clone in self.execution_clones:
                 if not clone["alive"]:
                     clone["fade"] = max(0.0, clone["fade"] - dt * 3.5)
+            self._limitar_avance_por_clon(player)
+
+    def _limitar_avance_por_clon(self, player):
+        clone = next(
+            (clone for clone in self.execution_clones if clone["alive"]),
+            None,
+        )
+        if clone is None:
+            return
+
+        limite_x = clone["rect"].left - player.hurtbox.width // 2
+        if player.pos_x > limite_x:
+            player.pos_x = float(limite_x)
+            player.rect.centerx = limite_x
+            player.velocidad_x = 0
+            player.actualizar_hitboxes()
 
     def _actualizar_proyectiles(self, dt, player):
         for projectile in self.projectiles[:]:
@@ -1156,13 +1472,6 @@ class BossBattleController:
                 image = clone["surface"].copy()
                 image.set_alpha(round(210 * clone["fade"]))
                 screen.blit(image, clone["rect"])
-            restantes = sum(clone["alive"] for clone in self.execution_clones)
-            texto = fuente_aviso.render(
-                f"ELIMINA LOS CLONES: {4 - restantes}/4",
-                True,
-                (255, 220, 180),
-            )
-            screen.blit(texto, texto.get_rect(center=(WIDTH // 2, 100)))
 
         if self.phase_banner_timer > 0 and self.phase in (2, 3, 4):
             titulo = {
@@ -1179,19 +1488,42 @@ class BossBattleController:
 
 
 def dibujar_barras_vida(screen, player, enemy, phase=1):
-    fuente = pygame.font.SysFont("Arial", 16, bold=True)
+    fuente = pygame.font.SysFont("Arial", 13, bold=True)
 
-    # Barra de vida del Jefe
-    pygame.draw.rect(screen, (50, 50, 50), (WIDTH - 320, 20, 300, 20))
     e_health = getattr(enemy, "health", 0)
     e_max_health = getattr(enemy, "max_health", 1)
-    pct_e = max(0, e_health / e_max_health)
-    pygame.draw.rect(screen, (220, 20, 20), (WIDTH - 320, 20, int(300 * pct_e), 20))
-    pygame.draw.rect(screen, (255, 255, 255), (WIDTH - 320, 20, 300, 20), 2)
+    pct_e = max(0.0, min(1.0, e_health / e_max_health if e_max_health > 0 else 0.0))
+    x, y = WIDTH - 320, 8
+    x_relleno = x + int(ANCHO_BARRA_JEFE * 0.08)
+    y_relleno = y + int(ALTO_BARRA_JEFE * 0.44)
+    ancho_relleno = int(ANCHO_BARRA_JEFE * 0.84)
+    alto_relleno = max(1, int(ALTO_BARRA_JEFE * 0.40))
+    ancho_actual = int(ancho_relleno * pct_e)
+    pygame.draw.rect(
+        screen,
+        (20, 5, 5),
+        (x_relleno, y_relleno, ancho_relleno, alto_relleno),
+    )
+    if ancho_actual > 0:
+        pygame.draw.rect(
+            screen,
+            (190, 30, 30),
+            (x_relleno, y_relleno, ancho_actual, alto_relleno),
+        )
+        pygame.draw.rect(
+            screen,
+            (240, 90, 90),
+            (x_relleno, y_relleno, ancho_actual, max(1, alto_relleno // 3)),
+        )
+    screen.blit(BARRA_IGNIS, (x, y))
     phase_name = "Ejecucion final" if phase == 4 else f"Fase {phase}"
     screen.blit(
-        fuente.render(f"Impaler Boss - {phase_name}: {int(e_health)}", True, (255, 255, 255)),
-        (WIDTH - 320, 45),
+        fuente.render(
+            f"Demon King: The Impaler - {phase_name}: {int(e_health)}",
+            True,
+            (255, 255, 255),
+        ),
+        (x + 5, y + ALTO_BARRA_JEFE + 4),
     )
 
 
@@ -1206,7 +1538,8 @@ enemy = ImpalerBoss(900, 500)
 zona_fuego = ZonaFuego()
 batalla = BossBattleController(enemy)
 
-running = True
+mostrar_intro_impaler()
+running = accion_cierre_nivel is None
 
 while running:
     dt = clock.tick(60) / 1000.0
@@ -1233,11 +1566,16 @@ while running:
                     devolver_accion=NIVEL_INTEGRADO,
                 )
                 if NIVEL_INTEGRADO and action in ("menu", "exit"):
-                    raise NivelIntegradoFinalizado(nivel_completado, action)
+                    solicitar_cierre_nivel(action)
+                    running = False
+                    break
             else:
                 player.procesar_evento(event)
         else:
             player.procesar_evento(event)
+
+    if not running:
+        break
 
     plataforma = batalla.platform if batalla.phase in (2, 3) else None
     player.plataformas = [plataforma] if plataforma is not None else []
@@ -1257,6 +1595,9 @@ while running:
         enemy.update(player, dt, width=WIDTH)
 
     batalla.update(dt, player, enemy, zona_fuego)
+    if accion_cierre_nivel is not None:
+        running = False
+        break
     batalla.registrar_golpe(player, enemy, zona_fuego)
     enemy.esta_rojo = False
 
@@ -1266,8 +1607,13 @@ while running:
         and not getattr(enemy, "has_hit", False)
     ):
         if hasattr(enemy, "hitbox") and enemy.hitbox.colliderect(player.hurtbox):
-            player.take_damage(ajustar_dano_jefe(20), attacker=enemy)
+            player.take_damage(ajustar_dano_jefe(18), attacker=enemy)
             enemy.has_hit = True
+
+    if muerte_terminada(player):
+        mostrar_menu_muerte()
+        running = False
+        break
 
     fondo_actual = (
         fondo_primera_barra
@@ -1276,8 +1622,6 @@ while running:
     )
     screen.blit(fondo_actual, (0, 0))
     batalla.draw_stage(screen)
-    pygame.draw.line(screen, (200, 200, 200), (0, SUELO_Y), (WIDTH, SUELO_Y), 4)
-
     enemy.draw(screen)
     screen.blit(player.image, player.rect)
     dibujar_barra_vida_jugador(screen, player)
@@ -1292,10 +1636,11 @@ while running:
     if getattr(enemy, "muerto_definitivo", False):
         running = False
 
-if getattr(enemy, "muerto_definitivo", False):
+if getattr(enemy, "muerto_definitivo", False) and accion_cierre_nivel is None:
     mostrar_cinematica_final_definitiva()
-    final_definitivo = True
-    nivel_completado = True
+    if accion_cierre_nivel is None:
+        final_definitivo = True
+        nivel_completado = True
 
 if not NIVEL_INTEGRADO:
     pygame.quit()

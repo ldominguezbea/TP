@@ -152,11 +152,12 @@ class ImpalerBoss(Enemigo):
         return random.choice(disponibles) if disponibles else "idle"
 
     def realizar_salto(self, fuerza=None):
-        if self.on_ground and len(self.animaciones.get("saltar", [])) > 0:
+        if self.on_ground:
             self.velocity_y = self.jump_force if fuerza is None else fuerza
             self.on_ground = False
             self.current_platform = None
-            self.cambiar_estado("saltar")
+            estado_salto = "saltar" if self.animaciones.get("saltar") else "idle"
+            self.cambiar_estado(estado_salto)
 
     def actualizar_hitbox_ataque(self):
         if self.attacking:

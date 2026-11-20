@@ -11,9 +11,9 @@ from enemigos import (
 )
 from personajes import crear_jugador
 from menu_pausa import (
-    EXIT_GAME_EXIT_CODE,
     RETURN_TO_MENU_EXIT_CODE,
     NivelIntegradoFinalizado,
+    menu_muerte_juego,
     pausar_juego,
 )
 
@@ -23,6 +23,13 @@ pygame.font.init()
 NIVEL_INTEGRADO = __name__ == "_nivel1_integrado"
 accion_cierre_nivel = None
 nivel_completado = False
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+RUTA_MUSICA_PERSECUCION = os.path.join(
+    BASE_DIR,
+    "musica",
+    "when_the_shadows_first_lengthened.ogg",
+)
+musica_persecucion_activa = False
 
 # 1. Configuración de pantalla y mundo
 ANCHO, ALTO = 1350, 700
@@ -44,7 +51,6 @@ ESCALA_ORCO_NIVEL = 1.5
 VELOCIDAD_PERSEGUIDOR = 420
 VELOCIDAD_ANIM_MONSTRUO = 8
 DISTANCIA_CONTACTO_MONSTRUO = 80
-DURACION_BOCA_CERRADA = 0.8
 
 FASE_RECORRIDO = "RECORRIDO"
 FASE_BIBLIOTECA_7 = "BIBLIOTECA_7"
@@ -114,17 +120,70 @@ if pantalla is None:
 pygame.display.set_caption("Nivel 1 - Batalla de Jefe")
 
 
+def iniciar_musica_persecucion():
+    global musica_persecucion_activa
+
+    if musica_persecucion_activa or pygame.mixer.get_init() is None:
+        return
+    try:
+        pygame.mixer.music.load(RUTA_MUSICA_PERSECUCION)
+        pygame.mixer.music.set_volume(0.5)
+        pygame.mixer.music.play(loops=-1, fade_ms=800)
+        musica_persecucion_activa = True
+    except (pygame.error, OSError) as error:
+        print(f"[AUDIO] No se pudo iniciar la música de persecución: {error}")
+
+
+def detener_musica_persecucion():
+    global musica_persecucion_activa
+
+    if not musica_persecucion_activa:
+        return
+    if pygame.mixer.get_init() is not None:
+        pygame.mixer.music.fadeout(800)
+    musica_persecucion_activa = False
+
+
 def cerrar_nivel(action=None):
+    detener_musica_persecucion()
     if NIVEL_INTEGRADO:
         if action is not None:
             raise NivelIntegradoFinalizado(nivel_completado, action)
         raise NivelIntegradoFinalizado(nivel_completado)
+    if action == "retry":
+        pygame.quit()
+        os.execv(
+            sys.executable,
+            [sys.executable, os.path.abspath(__file__), *sys.argv[1:]],
+        )
     if action == "menu":
         raise SystemExit(RETURN_TO_MENU_EXIT_CODE)
     if action == "exit":
-        raise SystemExit(EXIT_GAME_EXIT_CODE)
+        pygame.quit()
+        raise SystemExit(0)
     pygame.quit()
     sys.exit()
+
+
+def solicitar_cierre_nivel(action):
+    if NIVEL_INTEGRADO:
+        global accion_cierre_nivel
+        accion_cierre_nivel = action
+        return
+    cerrar_nivel(action)
+
+
+def muerte_terminada(jugador):
+    return getattr(jugador, "muerto", False) and (
+        getattr(jugador, "muerte_terminada", False)
+        or not jugador.alive()
+    )
+
+
+def mostrar_menu_muerte(screen):
+    accion = menu_muerte_juego(screen, devolver_accion=True)
+    solicitar_cierre_nivel(accion)
+    return accion
 
 
 # Tamaño del sprite ajustado a escala humana
@@ -142,60 +201,125 @@ fuente_progreso = pygame.font.SysFont("Impact", 22)
 # ==============================================================================
 # CARGA DE IMÁGENES Y CÓMICS
 # ==============================================================================
-def cargar_imagen_comic(nombre_archivo):
+def ajustar_imagen_a_pantalla(imagen, tamano_pantalla):
+    ancho, alto = tamano_pantalla
+    ancho_imagen, alto_imagen = imagen.get_size()
+    escala_imagen = min(ancho / ancho_imagen, alto / alto_imagen)
+    tamano_ajustado = (
+        max(1, round(ancho_imagen * escala_imagen)),
+        max(1, round(alto_imagen * escala_imagen)),
+    )
+    imagen_ajustada = pygame.transform.smoothscale(imagen, tamano_ajustado)
+    fondo = pygame.transform.smoothscale(imagen_ajustada, tamano_pantalla)
+    tamano_desenfoque = (max(1, ancho // 18), max(1, alto // 18))
+    fondo = pygame.transform.smoothscale(
+        pygame.transform.smoothscale(fondo, tamano_desenfoque),
+        tamano_pantalla,
+    )
+    velo = pygame.Surface(tamano_pantalla, pygame.SRCALPHA)
+    velo.fill((0, 0, 0, 90))
+    fondo.blit(velo, (0, 0))
+
+    fondo.blit(
+        imagen_ajustada,
+        imagen_ajustada.get_rect(center=(ancho // 2, alto // 2)),
+    )
+    return fondo
+
+
+def ajustar_fondo_a_pantalla(imagen, tamano_pantalla):
+    return pygame.transform.scale(imagen, tamano_pantalla)
+
+
+def cargar_imagen_comic(nombre_archivo, tamano_pantalla=None):
+    if tamano_pantalla is None:
+        tamano_pantalla = pantalla.get_size()
+    base_dir = os.path.dirname(os.path.abspath(__file__))
     rutas = [
-        os.path.join(os.path.dirname(os.path.abspath(__file__)), "imagenes", "Nivel1", nombre_archivo),
+        os.path.join(base_dir, "imagenes", "Nivel1", nombre_archivo),
         os.path.join("imagenes", "Nivel1", nombre_archivo),
-        os.path.join("assets", "imagenes", "Nivel1", nombre_archivo)
+        os.path.join(base_dir, "assets", "imagenes", "Nivel1", nombre_archivo),
     ]
     for ruta in rutas:
         if os.path.exists(ruta):
             try:
-                img = pygame.image.load(ruta).convert()
-                escala = min(ANCHO / img.get_width(), ALTO / img.get_height())
-                tamano = (
-                    max(1, round(img.get_width() * escala)),
-                    max(1, round(img.get_height() * escala)),
-                )
-                ajustada = pygame.transform.smoothscale(img, tamano)
-                lienzo = pygame.Surface((ANCHO, ALTO))
-                lienzo.fill((0, 0, 0))
-                lienzo.blit(ajustada, ajustada.get_rect(center=lienzo.get_rect().center))
-                return lienzo
-            except Exception as e:
+                img = pygame.image.load(ruta).convert_alpha()
+                return ajustar_imagen_a_pantalla(img, tamano_pantalla)
+            except (OSError, pygame.error) as e:
                 print(f"Error al cargar {ruta}: {e}")
 
-    surf = pygame.Surface((ANCHO, ALTO))
+    surf = pygame.Surface(tamano_pantalla)
     surf.fill((15, 15, 20))
     txt = fuente_boss_subtitle.render(f"[{nombre_archivo} no encontrado]", True, (255, 255, 255))
-    surf.blit(txt, txt.get_rect(center=(ANCHO // 2, ALTO // 2)))
+    surf.blit(txt, txt.get_rect(center=surf.get_rect().center))
     return surf
 
 
+def mostrar_comic_inicio(screen):
+    imagen = cargar_imagen_comic("comic_inicio.png", screen.get_size())
+    instruccion = fuente_ui.render(
+        "PRESIONA ENTER PARA COMENZAR", True, (255, 255, 255)
+    )
+    reloj = pygame.time.Clock()
+
+    for event in pygame.event.get():
+        if event.type == pygame.QUIT:
+            cerrar_nivel("exit")
+
+    while True:
+        screen.blit(imagen, (0, 0))
+        rect_instruccion = instruccion.get_rect(
+            center=(screen.get_width() // 2, screen.get_height() - 30)
+        )
+        sombra = pygame.Surface(
+            (rect_instruccion.width + 24, rect_instruccion.height + 12),
+            pygame.SRCALPHA,
+        )
+        sombra.fill((0, 0, 0, 175))
+        screen.blit(sombra, sombra.get_rect(center=rect_instruccion.center))
+        screen.blit(instruccion, rect_instruccion)
+        pygame.display.flip()
+
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                cerrar_nivel("exit")
+            if event.type == pygame.KEYDOWN and event.key in (
+                pygame.K_RETURN,
+                pygame.K_KP_ENTER,
+            ):
+                return
+        reloj.tick(60)
+
+
 def mostrar_comic_final(screen):
-    img_final = cargar_imagen_comic("comic_final.png")
+    img_final = cargar_imagen_comic("comic_final.png", screen.get_size())
     reloj = pygame.time.Clock()
     esperando = True
 
     while esperando:
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                cerrar_nivel("exit")
-            if event.type == pygame.KEYDOWN:
-                esperando = False
-
         screen.blit(img_final, (0, 0))
 
-        lbl_fin = fuente_ui.render("FIN DEL NIVEL 1 - Presiona cualquier tecla para continuar", True, (255, 255, 255))
-        rect_txt = lbl_fin.get_rect(center=(ANCHO // 2, ALTO - 35))
+        lbl_fin = fuente_ui.render(
+            "FIN DEL NIVEL 1 - Presiona cualquier tecla para continuar",
+            True,
+            (255, 255, 255),
+        )
+        rect_txt = lbl_fin.get_rect(
+            center=(screen.get_width() // 2, screen.get_height() - 35)
+        )
         sombra_bg = pygame.Surface((rect_txt.width + 20, rect_txt.height + 10))
         sombra_bg.fill((0, 0, 0))
         sombra_bg.set_alpha(180)
 
         screen.blit(sombra_bg, (rect_txt.x - 10, rect_txt.y - 5))
         screen.blit(lbl_fin, rect_txt)
-
         pygame.display.flip()
+
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                cerrar_nivel("exit")
+            if event.type == pygame.KEYDOWN:
+                esperando = False
         reloj.tick(60)
 
 
@@ -231,37 +355,19 @@ def cargar_fondo_nivel1(numero):
     if numero == 10:
         nombres.append("Nivel_1imagen10.png")
 
+    base_dir = os.path.dirname(os.path.abspath(__file__))
     carpetas = (
-        os.path.join("imagenes", "Nivel1"),
-        os.path.join("assets", "imagenes", "Nivel1"),
+        os.path.join(base_dir, "imagenes", "Nivel1"),
+        os.path.join(base_dir, "assets", "imagenes", "Nivel1"),
     )
     for carpeta in carpetas:
         for nombre in nombres:
             ruta = os.path.join(carpeta, nombre)
             if os.path.exists(ruta):
                 img = pygame.image.load(ruta).convert()
-                if numero == 7:
-                    recorte_x = round(img.get_width() * 0.15)
-                    img = img.subsurface(
-                        pygame.Rect(
-                            recorte_x,
-                            0,
-                            img.get_width() - recorte_x,
-                            img.get_height(),
-                        )
-                    ).copy()
-                escala = min(ANCHO / img.get_width(), ALTO / img.get_height())
-                tamano = (
-                    max(1, round(img.get_width() * escala)),
-                    max(1, round(img.get_height() * escala)),
-                )
-                ajustada = pygame.transform.smoothscale(img, tamano)
-                lienzo = pygame.Surface((ANCHO, ALTO))
-                lienzo.fill((0, 0, 0))
-                lienzo.blit(ajustada, ajustada.get_rect(center=lienzo.get_rect().center))
-                return lienzo
+                return ajustar_fondo_a_pantalla(img, pantalla.get_size())
 
-    surf = pygame.Surface((ANCHO, ALTO))
+    surf = pygame.Surface(pantalla.get_size())
     surf.fill((20, 15, 25))
     return surf
 
@@ -276,7 +382,7 @@ def cargar_fondo_archivo(nombre_archivo):
     if not os.path.isfile(ruta):
         raise FileNotFoundError(f"No se encontró el fondo del nivel: {ruta}")
     img = pygame.image.load(ruta).convert()
-    return pygame.transform.scale(img, (ANCHO, ALTO))
+    return ajustar_fondo_a_pantalla(img, pantalla.get_size())
 
 
 def cargar_frames_monstruo_carne(altura, nombres):
@@ -410,14 +516,7 @@ frames_monstruo_carne = cargar_frames_monstruo_carne(
         "Monstruo de carne3.png",
     ),
 )
-frame_monstruo_boca_cerrada = cargar_frames_monstruo_carne(
-    70,
-    ("Monstruo de carne_ataque.png",),
-)[0]
-tamano_monstruo = frames_monstruo_carne[0].get_size()
-frame_monstruo_boca_cerrada = pygame.transform.scale(
-    frame_monstruo_boca_cerrada, tamano_monstruo
-)
+mostrar_comic_inicio(pantalla)
 
 
 # 3. Clase para el Jugador (P_viento)
@@ -817,6 +916,183 @@ def dibujar_barra_jugador(screen, player):
 
 
 # 5. Escena de Batalla contra el Jefe
+def obtener_hitbox_ataque_jefe_nivel1(jefe):
+    frames = jefe.animaciones.get(jefe.estado_actual, [])
+    if not jefe.attacking or not jefe.estado_actual.startswith("attack") or not frames:
+        return None
+
+    progreso_ataque = jefe.frame_actual / max(1, len(frames) - 1)
+    if not 0.55 <= progreso_ataque <= 0.82:
+        return None
+
+    ancho, alto = 175, 55
+    y = jefe.rect.y + 225
+    if jefe.direction == "left":
+        x = jefe.rect.left - ancho
+    else:
+        x = jefe.rect.right
+    return pygame.Rect(x, y, ancho, alto)
+
+
+def mostrar_intro_batalla_jefe(screen, fondo):
+    ancho, alto = screen.get_size()
+    reloj_intro = pygame.time.Clock()
+    inicio = pygame.time.get_ticks()
+    duracion_ms = 3000
+
+    fuente_etiqueta = pygame.font.SysFont("Arial", 18, bold=True)
+    fuente_titulo = pygame.font.SysFont("Georgia", 92, bold=True)
+    fuente_epiteto = pygame.font.SysFont("Georgia", 34, bold=True, italic=True)
+    fuente_cierre = pygame.font.SysFont("Arial", 18, bold=True)
+
+    ancho_panel = int(ancho * 0.76)
+    alto_panel = int(alto * 0.56)
+    panel_rect = pygame.Rect(0, 0, ancho_panel, alto_panel)
+    panel_rect.center = (ancho // 2, alto // 2)
+    panel = pygame.Surface(panel_rect.size, pygame.SRCALPHA)
+    oscurecer = pygame.Surface((ancho, alto), pygame.SRCALPHA)
+    oscurecer.fill((8, 2, 5, 170))
+
+    particulas = [
+        [
+            random.uniform(0, ancho),
+            random.uniform(0, alto),
+            random.uniform(20, 75),
+            random.randint(1, 3),
+        ]
+        for _ in range(30)
+    ]
+
+    while True:
+        dt = reloj_intro.tick(60) / 1000.0
+        transcurrido = pygame.time.get_ticks() - inicio
+        if transcurrido >= duracion_ms:
+            break
+
+        for evento in pygame.event.get():
+            if evento.type == pygame.QUIT:
+                cerrar_nivel("exit")
+            if evento.type == pygame.KEYDOWN and evento.key in (
+                pygame.K_RETURN,
+                pygame.K_SPACE,
+            ):
+                return
+
+        entrada = min(1.0, transcurrido / 550.0)
+        screen.blit(fondo, (0, 0))
+        screen.blit(oscurecer, (0, 0))
+
+        for particula in particulas:
+            particula[1] -= particula[2] * dt
+            if particula[1] < 0:
+                particula[0] = random.uniform(0, ancho)
+                particula[1] = alto
+            color = (150 + particula[3] * 25, 38 + particula[3] * 8, 16)
+            pygame.draw.circle(
+                screen,
+                color,
+                (round(particula[0]), round(particula[1])),
+                particula[3],
+            )
+
+        panel.fill((7, 5, 8, int(220 * entrada)))
+        screen.blit(panel, panel_rect)
+        intensidad = int(120 * entrada)
+        pygame.draw.rect(
+            screen, (intensidad, 28, 20), panel_rect, 2, border_radius=8
+        )
+
+        margen = 34
+        largo_esquina = 58
+        color_marco = (185, 104, 55)
+        pygame.draw.line(
+            screen, color_marco,
+            (panel_rect.left + margen, panel_rect.top + margen),
+            (panel_rect.left + margen + largo_esquina, panel_rect.top + margen),
+            2,
+        )
+        pygame.draw.line(
+            screen, color_marco,
+            (panel_rect.right - margen, panel_rect.top + margen),
+            (panel_rect.right - margen - largo_esquina, panel_rect.top + margen),
+            2,
+        )
+        pygame.draw.line(
+            screen, color_marco,
+            (panel_rect.left + margen, panel_rect.bottom - margen),
+            (panel_rect.left + margen + largo_esquina, panel_rect.bottom - margen),
+            2,
+        )
+        pygame.draw.line(
+            screen, color_marco,
+            (panel_rect.right - margen, panel_rect.bottom - margen),
+            (panel_rect.right - margen - largo_esquina, panel_rect.bottom - margen),
+            2,
+        )
+
+        etiqueta = fuente_etiqueta.render(
+            "JEFE FINAL  |  NIVEL 1", True, (225, 175, 112)
+        )
+        etiqueta.set_alpha(int(255 * entrada))
+        screen.blit(
+            etiqueta,
+            etiqueta.get_rect(center=(ancho // 2, panel_rect.top + 72)),
+        )
+
+        titulo_sombra = fuente_titulo.render("ATHROS", True, (110, 12, 12))
+        titulo = fuente_titulo.render("ATHROS", True, (238, 221, 198))
+        epiteto = fuente_epiteto.render(
+            "THE BLOODRED", True, (196, 55, 39)
+        )
+        for superficie in (titulo_sombra, titulo, epiteto):
+            superficie.set_alpha(int(255 * entrada))
+
+        centro_titulo = (ancho // 2, panel_rect.top + 166 + int((1 - entrada) * 18))
+        rect_titulo = titulo.get_rect(center=centro_titulo)
+        screen.blit(titulo_sombra, rect_titulo.move(3, 5))
+        screen.blit(titulo, rect_titulo)
+        screen.blit(
+            epiteto,
+            epiteto.get_rect(center=(ancho // 2, panel_rect.top + 245)),
+        )
+
+        separador_y = panel_rect.top + 290
+        pygame.draw.line(
+            screen, (115, 39, 27),
+            (panel_rect.left + 130, separador_y),
+            (panel_rect.right - 130, separador_y),
+            1,
+        )
+        pygame.draw.polygon(
+            screen,
+            (208, 155, 94),
+            [
+                (ancho // 2, separador_y - 6),
+                (ancho // 2 + 6, separador_y),
+                (ancho // 2, separador_y + 6),
+                (ancho // 2 - 6, separador_y),
+            ],
+        )
+
+        cierre = fuente_cierre.render(
+            "EL CARNICERO HA DESPERTADO", True, (225, 202, 158)
+        )
+        cierre.set_alpha(int(255 * entrada))
+        screen.blit(
+            cierre,
+            cierre.get_rect(center=(ancho // 2, panel_rect.top + 337)),
+        )
+        continuar = fuente_etiqueta.render(
+            "ENTER / ESPACIO  |  CONTINUAR", True, (190, 145, 105)
+        )
+        continuar.set_alpha(int(220 * entrada))
+        screen.blit(
+            continuar,
+            continuar.get_rect(center=(ancho // 2, panel_rect.bottom + 32)),
+        )
+        pygame.display.flip()
+
+
 def ejecutar_batalla_carnicero(screen, player, fondo_img):
     global nivel_completado
 
@@ -844,10 +1120,10 @@ def ejecutar_batalla_carnicero(screen, player, fondo_img):
 
     en_batalla = True
     timer_muerte_jefe = 0.0
-    tiempo_en_hitbox_jefe = 0.0
+    momento_derrota_jefe_ms = None
 
     TIEMPO_FADE_LETRERO = 1.8
-    TIEMPO_ESPERA_POST = 3.0
+    DURACION_COMIC_FINAL_SEGUNDOS = 6.0
 
     while en_batalla:
         dt = clock.tick(FPS) / 1000.0
@@ -860,7 +1136,7 @@ def ejecutar_batalla_carnicero(screen, player, fondo_img):
             elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
                 accion = pausar_juego(screen, devolver_accion=True)
                 if accion in ("menu", "exit"):
-                    cerrar_nivel(accion)
+                    solicitar_cierre_nivel(accion)
                     en_batalla = False
                     break
                 continue
@@ -871,6 +1147,10 @@ def ejecutar_batalla_carnicero(screen, player, fondo_img):
             break
 
         player.update(0, transicion_realizada=True)
+        if muerte_terminada(player):
+            mostrar_menu_muerte(screen)
+            en_batalla = False
+            break
         jefe.update(player, dt, width=ANCHO, suelo_y=POSICION_SUELO)
 
         target_player_rect = player.hurtbox
@@ -894,34 +1174,23 @@ def ejecutar_batalla_carnicero(screen, player, fondo_img):
         )
 
         if jefe_atacando:
-            if hasattr(jefe, 'hitbox') and jefe.hitbox and jefe.hitbox.width > 0:
-                espada_hitbox = jefe.hitbox
-            else:
-                mirando_der = getattr(jefe, 'mirando_derecha', getattr(jefe, 'facing_right', jefe.rect.centerx < player.rect.centerx))
-                ancho_espada = 130
-                alto_espada = 120
-                y_espada = jefe.rect.bottom - alto_espada - 10
-
-                if mirando_der:
-                    espada_hitbox = pygame.Rect(jefe.rect.centerx + 25, y_espada, ancho_espada, alto_espada)
-                else:
-                    espada_hitbox = pygame.Rect(jefe.rect.centerx - 25 - ancho_espada, y_espada, ancho_espada, alto_espada)
-
-            if espada_hitbox.colliderect(target_player_rect):
-                tiempo_en_hitbox_jefe += dt
-
-                if tiempo_en_hitbox_jefe >= 1.0 and not getattr(jefe, 'has_hit', False):
-                    player.take_damage(16, attacker=espada_hitbox)
-                    setattr(jefe, 'has_hit', True)
-            else:
-                tiempo_en_hitbox_jefe = 0.0
+            espada_hitbox = obtener_hitbox_ataque_jefe_nivel1(jefe)
+            if (
+                espada_hitbox is not None
+                and espada_hitbox.colliderect(target_player_rect)
+                and not getattr(jefe, 'has_hit', False)
+            ):
+                player.take_damage(16, attacker=espada_hitbox)
+                setattr(jefe, 'has_hit', True)
         else:
-            tiempo_en_hitbox_jefe = 0.0
             setattr(jefe, 'has_hit', False)
 
         if not getattr(jefe, 'muerto_definitivo', False):
             player.comprobar_golpe(jefe)
             player.comprobar_golpes_proyectiles((jefe,))
+
+        if jefe.health <= 0 and momento_derrota_jefe_ms is None:
+            momento_derrota_jefe_ms = pygame.time.get_ticks()
 
         screen.blit(fondo_img, (0, 0))
         screen.blit(player.image, player.rect)
@@ -1023,7 +1292,11 @@ def ejecutar_batalla_carnicero(screen, player, fondo_img):
             screen.blit(surf_sombra, (rect_txt.x + 3, rect_txt.y + 3))
             screen.blit(surf_texto, rect_txt)
 
-            if timer_muerte_jefe >= (TIEMPO_FADE_LETRERO + TIEMPO_ESPERA_POST):
+            if (
+                momento_derrota_jefe_ms is not None
+                and pygame.time.get_ticks() - momento_derrota_jefe_ms
+                >= DURACION_COMIC_FINAL_SEGUNDOS * 1000
+            ):
                 mostrar_comic_final(screen)
                 nivel_completado = True
                 en_batalla = False
@@ -1144,11 +1417,11 @@ def crear_enemigo(clase, x):
         enemigo.dano_ataque = 8
     elif clase is Karasu_tengu:
         enemigo = Karasu_tengu(x=x, y=POSICION_SUELO)
-        enemigo.dano_ataque = 4
+        enemigo.dano_ataque = 5
     else:
         # El OjoVolador conserva la altura flotante que tenías configurada
         enemigo = OjoVolador(x=x, y=POSICION_SUELO, suelo_y=POSICION_SUELO)
-        enemigo.DANO_PROYECTIL = 7
+        enemigo.DANO_PROYECTIL = 5
 
     enemigo.health = 40
     enemigo.max_health = 40
@@ -1387,10 +1660,6 @@ fase_nivel = FASE_RECORRIDO
 perseguidor_activo = False
 perseguidor_x = 0.0
 monstruo_frame = 0.0
-perseguidor_comiendo = False
-tiempo_boca_cerrada = 0.0
-posicion_devoracion_x = None
-jugador_devorado = False
 
 ejecutando = True
 reloj = pygame.time.Clock()
@@ -1426,7 +1695,9 @@ while ejecutando:
         elif evento.type == pygame.KEYDOWN and evento.key == pygame.K_ESCAPE:
             accion = pausar_juego(pantalla, devolver_accion=True)
             if accion in ("menu", "exit"):
-                cerrar_nivel(accion)
+                detener_musica_persecucion()
+                solicitar_cierre_nivel(accion)
+                ejecutando = False
                 break
             continue
 
@@ -1434,7 +1705,6 @@ while ejecutando:
             evento.type == pygame.KEYDOWN
             and evento.key == pygame.K_c
             and interaccion_disponible
-            and not perseguidor_comiendo
             and not heroe.muerto
         ):
             if fase_nivel == FASE_RECORRIDO:
@@ -1468,13 +1738,10 @@ while ejecutando:
                 perseguidor_activo = False
                 perseguidor_x = 0.0
                 monstruo_frame = 0.0
-                perseguidor_comiendo = False
-                tiempo_boca_cerrada = 0.0
-                posicion_devoracion_x = None
-                jugador_devorado = False
                 scroll_x = 0
 
             elif fase_nivel == FASE_CONDUCTO_3:
+                detener_musica_persecucion()
                 fase_nivel = FASE_HUECO_FINAL
                 enemigos_escena.clear()
                 colocar_jugador_en_escena(heroe, 180, fase_nivel)
@@ -1483,24 +1750,14 @@ while ejecutando:
 
             elif fase_nivel == FASE_HUECO_FINAL:
                 heroe.health = heroe.max_health
-
-                pantalla.fill((0, 0, 0))
-
-                txt_title = fuente_boss_title.render("Athros", True, (180, 20, 20))
-                txt_subtitle = fuente_boss_subtitle.render("the bloodred", True, (140, 15, 15))
-
-                pantalla.blit(txt_title, txt_title.get_rect(center=(ANCHO // 2, ALTO // 2 - 25)))
-                pantalla.blit(txt_subtitle, txt_subtitle.get_rect(center=(ANCHO // 2, ALTO // 2 + 45)))
-
-                pygame.display.flip()
-                pygame.time.wait(2000)
+                mostrar_intro_batalla_jefe(pantalla, fondo_batalla)
 
                 transicion_realizada = True
                 ejecutar_batalla_carnicero(pantalla, heroe, fondo_batalla)
                 ejecutando = False
                 break
 
-        if not perseguidor_comiendo and not heroe.muerto:
+        if not heroe.muerto:
             heroe.procesar_evento(evento)
 
     if not ejecutando:
@@ -1519,10 +1776,10 @@ while ejecutando:
         limite_max_x=limite_max_x,
         limite_min_x=80,
     )
-    if perseguidor_comiendo and posicion_devoracion_x is not None:
-        heroe.pos_x = posicion_devoracion_x
-        heroe.velocidad_x = 0
-
+    if muerte_terminada(heroe):
+        detener_musica_persecucion()
+        mostrar_menu_muerte(pantalla)
+        break
     if fase_nivel == FASE_RECORRIDO:
         scroll_x = max(0, min(heroe.pos_x - ANCHO * 0.4, ANCHO_MUNDO - ANCHO))
     else:
@@ -1599,7 +1856,7 @@ while ejecutando:
             if hb is not None and hb.width > 0 and not getattr(enemigo, 'has_hit', False):
                 if hb.colliderect(vista_heroe.hurtbox):
                     heroe.take_damage(
-                        getattr(enemigo, 'dano_ataque', 8),
+                        getattr(enemigo, 'dano_ataque', 5),
                         attacker=enemigo,
                     )
                     enemigo.has_hit = True
@@ -1667,7 +1924,7 @@ while ejecutando:
                 and hb.colliderect(vista_heroe.hurtbox)
             ):
                 heroe.take_damage(
-                    getattr(enemigo, "dano_ataque", 8),
+                    getattr(enemigo, "dano_ataque", 5),
                     attacker=enemigo,
                 )
                 enemigo.has_hit = True
@@ -1698,8 +1955,9 @@ while ejecutando:
             if not perseguidor_activo:
                 perseguidor_activo = True
                 perseguidor_x = progreso_jugador_conducto - 500
+                iniciar_musica_persecucion()
 
-        if perseguidor_activo and not perseguidor_comiendo:
+        if perseguidor_activo:
             if perseguidor_x < progreso_jugador_conducto:
                 perseguidor_x = min(
                     perseguidor_x + VELOCIDAD_PERSEGUIDOR * dt,
@@ -1711,16 +1969,10 @@ while ejecutando:
 
             distancia_contacto = DISTANCIA_CONTACTO_MONSTRUO
             if abs(progreso_jugador_conducto - perseguidor_x) <= distancia_contacto:
-                perseguidor_comiendo = True
-                tiempo_boca_cerrada = 0.0
-                posicion_devoracion_x = heroe.pos_x
-                jugador_devorado = True
-                perseguidor_x = progreso_jugador_conducto
-                heroe.velocidad_x = 0
-
-        elif perseguidor_comiendo:
-            heroe.velocidad_x = 0
-            tiempo_boca_cerrada += dt
+                detener_musica_persecucion()
+                mostrar_menu_muerte(pantalla)
+                ejecutando = False
+                break
 
     if fase_nivel == FASE_RECORRIDO:
         for i in range((ANCHO_MUNDO + ANCHO - 1) // ANCHO):
@@ -1747,7 +1999,6 @@ while ejecutando:
         if (
             fase_nivel in FASES_CONDUCTO
             and perseguidor_activo
-            and not perseguidor_comiendo
         ):
             indice_conducto = FASES_CONDUCTO.index(fase_nivel)
             posicion_local_perseguidor = (
@@ -1779,13 +2030,7 @@ while ejecutando:
         rect_heroe = imagen_heroe.get_rect(
             midbottom=(heroe.rect.centerx, heroe.rect.bottom)
         )
-        if not jugador_devorado:
-            pantalla.blit(imagen_heroe, rect_heroe)
-        if perseguidor_comiendo:
-            rect_mordida = frame_monstruo_boca_cerrada.get_rect(
-                midbottom=(heroe.rect.centerx, heroe.rect.bottom)
-            )
-            pantalla.blit(frame_monstruo_boca_cerrada, rect_mordida)
+        pantalla.blit(imagen_heroe, rect_heroe)
     else:
         todos_los_sprites.draw(pantalla)
     if hasattr(heroe, "proyectiles"):
@@ -1826,9 +2071,6 @@ while ejecutando:
         dibujar_boton_demoniaco(pantalla, "PRESIONA C PARA ENTRAR")
 
     pygame.display.flip()
-    if jugador_devorado and tiempo_boca_cerrada >= DURACION_BOCA_CERRADA:
-        cerrar_nivel()
-
 if not NIVEL_INTEGRADO:
     pygame.quit()
     sys.exit()

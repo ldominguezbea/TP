@@ -7,7 +7,7 @@ from types import SimpleNamespace
 import pygame
 from asset_utils import load_image_or_placeholder
 from personajes import crear_jugador
-from menu_pausa import NivelIntegradoFinalizado, pausar_juego
+from menu_pausa import NivelIntegradoFinalizado, menu_muerte_juego, pausar_juego
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -22,6 +22,7 @@ pygame.init()
 pygame.font.init()
 NIVEL_INTEGRADO = __name__ == "_nivel2_integrado"
 nivel_completado = False
+accion_cierre_nivel = None
 
 # 1. Configuración de pantalla y mundo
 ANCHO, ALTO = 1350, 700
@@ -29,7 +30,7 @@ POSICION_SUELO = 638
 
 # Recorrido lateral continuo hasta la entrada del jefe.
 ANCHO_MUNDO = ANCHO * 7
-PORTAL_X = ANCHO_MUNDO - 500
+PORTAL_X = ANCHO_MUNDO - ANCHO + int(ANCHO * 0.82)
 HUECO_INICIO = PORTAL_X - 150
 HUECO_FIN = PORTAL_X + 150
 
@@ -45,19 +46,40 @@ def cerrar_nivel(action="exit"):
     pygame.quit()
     sys.exit()
 
+
+def solicitar_cierre_nivel(action):
+    if NIVEL_INTEGRADO:
+        global accion_cierre_nivel
+        accion_cierre_nivel = action
+        return
+    cerrar_nivel(action)
+
+
+def muerte_terminada(jugador):
+    return getattr(jugador, "muerto", False) and (
+        getattr(jugador, "muerte_terminada", False)
+        or not jugador.alive()
+    )
+
+
+def mostrar_menu_muerte(screen):
+    if NIVEL_INTEGRADO:
+        solicitar_cierre_nivel(menu_muerte_juego(screen, devolver_accion=True))
+        return
+    menu_muerte_juego(screen)
+
+
 # Tamaño del sprite ajustado a escala humana
 ANCHO_HEROE, ALTO_HEROE = 300, 300
 
 # Fuentes
 fuente_lava_pixel = pygame.font.SysFont("Courier", 9, bold=True)
 fuente_boss_title = pygame.font.SysFont("Georgia", 76, bold=True)
-fuente_boss_subtitle = pygame.font.SysFont("Georgia", 32, italic=True)
 fuente_jefe = pygame.font.SysFont("Georgia", 26, bold=True, italic=True)
 fuente_ui = pygame.font.SysFont("Arial", 16, bold=True)
 fuente_progreso = pygame.font.SysFont("Impact", 22)
 fuente_aviso_autobus = pygame.font.SysFont("Arial", 30, bold=True)
 fuente_dialogo_autobus = pygame.font.SysFont("Georgia", 40, bold=True)
-fuente_fin_autobus = pygame.font.SysFont("Arial", 24, bold=True)
 
 
 # ==============================================================================
@@ -203,6 +225,7 @@ fondos = [
 ]
 fondo_jefe = cargar_fondo_nivel2("Nivel2_imagen1.png")
 fondo_autobus = cargar_fondo_nivel2("Nivel2_imagen5.png.png")
+fondo_entrada_jefe = cargar_fondo_nivel2("Nivel2_imagen3.png")
 
 
 def crear_grito_autobus(frecuencia_base):
@@ -640,6 +663,165 @@ def dibujar_boton_demoniaco(pantalla):
     pantalla.blit(surf_escalada, (ANCHO - ancho_final - 25, ALTO - alto_final - 20))
 
 
+def mostrar_intro_abbadon(screen, fondo):
+    ancho, alto = screen.get_size()
+    reloj_intro = pygame.time.Clock()
+    inicio = pygame.time.get_ticks()
+    duracion_ms = 3000
+
+    fuente_etiqueta = pygame.font.SysFont("Arial", 18, bold=True)
+    fuente_titulo = pygame.font.SysFont("Georgia", 92, bold=True)
+    fuente_epiteto = pygame.font.SysFont("Georgia", 34, bold=True, italic=True)
+    fuente_cierre = pygame.font.SysFont("Arial", 18, bold=True)
+
+    ancho_panel = int(ancho * 0.76)
+    alto_panel = int(alto * 0.56)
+    panel_rect = pygame.Rect(0, 0, ancho_panel, alto_panel)
+    panel_rect.center = (ancho // 2, alto // 2)
+    panel = pygame.Surface(panel_rect.size, pygame.SRCALPHA)
+    oscurecer = pygame.Surface((ancho, alto), pygame.SRCALPHA)
+    oscurecer.fill((3, 7, 18, 175))
+
+    particulas = [
+        [
+            random.uniform(0, ancho),
+            random.uniform(0, alto),
+            random.uniform(20, 75),
+            random.randint(1, 3),
+        ]
+        for _ in range(30)
+    ]
+
+    while True:
+        dt = reloj_intro.tick(60) / 1000.0
+        transcurrido = pygame.time.get_ticks() - inicio
+        if transcurrido >= duracion_ms:
+            break
+
+        for evento in pygame.event.get():
+            if evento.type == pygame.QUIT:
+                cerrar_nivel()
+            if evento.type == pygame.KEYDOWN and evento.key in (
+                pygame.K_RETURN,
+                pygame.K_SPACE,
+            ):
+                return
+
+        entrada = min(1.0, transcurrido / 550.0)
+        screen.blit(fondo, (0, 0))
+        screen.blit(oscurecer, (0, 0))
+
+        for particula in particulas:
+            particula[1] -= particula[2] * dt
+            if particula[1] < 0:
+                particula[0] = random.uniform(0, ancho)
+                particula[1] = alto
+            color = (75 + particula[3] * 25, 115 + particula[3] * 24, 170 + particula[3] * 20)
+            pygame.draw.circle(
+                screen,
+                color,
+                (round(particula[0]), round(particula[1])),
+                particula[3],
+            )
+
+        panel.fill((4, 8, 18, int(220 * entrada)))
+        screen.blit(panel, panel_rect)
+        intensidad = int(100 * entrada)
+        pygame.draw.rect(
+            screen, (intensidad, 65, 145), panel_rect, 2, border_radius=8
+        )
+
+        margen = 34
+        largo_esquina = 58
+        color_marco = (115, 165, 205)
+        pygame.draw.line(
+            screen, color_marco,
+            (panel_rect.left + margen, panel_rect.top + margen),
+            (panel_rect.left + margen + largo_esquina, panel_rect.top + margen),
+            2,
+        )
+        pygame.draw.line(
+            screen, color_marco,
+            (panel_rect.right - margen, panel_rect.top + margen),
+            (panel_rect.right - margen - largo_esquina, panel_rect.top + margen),
+            2,
+        )
+        pygame.draw.line(
+            screen, color_marco,
+            (panel_rect.left + margen, panel_rect.bottom - margen),
+            (panel_rect.left + margen + largo_esquina, panel_rect.bottom - margen),
+            2,
+        )
+        pygame.draw.line(
+            screen, color_marco,
+            (panel_rect.right - margen, panel_rect.bottom - margen),
+            (panel_rect.right - margen - largo_esquina, panel_rect.bottom - margen),
+            2,
+        )
+
+        etiqueta = fuente_etiqueta.render(
+            "JEFE FINAL  |  NIVEL 2", True, (170, 205, 230)
+        )
+        etiqueta.set_alpha(int(255 * entrada))
+        screen.blit(
+            etiqueta,
+            etiqueta.get_rect(center=(ancho // 2, panel_rect.top + 72)),
+        )
+
+        titulo_sombra = fuente_titulo.render("ABBADON", True, (5, 23, 65))
+        titulo = fuente_titulo.render("ABBADON", True, (220, 232, 240))
+        epiteto = fuente_epiteto.render(
+            "EL SEÑOR OSCURO", True, (105, 175, 225)
+        )
+        for superficie in (titulo_sombra, titulo, epiteto):
+            superficie.set_alpha(int(255 * entrada))
+
+        centro_titulo = (ancho // 2, panel_rect.top + 166 + int((1 - entrada) * 18))
+        rect_titulo = titulo.get_rect(center=centro_titulo)
+        screen.blit(titulo_sombra, rect_titulo.move(3, 5))
+        screen.blit(titulo, rect_titulo)
+        screen.blit(
+            epiteto,
+            epiteto.get_rect(center=(ancho // 2, panel_rect.top + 245)),
+        )
+
+        separador_y = panel_rect.top + 290
+        pygame.draw.line(
+            screen, (55, 105, 155),
+            (panel_rect.left + 130, separador_y),
+            (panel_rect.right - 130, separador_y),
+            1,
+        )
+        pygame.draw.polygon(
+            screen,
+            (155, 195, 220),
+            [
+                (ancho // 2, separador_y - 6),
+                (ancho // 2 + 6, separador_y),
+                (ancho // 2, separador_y + 6),
+                (ancho // 2 - 6, separador_y),
+            ],
+        )
+
+        cierre = fuente_cierre.render(
+            "EL UMBRAL SE ABRE", True, (200, 215, 225)
+        )
+        cierre.set_alpha(int(255 * entrada))
+        screen.blit(
+            cierre,
+            cierre.get_rect(center=(ancho // 2, panel_rect.top + 337)),
+        )
+        continuar = fuente_etiqueta.render(
+            "ENTER / ESPACIO  |  SALTAR INTRO", True, (145, 180, 205)
+        )
+        continuar.set_alpha(int(220 * entrada))
+        screen.blit(
+            continuar,
+            continuar.get_rect(center=(ancho // 2, panel_rect.bottom + 32)),
+        )
+        pygame.display.flip()
+
+
 def dibujar_barra_jugador(screen, player):
     pct_player = max(0.0, min(1.0, player.health / player.max_health if player.max_health > 0 else 0))
 
@@ -717,12 +899,21 @@ def ejecutar_batalla_carnicero(screen, player, fondo_img):
                     devolver_accion=NIVEL_INTEGRADO,
                 )
                 if NIVEL_INTEGRADO and action in ("menu", "exit"):
-                    cerrar_nivel(action)
+                    solicitar_cierre_nivel(action)
+                    en_batalla = False
+                    break
                 continue
 
             player.procesar_evento(event)
 
+        if not en_batalla:
+            break
+
         player.update(0, transicion_realizada=True)
+        if muerte_terminada(player):
+            mostrar_menu_muerte(screen)
+            en_batalla = False
+            break
         jefe.update(player, dt, width=ANCHO, suelo_y=POSICION_SUELO)
 
         target_player_rect = player.hurtbox
@@ -999,13 +1190,22 @@ def ejecutar_batalla_werewolf(screen, player, fondo_img):
                     devolver_accion=NIVEL_INTEGRADO,
                 )
                 if NIVEL_INTEGRADO and action in ("menu", "exit"):
-                    cerrar_nivel(action)
+                    solicitar_cierre_nivel(action)
+                    en_batalla = False
+                    break
                 continue
             if not transicion_fase:
                 player.procesar_evento(event)
 
-        if not transicion_fase:
+        if not en_batalla:
+            break
+
+        if not transicion_fase or getattr(player, "muerto", False):
             player.update(0, transicion_realizada=True, limite_max_x=ANCHO - 80)
+        if muerte_terminada(player):
+            mostrar_menu_muerte(screen)
+            en_batalla = False
+            break
 
         if jefe.health <= 0:
             cancelar_fase_al_morir()
@@ -1678,29 +1878,14 @@ while ejecutando:
                 devolver_accion=NIVEL_INTEGRADO,
             )
             if NIVEL_INTEGRADO and action in ("menu", "exit"):
-                cerrar_nivel(action)
-            continue
-
-        if autobus_perdido:
-            if evento.type == pygame.KEYDOWN:
+                solicitar_cierre_nivel(action)
                 ejecutando = False
+                break
             continue
 
         if evento.type == pygame.KEYDOWN and evento.key == pygame.K_c and en_zona_hueco:
             heroe.health = heroe.max_health
-
-            pantalla.fill((0, 0, 0))
-
-            txt_title = fuente_boss_title.render("Abbadon", True, (12, 35, 82))
-            txt_subtitle = fuente_boss_subtitle.render(
-                "El Señor Oscuro", True, (18, 42, 105)
-            )
-
-            pantalla.blit(txt_title, txt_title.get_rect(center=(ANCHO // 2, ALTO // 2 - 25)))
-            pantalla.blit(txt_subtitle, txt_subtitle.get_rect(center=(ANCHO // 2, ALTO // 2 + 45)))
-
-            pygame.display.flip()
-            pygame.time.wait(2000)
+            mostrar_intro_abbadon(pantalla, fondo_jefe)
 
             transicion_realizada = True
             ejecutar_batalla_werewolf(pantalla, heroe, fondo_jefe)
@@ -1732,15 +1917,15 @@ while ejecutando:
             autobus_completado = True
 
     if autobus_activo and not autobus_perdido:
-        autobus_spawn_timer -= dt
-        if (
-            autobus_enemigos_generados < BUS_CANTIDAD_ENEMIGOS
-            and autobus_spawn_timer <= 0
-        ):
-            enemigo_autobus = crear_enemigo_autobus(autobus_enemigos_generados)
-            enemigos_autobus.append(enemigo_autobus)
-            autobus_enemigos_generados += 1
-            autobus_spawn_timer = BUS_INTERVALO_ENEMIGOS
+        if autobus_enemigos_generados < BUS_CANTIDAD_ENEMIGOS:
+            if not enemigos_autobus or enemigo_derrotado(enemigos_autobus[-1]):
+                autobus_spawn_timer -= dt
+
+            if autobus_spawn_timer <= 0:
+                enemigo_autobus = crear_enemigo_autobus(autobus_enemigos_generados)
+                enemigos_autobus.append(enemigo_autobus)
+                autobus_enemigos_generados += 1
+                autobus_spawn_timer = BUS_INTERVALO_ENEMIGOS
 
         if gritos_pendientes:
             grito_timer -= dt
@@ -1816,7 +2001,14 @@ while ejecutando:
             autobus_perdido = True
             autobus_activo = False
 
+    if autobus_perdido:
+        mostrar_menu_muerte(pantalla)
+        break
+
     heroe.comprobar_golpes_proyectiles(enemigos_en_escena)
+    if muerte_terminada(heroe):
+        mostrar_menu_muerte(pantalla)
+        break
 
     if (
         autobus_activo
@@ -1855,10 +2047,12 @@ while ejecutando:
         for i in range(ANCHO_MUNDO // ANCHO):
             pos_x_fondo = i * ANCHO - scroll_x
             if -ANCHO < pos_x_fondo < ANCHO:
-                fondo_tramo = (
-                    fondo_autobus if i == BUS_ESCENARIO_TRAMO
-                    else fondos[i % len(fondos)]
-                )
+                if i == BUS_ESCENARIO_TRAMO:
+                    fondo_tramo = fondo_autobus
+                elif i == ANCHO_MUNDO // ANCHO - 1:
+                    fondo_tramo = fondo_entrada_jefe
+                else:
+                    fondo_tramo = fondos[i % len(fondos)]
                 pantalla.blit(fondo_tramo, (pos_x_fondo, 0))
 
         dibujar_plataformas(
@@ -1928,32 +2122,6 @@ while ejecutando:
         pantalla.blit(
             dialogo,
             dialogo.get_rect(center=(puerta_x_pantalla, 386)),
-        )
-
-    if autobus_perdido:
-        overlay_derrota = pygame.Surface((ANCHO, ALTO), pygame.SRCALPHA)
-        overlay_derrota.fill((12, 0, 5, 205))
-        pantalla.blit(overlay_derrota, (0, 0))
-        mensaje_derrota = fuente_boss_title.render(
-            "LOS ENEMIGOS ENTRARON AL AUTOBUS", True, (230, 55, 45)
-        )
-        mensaje_autobus = fuente_aviso_autobus.render(
-            "LA GENTE NO PUDO ESCAPAR", True, (255, 225, 210)
-        )
-        mensaje_continuar = fuente_fin_autobus.render(
-            "Presiona cualquier tecla para salir", True, (210, 210, 210)
-        )
-        pantalla.blit(
-            mensaje_derrota,
-            mensaje_derrota.get_rect(center=(ANCHO // 2, ALTO // 2 - 55)),
-        )
-        pantalla.blit(
-            mensaje_autobus,
-            mensaje_autobus.get_rect(center=(ANCHO // 2, ALTO // 2 + 20)),
-        )
-        pantalla.blit(
-            mensaje_continuar,
-            mensaje_continuar.get_rect(center=(ANCHO // 2, ALTO // 2 + 85)),
         )
 
     if en_zona_hueco:

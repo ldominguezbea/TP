@@ -56,7 +56,11 @@ class ComicViewer:
                 alpha=True,
                 label=filename,
             )
-            scale = min(1.0, self.view_rect.width / image.get_width())
+            scale = min(
+                1.0,
+                self.view_rect.width / image.get_width(),
+                self.view_rect.height / image.get_height(),
+            )
             scaled_size = (
                 max(1, round(image.get_width() * scale)),
                 max(1, round(image.get_height() * scale)),
@@ -101,7 +105,10 @@ class ComicViewer:
         page = self.pages[self.page_index]
         offset = self.scroll_offset if scroll_offset is None else scroll_offset
         page_rect = page.get_rect(
-            midtop=(self.view_rect.centerx, self.view_rect.top - round(offset))
+            center=(
+                self.view_rect.centerx,
+                self.view_rect.centery - round(offset),
+            )
         )
         frame.set_clip(self.view_rect)
         frame.blit(page, page_rect)
