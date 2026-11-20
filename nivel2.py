@@ -10,6 +10,11 @@ from personajes import crear_jugador
 from menu_pausa import NivelIntegradoFinalizado, menu_muerte_juego, pausar_juego
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+RUTA_MUSICA_NIVEL2 = os.path.join(BASE_DIR, "musica", "i.mp3")
+RUTA_MUSICA_JEFE = os.path.join(BASE_DIR, "musica", "a.mp3")
+SEGUNDO_INICIO_MUSICA_NIVEL2 = 113
+SEGUNDO_INICIO_INTRO_JEFE = 50
+SEGUNDO_INICIO_BATALLA_JEFE = 53
 
 from enemigos import (
     HombreLoboNegro,
@@ -40,7 +45,27 @@ if pantalla is None:
 pygame.display.set_caption("Nivel 2 - Batalla de Jefe")
 
 
+def reproducir_musica(ruta, segundo_inicio=0, en_bucle=False):
+    if pygame.mixer.get_init() is None:
+        return
+    try:
+        pygame.mixer.music.load(ruta)
+        pygame.mixer.music.set_volume(0.5)
+        pygame.mixer.music.play(
+            loops=-1 if en_bucle else 0,
+            start=segundo_inicio,
+        )
+    except (pygame.error, OSError) as error:
+        print(f"[AUDIO] No se pudo reproducir {ruta}: {error}")
+
+
+def detener_musica():
+    if pygame.mixer.get_init() is not None:
+        pygame.mixer.music.fadeout(800)
+
+
 def cerrar_nivel(action="exit"):
+    detener_musica()
     if NIVEL_INTEGRADO:
         raise NivelIntegradoFinalizado(nivel_completado, action)
     pygame.quit()
@@ -63,6 +88,7 @@ def muerte_terminada(jugador):
 
 
 def mostrar_menu_muerte(screen):
+    detener_musica()
     if NIVEL_INTEGRADO:
         solicitar_cierre_nivel(menu_muerte_juego(screen, devolver_accion=True))
         return
@@ -666,8 +692,13 @@ def dibujar_boton_demoniaco(pantalla):
 def mostrar_intro_abbadon(screen, fondo):
     ancho, alto = screen.get_size()
     reloj_intro = pygame.time.Clock()
-    inicio = pygame.time.get_ticks()
     duracion_ms = 3000
+    reproducir_musica(
+        RUTA_MUSICA_JEFE,
+        segundo_inicio=SEGUNDO_INICIO_INTRO_JEFE,
+        en_bucle=True,
+    )
+    inicio = pygame.time.get_ticks()
 
     fuente_etiqueta = pygame.font.SysFont("Arial", 18, bold=True)
     fuente_titulo = pygame.font.SysFont("Georgia", 92, bold=True)
@@ -1065,6 +1096,10 @@ def ejecutar_batalla_werewolf(screen, player, fondo_img):
 
     from Jefes_enemigos import WerewolfBoss
 
+    reproducir_musica(
+        RUTA_MUSICA_JEFE,
+        segundo_inicio=SEGUNDO_INICIO_BATALLA_JEFE,
+    )
     clock = pygame.time.Clock()
     jefe = WerewolfBoss(x=920, y=POSICION_SUELO - 100)
     jefe.max_health = 300
@@ -1777,6 +1812,10 @@ def separar_enemigos(enemigos, ancho_mundo):
 # ==============================================================================
 
 mostrar_comic_inicio(pantalla)
+reproducir_musica(
+    RUTA_MUSICA_NIVEL2,
+    segundo_inicio=SEGUNDO_INICIO_MUSICA_NIVEL2,
+)
 
 heroe = crear_jugador(
     200,
@@ -1878,6 +1917,7 @@ while ejecutando:
                 devolver_accion=NIVEL_INTEGRADO,
             )
             if NIVEL_INTEGRADO and action in ("menu", "exit"):
+                detener_musica()
                 solicitar_cierre_nivel(action)
                 ejecutando = False
                 break
@@ -1889,6 +1929,7 @@ while ejecutando:
 
             transicion_realizada = True
             ejecutar_batalla_werewolf(pantalla, heroe, fondo_jefe)
+            detener_musica()
             ejecutando = False
             break
 
