@@ -1,9 +1,6 @@
 {
-
-  "character": "Fei Liang",
-  "completed_levels": [
-    1
-  ],
+  "character": null,
+  "completed_levels": [],
   "prologue_seen": true,
   "story_progress": {
     "ascanor_decision": null,
