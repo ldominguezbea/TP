@@ -25,21 +25,9 @@ except pygame.error as e:
 from config import SCREEN_WIDTH, SCREEN_HEIGHT, GAME_WIDTH, GAME_HEIGHT, BASE_DIR, abrir_archivo
 from intro import run_intro
 
-
-fullscreen_mode = False
-
-
-def set_game_display_mode(fullscreen):
-    flags = pygame.SCALED | pygame.FULLSCREEN if fullscreen else 0
-    return pygame.display.set_mode(
-        (SCREEN_WIDTH, SCREEN_HEIGHT),
-        flags,
-    )
-
-
 # Configuración del motor de video de Pygame
 canvas = pygame.Surface((GAME_WIDTH, GAME_HEIGHT))
-screen = set_game_display_mode(fullscreen_mode)
+screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
 pygame.display.set_caption("REQUIEM: El juicio final")
 clock = pygame.time.Clock()
 
@@ -51,9 +39,11 @@ from selector_niveles import LevelSelector
 from sonidos_selector_niveles import Audio
 from personajes import PERSONAJE_SELECCIONADO_ENV
 from pergamino_controles import ControlsBook
+from seleccionar_personajes import SeleccionPersonajes
+from transiciones import EscenaCita, EscenaTitulo, superponer_fundido
+from comic_scroll import ScrollComic, cargar_paginas
 from menu_pausa import (
     EXIT_GAME_EXIT_CODE,
-    RETRY_LEVEL_EXIT_CODE,
     RETURN_TO_MENU_EXIT_CODE,
     NivelIntegradoFinalizado,
     precargar_recursos_pausa,
@@ -65,7 +55,7 @@ from menu_pausa import (
 # ============================================================
 
 canvas = pygame.Surface((GAME_WIDTH, GAME_HEIGHT))
-screen = set_game_display_mode(fullscreen_mode)
+screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
 pygame.display.set_caption("REQUIEM: El juicio final")
 
 clock = pygame.time.Clock()
@@ -467,6 +457,25 @@ def cerrar_juego(codigo=0):
 level_selector = None
 chosen_level = None
 completed_levels = set()
+
+# Escenas nuevas: cita previa al cómic, título "Cour I" y selector de héroes
+quote_scene = None
+titulo_scene = None
+character_screen = None
+comic_fade_in = 99.0      # segundos desde que arrancó el fundido de entrada del cómic
+comic_fade_out = 0.0      # segundos del fundido a negro al terminar el cómic
+comic_music_volume = 1.0
+level_fade_in = 99.0      # fundido de entrada de la selección de niveles
+
+COMIC_FADE_IN = 1.8
+COMIC_FADE_OUT = 1.2
+LEVEL_FADE_IN = 0.7
+
+# Cómic con scroll vertical: apunta a la carpeta con las páginas del prólogo
+# (por ejemplo BASE_DIR / "assets" / "comic" / "prologo"). Con None se usa el
+# lector de siempre (prologo.prologue()).
+PROLOGO_PAGINAS_DIR = None
+PROLOGO_SONIDO_PAGINA = None   # ruta al sonido de "pasar página" (opcional)
 prologue_seen = False
 story_progress = nueva_progresion_historia()
 
@@ -630,6 +639,105 @@ class MenuAtmosphere:
 menu_atmosphere = MenuAtmosphere((SCREEN_WIDTH, SCREEN_HEIGHT))
 
 
+# ============================================================
+# TRANSICIONES: CITA -> CÓMIC -> "COUR I" -> SELECCIÓN DE HÉROE
+# ============================================================
+
+def crear_lector_prologo():
+    """Cómic vertical si hay carpeta de páginas configurada; si no, el lector original."""
+    if PROLOGO_PAGINAS_DIR is not None:
+        paginas = cargar_paginas(PROLOGO_PAGINAS_DIR)
+        if paginas:
+            sonido = None
+            if PROLOGO_SONIDO_PAGINA is not None and audio_disponible:
+                try:
+                    sonido = pygame.mixer.Sound(str(PROLOGO_SONIDO_PAGINA))
+                except (pygame.error, OSError) as e:
+                    print(f"[COMIC] Sin sonido de página: {e}")
+            return ScrollComic(paginas, (SCREEN_WIDTH, SCREEN_HEIGHT), sonido_pagina=sonido)
+        print(f"[COMIC] No hay páginas en {PROLOGO_PAGINAS_DIR}; se usa el lector original.")
+    return prologue()
+
+
+def iniciar_fundido_comic():
+    """El cómic terminó (o se saltó): congela el lector y funde a negro."""
+    global game_state, comic_fade_out, comic_music_volume
+
+    comic_fade_out = 0.0
+    comic_music_volume = 1.0
+    if audio_disponible and pygame.mixer.get_init():
+        try:
+            if pygame.mixer.music.get_busy():
+                comic_music_volume = pygame.mixer.music.get_volume()
+        except pygame.error:
+            pass
+    game_state = "COMIC_FADEOUT"
+
+
+def terminar_fundido_comic():
+    """Fundido completo: limpia el lector y muestra 'Cour I - The Invasion'."""
+    global game_state, prologue_viewer, titulo_scene
+
+    if audio_disponible and pygame.mixer.get_init():
+        try:
+            pygame.mixer.music.stop()
+            pygame.mixer.music.set_volume(comic_music_volume)
+            pygame.mixer.stop()
+        except pygame.error:
+            pass
+
+    prologue_viewer = None
+    titulo_scene = EscenaTitulo((SCREEN_WIDTH, SCREEN_HEIGHT))
+    game_state = "COURTITLE"
+
+
+def entrar_seleccion_personajes():
+    """Muestra la selección de héroes (crea la pantalla la primera vez)."""
+    global game_state, character_screen, chosen_level
+
+    if character_screen is None:
+        character_screen = SeleccionPersonajes(
+            screen,
+            characters,
+            sonido_nav=navigation_sound,
+            audio_disponible=audio_disponible,
+            base_dir=BASE_DIR,
+        )
+    character_screen.reset(selected_char_index)
+    chosen_level = None
+    game_state = "CHARACTER_SELECT"
+
+
+def finalizar_seleccion_personaje():
+    """Se confirmó el héroe y terminó la secuencia épica: guarda y pasa a niveles."""
+    global game_state, selected_char_index, chosen_char_name, chosen_level
+    global level_selector, level_fade_in
+
+    selected_char_index = character_screen.indice
+    chosen_char_name = characters[selected_char_index]["name"]
+
+    os.environ[PERSONAJE_SELECCIONADO_ENV] = chosen_char_name
+
+    save_game(
+        chosen_char_name,
+        completed_levels,
+        prologue_seen,
+        story_progress,
+    )
+
+    chosen_level = None
+
+    level_selector = LevelSelector(
+        screen,
+        audio,
+        completed_levels,
+        story_progress,
+    )
+
+    level_fade_in = 0.0
+    game_state = "LEVEL_SELECT"
+
+
 def launch_level(level_number):
 
     global screen, level_selector, game_state, story_progress
@@ -671,48 +779,39 @@ def launch_level(level_number):
 
             os.chdir(BASE_DIR)
 
-            while True:
-                try:
-                    resultado_nivel = runpy.run_path(
-                        str(level_path),
-                        run_name=run_name,
-                    )
+            try:
+                resultado_nivel = runpy.run_path(
+                    str(level_path),
+                    run_name=run_name,
+                )
 
-                except NivelIntegradoFinalizado as error:
-                    if error.action == "retry":
-                        continue
-                    level_completed = error.completed
-                    if error.action == "menu":
-                        game_state = "MENU"
-                    elif error.action == "exit":
-                        game_state = "EXIT"
-                except SystemExit as error:
-                    if error.code == RETURN_TO_MENU_EXIT_CODE:
-                        game_state = "MENU"
-                    elif error.code == EXIT_GAME_EXIT_CODE:
-                        game_state = "EXIT"
-                    elif error.code == RETRY_LEVEL_EXIT_CODE:
-                        continue
-                    else:
-                        raise
+            except NivelIntegradoFinalizado as error:
+                level_completed = error.completed
+                if error.action == "menu":
+                    game_state = "MENU"
+                elif error.action == "exit":
+                    game_state = "EXIT"
+            except SystemExit as error:
+                if error.code == RETURN_TO_MENU_EXIT_CODE:
+                    game_state = "MENU"
+                elif error.code == EXIT_GAME_EXIT_CODE:
+                    game_state = "EXIT"
                 else:
-                    accion_cierre = resultado_nivel.get("accion_cierre_nivel")
-                    if accion_cierre == "retry":
-                        continue
-                    level_completed = bool(
-                        resultado_nivel.get("nivel_completado", False)
-                    )
-                    registrar_resultado_historia(
-                        level_number,
-                        resultado_nivel,
-                        completed_levels,
-                        story_progress,
-                    )
-                    if accion_cierre == "menu":
-                        game_state = "MENU"
-                    elif accion_cierre == "exit":
-                        game_state = "EXIT"
-                break
+                    raise
+            else:
+                level_completed = bool(
+                    resultado_nivel.get("nivel_completado", False)
+                )
+                registrar_resultado_historia(
+                    level_number,
+                    resultado_nivel,
+                    completed_levels,
+                    story_progress,
+                )
+                if resultado_nivel.get("accion_cierre_nivel") == "menu":
+                    game_state = "MENU"
+                elif resultado_nivel.get("accion_cierre_nivel") == "exit":
+                    game_state = "EXIT"
 
         finally:
 
@@ -920,17 +1019,6 @@ def draw_character_artwork(surface, name, cx, cy):
     elif name == "Escanor":
         pygame.draw.rect(surface, (165, 25, 25), (cx - 50, cy - 5, 100, 65), border_radius=10)
         pygame.draw.circle(surface, (240, 190, 145), (cx, cy - 28), 26)
-
-
-def toggle_fullscreen():
-    global screen, fullscreen_mode
-
-    fullscreen_mode = not fullscreen_mode
-    screen = set_game_display_mode(fullscreen_mode)
-    pygame.display.set_caption("REQUIEM: El juicio final")
-
-    if level_selector is not None:
-        level_selector.target_surface = screen
 
 
 def render_menu(time_counter):
@@ -1225,6 +1313,11 @@ def main():
     global story_progress
     global menu_notice
     global audio_disponible
+    global quote_scene
+    global titulo_scene
+    global comic_fade_in
+    global comic_fade_out
+    global level_fade_in
 
     time_counter = 0
 
@@ -1239,53 +1332,6 @@ def main():
 
     running = run_intro(screen, audio_enabled=audio_disponible)
 
-    def procesar_resultado_selector(result):
-        nonlocal running
-        global chosen_level, game_state
-
-        if result == "back":
-            audio.update_ambient(0.0, active=False)
-            game_state = "CHARACTER_SELECT"
-        elif isinstance(result, int):
-            chosen_level = result
-
-            while game_state == "LEVEL_SELECT":
-                level_completed = launch_level(chosen_level)
-
-                if game_state != "LEVEL_SELECT":
-                    break
-
-                if level_completed:
-                    completed_levels.add(chosen_level)
-                    save_game(
-                        chosen_char_name,
-                        completed_levels,
-                        prologue_seen,
-                        story_progress,
-                    )
-                    level_selector.set_progress(
-                        completed_levels,
-                        story_progress,
-                    )
-                    if story_progress["game_finished"]:
-                        break
-
-                result_action = show_level_result(
-                    chosen_level,
-                    level_completed,
-                )
-                if result_action == "retry":
-                    continue
-                if result_action == "menu":
-                    game_state = "MENU"
-                elif result_action == "levels":
-                    game_state = "LEVEL_SELECT"
-                elif result_action == "exit":
-                    running = False
-                break
-
-            chosen_level = None
-
     while running:
 
         elapsed_ms = clock.tick(60)
@@ -1298,17 +1344,37 @@ def main():
 
         for event in pygame.event.get():
 
+            # Soltar ENTER siempre se registra, sea cual sea la escena activa.
+            if event.type == pygame.KEYUP and event.key == pygame.K_RETURN:
+                enter_held = False
+
             if event.type == pygame.QUIT:
 
                 running = False
 
+            elif game_state == "QUOTE":
+
+                quote_scene.handle_event(event)
+
+            elif game_state == "COURTITLE":
+
+                titulo_scene.handle_event(event)
+
+            elif game_state == "COMIC_FADEOUT":
+
+                pass
+
             elif (
-                event.type == pygame.MOUSEBUTTONDOWN
-                and game_state == "LEVEL_SELECT"
-            ):
-                procesar_resultado_selector(
-                    level_selector.handle_event(event)
+                game_state == "CHARACTER_SELECT"
+                and event.type in (
+                    pygame.KEYDOWN,
+                    pygame.MOUSEMOTION,
+                    pygame.MOUSEBUTTONDOWN,
                 )
+            ):
+
+                if character_screen.handle_event(event) == "back":
+                    game_state = "MENU"
 
             elif event.type == pygame.MOUSEBUTTONDOWN and game_state == "PROLOGUE":
 
@@ -1317,15 +1383,6 @@ def main():
             elif event.type == pygame.MOUSEWHEEL and game_state == "PROLOGUE":
 
                 get_prologue_viewer().handle_scroll(event.y)
-
-            elif event.type == pygame.KEYDOWN and event.key == pygame.K_F11:
-
-                toggle_fullscreen()
-
-            elif event.type == pygame.KEYUP:
-
-                if event.key == pygame.K_RETURN:
-                    enter_held = False
 
             elif event.type == pygame.KEYDOWN:
 
@@ -1391,7 +1448,8 @@ def main():
 
                 elif game_state == "PROLOGUE":
 
-                    if event.key in (
+                    # Durante el fundido de entrada las teclas no cuentan (evita saltos accidentales).
+                    if comic_fade_in >= 0.8 and event.key in (
                         pygame.K_RETURN,
                         pygame.K_SPACE,
                         pygame.K_ESCAPE,
@@ -1402,49 +1460,12 @@ def main():
                     ):
                         action = get_prologue_viewer().handle_key(event.key)
                         if action == "finished":
-                            game_state = "CHARACTER_SELECT"
+                            iniciar_fundido_comic()
 
                 # ============================================
                 # SELECCIÓN DE PERSONAJES
+                # (la maneja SeleccionPersonajes más arriba, con teclado y mouse)
                 # ============================================
-
-                elif game_state == "CHARACTER_SELECT":
-
-                    if event.key == pygame.K_LEFT:
-                        selected_char_index = (selected_char_index - 1) % len(characters)
-                    elif event.key == pygame.K_RIGHT:
-                        selected_char_index = (selected_char_index + 1) % len(characters)
-                    elif event.key == pygame.K_RETURN:
-
-                        chosen_char_name = characters[
-                            selected_char_index
-                        ]["name"]
-
-                        os.environ[
-                            PERSONAJE_SELECCIONADO_ENV
-                        ] = chosen_char_name
-
-                        save_game(
-                            chosen_char_name,
-                            completed_levels,
-                            prologue_seen,
-                            story_progress,
-                        )
-
-                        chosen_level = None
-
-                        level_selector = LevelSelector(
-                            screen,
-                            audio,
-                            completed_levels,
-                            story_progress,
-                        )
-
-                        game_state = "LEVEL_SELECT"
-
-                    elif event.key == pygame.K_ESCAPE:
-
-                        game_state = "MENU"
 
                 # ============================================
                 # SELECCIÓN DE NIVELES
@@ -1452,9 +1473,57 @@ def main():
 
                 elif game_state == "LEVEL_SELECT":
 
-                    procesar_resultado_selector(
-                        level_selector.handle_event(event)
-                    )
+                    result = level_selector.handle_event(event)
+
+                    if result == "back":
+
+                        audio.update_ambient(
+                            0.0,
+                            active=False
+                        )
+
+                        entrar_seleccion_personajes()
+
+                    elif isinstance(result, int):
+
+                        chosen_level = result
+
+                        while game_state == "LEVEL_SELECT":
+                            level_completed = launch_level(chosen_level)
+
+                            if game_state != "LEVEL_SELECT":
+                                break
+
+                            if level_completed:
+                                completed_levels.add(chosen_level)
+                                save_game(
+                                    chosen_char_name,
+                                    completed_levels,
+                                    prologue_seen,
+                                    story_progress,
+                                )
+                                level_selector.set_progress(
+                                    completed_levels,
+                                    story_progress,
+                                )
+                                if story_progress["game_finished"]:
+                                    break
+
+                            result_action = show_level_result(
+                                chosen_level,
+                                level_completed,
+                            )
+                            if result_action == "retry":
+                                continue
+                            if result_action == "menu":
+                                game_state = "MENU"
+                            elif result_action == "levels":
+                                game_state = "LEVEL_SELECT"
+                            elif result_action == "exit":
+                                running = False
+                            break
+
+                        chosen_level = None
 
         # ====================================================
         # EJECUTAR ACCIONES DEL MENÚ
@@ -1486,9 +1555,14 @@ def main():
                     story_progress,
                 )
 
-                prologue_viewer = prologue()
+                # Cita bíblica sobre fondo oscuro -> (fundido) -> cómic del prólogo.
+                # El lector se crea ya, mientras la pantalla está en negro, para que
+                # la carga de imágenes no provoque tirones al aparecer el cómic.
+                quote_scene = EscenaCita((SCREEN_WIDTH, SCREEN_HEIGHT))
+                prologue_viewer = crear_lector_prologo()
+                comic_fade_in = 0.0
 
-                game_state = "PROLOGUE"
+                game_state = "QUOTE"
 
                 menu_notice = ""
 
@@ -1552,8 +1626,7 @@ def main():
 
                         menu_music_playing = False
 
-                    game_state = "CHARACTER_SELECT"
-                    chosen_level = None
+                    entrar_seleccion_personajes()
                     menu_notice = ""
 
             # ================================================
@@ -1585,16 +1658,51 @@ def main():
         if game_state == "LEVEL_SELECT":
 
             level_selector.update(elapsed_ms)
+            level_fade_in += min(elapsed_ms, 50) / 1000
         elif game_state == "CONTROLS":
             if controls_scroll.update(elapsed_ms / 1000):
                 game_state = "MENU"
+
+        elif game_state == "QUOTE":
+
+            if quote_scene.update(elapsed_ms):
+                quote_scene = None
+                comic_fade_in = 0.0
+                game_state = "PROLOGUE"
 
         elif game_state == "PROLOGUE":
 
             prologue_viewer = get_prologue_viewer()
             prologue_viewer.update(elapsed_ms / 1000)
+            comic_fade_in += min(elapsed_ms, 50) / 1000
             if prologue_viewer.consume_action() == "skip":
-                game_state = "CHARACTER_SELECT"
+                iniciar_fundido_comic()
+
+        elif game_state == "COMIC_FADEOUT":
+
+            comic_fade_out += min(elapsed_ms, 50) / 1000
+            progreso = min(1.0, comic_fade_out / COMIC_FADE_OUT)
+
+            # La música del cómic (si la hay) baja junto con la imagen.
+            if audio_disponible and pygame.mixer.get_init():
+                try:
+                    pygame.mixer.music.set_volume(comic_music_volume * (1.0 - progreso))
+                except pygame.error:
+                    pass
+
+            if progreso >= 1.0:
+                terminar_fundido_comic()
+
+        elif game_state == "COURTITLE":
+
+            if titulo_scene.update(elapsed_ms):
+                titulo_scene = None
+                entrar_seleccion_personajes()
+
+        elif game_state == "CHARACTER_SELECT":
+
+            if character_screen.update(elapsed_ms) == "seleccionado":
+                finalizar_seleccion_personaje()
 
         # ====================================================
         # ACTUALIZACIÓN DE PARTÍCULAS
@@ -1661,9 +1769,24 @@ def main():
 
             render_controls(time_counter)
 
+        elif game_state == "QUOTE":
+
+            quote_scene.draw(screen)
+
+        elif game_state == "COMIC_FADEOUT":
+
+            render_prologue()
+            superponer_fundido(screen, comic_fade_out / COMIC_FADE_OUT)
+
+        elif game_state == "COURTITLE":
+
+            titulo_scene.draw(screen)
+
         elif game_state == "PROLOGUE":
 
             render_prologue()
+            if comic_fade_in < COMIC_FADE_IN:
+                superponer_fundido(screen, 1.0 - comic_fade_in / COMIC_FADE_IN)
             if not prologue_seen:
                 prologue_seen = True
                 save_game(
@@ -1675,11 +1798,13 @@ def main():
 
         elif game_state == "CHARACTER_SELECT":
 
-            render_character_select_high_res(time_counter)
+            character_screen.draw(screen)
 
         elif game_state == "LEVEL_SELECT":
 
             render_level_select(time_counter)
+            if level_fade_in < LEVEL_FADE_IN:
+                superponer_fundido(screen, 1.0 - level_fade_in / LEVEL_FADE_IN)
 
         pygame.display.flip()
 
