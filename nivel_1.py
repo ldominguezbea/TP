@@ -24,12 +24,12 @@ NIVEL_INTEGRADO = __name__ == "_nivel1_integrado"
 accion_cierre_nivel = None
 nivel_completado = False
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-RUTA_MUSICA_PERSECUCION = os.path.join(
+RUTA_MUSICA_NIVEL1 = os.path.join(
     BASE_DIR,
     "musica",
-    "when_the_shadows_first_lengthened.ogg",
+    "Rip y Tear.mp3",
 )
-musica_persecucion_activa = False
+RUTA_MUSICA_JEFE = os.path.join(BASE_DIR, "musica", "T.mp3")
 
 # 1. Configuración de pantalla y mundo
 ANCHO, ALTO = 1350, 700
@@ -120,32 +120,37 @@ if pantalla is None:
 pygame.display.set_caption("Nivel 1 - Batalla de Jefe")
 
 
-def iniciar_musica_persecucion():
-    global musica_persecucion_activa
-
-    if musica_persecucion_activa or pygame.mixer.get_init() is None:
+def iniciar_musica_nivel1():
+    if pygame.mixer.get_init() is None:
         return
     try:
-        pygame.mixer.music.load(RUTA_MUSICA_PERSECUCION)
+        pygame.mixer.music.load(RUTA_MUSICA_NIVEL1)
         pygame.mixer.music.set_volume(0.5)
         pygame.mixer.music.play(loops=-1, fade_ms=800)
-        musica_persecucion_activa = True
     except (pygame.error, OSError) as error:
-        print(f"[AUDIO] No se pudo iniciar la música de persecución: {error}")
+        print(f"[AUDIO] No se pudo iniciar la música del nivel 1: {error}")
 
 
-def detener_musica_persecucion():
-    global musica_persecucion_activa
+def iniciar_musica_jefe(segundo_inicio, en_bucle=False):
+    if pygame.mixer.get_init() is not None:
+        try:
+            pygame.mixer.music.load(RUTA_MUSICA_JEFE)
+            pygame.mixer.music.set_volume(0.5)
+            pygame.mixer.music.play(
+                loops=-1 if en_bucle else 0,
+                start=segundo_inicio,
+            )
+        except (pygame.error, OSError) as error:
+            print(f"[AUDIO] No se pudo iniciar la música del jefe: {error}")
 
-    if not musica_persecucion_activa:
-        return
+
+def detener_musica_nivel1():
     if pygame.mixer.get_init() is not None:
         pygame.mixer.music.fadeout(800)
-    musica_persecucion_activa = False
 
 
 def cerrar_nivel(action=None):
-    detener_musica_persecucion()
+    detener_musica_nivel1()
     if NIVEL_INTEGRADO:
         if action is not None:
             raise NivelIntegradoFinalizado(nivel_completado, action)
@@ -937,8 +942,9 @@ def obtener_hitbox_ataque_jefe_nivel1(jefe):
 def mostrar_intro_batalla_jefe(screen, fondo):
     ancho, alto = screen.get_size()
     reloj_intro = pygame.time.Clock()
+    duracion_ms = 5000
+    iniciar_musica_jefe(43)
     inicio = pygame.time.get_ticks()
-    duracion_ms = 3000
 
     fuente_etiqueta = pygame.font.SysFont("Arial", 18, bold=True)
     fuente_titulo = pygame.font.SysFont("Georgia", 92, bold=True)
@@ -1098,6 +1104,7 @@ def ejecutar_batalla_carnicero(screen, player, fondo_img):
 
     from Jefes_enemigos import CarniceroBoss
 
+    iniciar_musica_jefe(48, en_bucle=True)
     clock = pygame.time.Clock()
     FPS = 60
 
@@ -1414,7 +1421,7 @@ def crear_enemigo(clase, x):
         enemigo = OrcoRojo(
             x=x, y=POSICION_SUELO, escala=ESCALA_ORCO_NIVEL
         )
-        enemigo.dano_ataque = 8
+        enemigo.dano_ataque = 5
     elif clase is Karasu_tengu:
         enemigo = Karasu_tengu(x=x, y=POSICION_SUELO)
         enemigo.dano_ataque = 5
@@ -1661,6 +1668,7 @@ perseguidor_activo = False
 perseguidor_x = 0.0
 monstruo_frame = 0.0
 
+iniciar_musica_nivel1()
 ejecutando = True
 reloj = pygame.time.Clock()
 
@@ -1695,7 +1703,7 @@ while ejecutando:
         elif evento.type == pygame.KEYDOWN and evento.key == pygame.K_ESCAPE:
             accion = pausar_juego(pantalla, devolver_accion=True)
             if accion in ("menu", "exit"):
-                detener_musica_persecucion()
+                detener_musica_nivel1()
                 solicitar_cierre_nivel(accion)
                 ejecutando = False
                 break
@@ -1741,7 +1749,6 @@ while ejecutando:
                 scroll_x = 0
 
             elif fase_nivel == FASE_CONDUCTO_3:
-                detener_musica_persecucion()
                 fase_nivel = FASE_HUECO_FINAL
                 enemigos_escena.clear()
                 colocar_jugador_en_escena(heroe, 180, fase_nivel)
@@ -1754,6 +1761,7 @@ while ejecutando:
 
                 transicion_realizada = True
                 ejecutar_batalla_carnicero(pantalla, heroe, fondo_batalla)
+                detener_musica_nivel1()
                 ejecutando = False
                 break
 
@@ -1777,7 +1785,7 @@ while ejecutando:
         limite_min_x=80,
     )
     if muerte_terminada(heroe):
-        detener_musica_persecucion()
+        detener_musica_nivel1()
         mostrar_menu_muerte(pantalla)
         break
     if fase_nivel == FASE_RECORRIDO:
@@ -1955,7 +1963,6 @@ while ejecutando:
             if not perseguidor_activo:
                 perseguidor_activo = True
                 perseguidor_x = progreso_jugador_conducto - 500
-                iniciar_musica_persecucion()
 
         if perseguidor_activo:
             if perseguidor_x < progreso_jugador_conducto:
@@ -1969,7 +1976,7 @@ while ejecutando:
 
             distancia_contacto = DISTANCIA_CONTACTO_MONSTRUO
             if abs(progreso_jugador_conducto - perseguidor_x) <= distancia_contacto:
-                detener_musica_persecucion()
+                detener_musica_nivel1()
                 mostrar_menu_muerte(pantalla)
                 ejecutando = False
                 break
